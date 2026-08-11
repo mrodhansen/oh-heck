@@ -103,9 +103,6 @@ export function GamePage() {
 
   const phase = game.phase;
   const isFinished = phase === 'completed' || game.status === 'COMPLETED';
-  const firstToPlayName = current
-    ? game.players.find((p) => p.id === current.bidOrderPlayerIds[0])?.name
-    : undefined;
 
   async function confirmBid() {
     if (!game || !current || !currentBidderId) return;
@@ -275,21 +272,16 @@ export function GamePage() {
             <h2 className="phase-title">
               {phase === 'bidding' ? 'Bidding' : 'Scoring'}
             </h2>
-            <p className="phase-round">Round {current.number}</p>
-            <p className="phase-cards">{handSize} cards</p>
-            <p className="phase-first">
-              {phase === 'bidding' ? (
+            <p className="phase-sub">
+              Round {current.number}
+              <span className="phase-dot">·</span>
+              {handSize} cards
+              {phase === 'tricks' && current.forceBurn ? (
                 <>
-                  First Bid <strong>{firstToPlayName}</strong>
+                  <span className="phase-dot">·</span>
+                  FB
                 </>
-              ) : (
-                <>
-                  First Score <strong>{firstToPlayName}</strong>
-                  {current.forceBurn ? (
-                    <span className="phase-fb"> · FB</span>
-                  ) : null}
-                </>
-              )}
+              ) : null}
             </p>
             <p className="phase-total">
               <strong>
