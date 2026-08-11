@@ -27,7 +27,14 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: base,
         scope: base,
+        // PNG only — iOS home screen ignores SVG favicons
         icons: [
+          {
+            src: 'apple-touch-icon.png',
+            sizes: '180x180',
+            type: 'image/png',
+            purpose: 'any',
+          },
           {
             src: 'icon-192.png',
             sizes: '192x192',
