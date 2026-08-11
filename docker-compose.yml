@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ohheck
+      POSTGRES_PASSWORD: ohheck
+      POSTGRES_DB: ohheck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Localhost only — do not expose Postgres on the LAN
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ohheck -d ohheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://ohheck:ohheck@db:5432/ohheck?schema=public
+      PORT: "3000"
+      CORS_ORIGIN: "*"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Same-origin via nginx proxy — works on phone LAN without hardcoding IP
+        VITE_API_URL: /api
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  SETUP
+  BIDDING
+  PLAYING
+  COMPLETED
+}
+
+model Game {
+  id        String     @id @default(uuid())
+  name      String?
+  status    GameStatus @default(BIDDING)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  finishedAt DateTime?
+
+  players Player[]
+  rounds  Round[]
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  gameId    String
+  name      String
+  seatIndex Int
+  createdAt DateTime @default(now())
+
+  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  roundEntries RoundEntry[]
+
+  @@unique([gameId, seatIndex])
+  @@unique([gameId, name])
+  @@index([gameId])
+}
+
+model Round {
+  id         String   @id @default(uuid())
+  gameId     String
+  number     Int
+  handSize   Int
+  dealerSeat Int
+  forceBurn  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  game    Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  entries RoundEntry[]
+
+  @@unique([gameId, number])
+  @@index([gameId])
+}
+
+model RoundEntry {
+  id          String   @id @default(uuid())
+  roundId     String
+  playerId    String
+  bid         Int?
+  tricksTaken Int?
+  points      Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  round  Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, playerId])
+  @@index([playerId])
+}

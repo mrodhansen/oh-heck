@@ -1,0 +1,108 @@
+# Oh Heck — official scorekeeper rules
+# Source of truth for hand sizes, bidding constraints, and scoring.
+
+meta:
+  name: Oh Heck
+  players:
+    min: 2
+    max: 7
+  rounds: 13
+  deck: standard_52
+
+# Cards dealt per round (1-indexed round → hand size).
+# Pattern: 7 down to 1, then back up to 7.
+hand_sizes:
+  - round: 1
+    cards: 7
+  - round: 2
+    cards: 6
+  - round: 3
+    cards: 5
+  - round: 4
+    cards: 4
+  - round: 5
+    cards: 3
+  - round: 6
+    cards: 2
+  - round: 7
+    cards: 1
+  - round: 8
+    cards: 2
+  - round: 9
+    cards: 3
+  - round: 10
+    cards: 4
+  - round: 11
+    cards: 5
+  - round: 12
+    cards: 6
+  - round: 13
+    cards: 7
+
+setup:
+  player_order: |
+    At game setup, players are listed in seat order.
+    The first name is seat 0 (first player).
+    The last name is the round-1 dealer.
+  dealer_rotation: |
+    Dealer rotates forward one seat each round.
+    Round r (1-based): dealerIndex = (playerCount - 1 + r - 1) % playerCount
+    Equivalently: round 1 dealer = last seat; then seat 0, 1, 2, …
+  trump: |
+    After dealing, the top card of the remaining deck is flipped.
+    That card's suit is trump for the round.
+    (Scorekeeper does not record trump; physical play only.)
+
+bidding:
+  order: |
+    Bidding starts with the player to the left of the dealer
+    (dealerIndex + 1) % n and proceeds in seat order.
+    The dealer bids last.
+  range: |
+    Each player may bid an integer from 0 through hand_size (inclusive).
+  last_bidder_restriction: |
+    The dealer (last bidder) may NOT bid a value that makes
+    sum(all bids) == hand_size for that round.
+    All other integers in [0, hand_size] remain legal.
+    Example: round 1 (7 cards), current total bid 6 → dealer may bid
+    0 or 2–7, but not 1.
+  force_burn: |
+    Optional flag on the final (dealer) bid only.
+    Toggled in the scorekeeper as "FB" (Force Burn).
+    Stored per round; does not change scoring math.
+  tricks_entry_order: |
+    Tricks taken are entered in the same order as bidding.
+
+play:
+  lead: |
+    First trick of a round is led by the player left of the dealer.
+    Subsequent tricks are led by the winner of the previous trick.
+  following_suit: |
+    Players must follow the lead suit if they hold it.
+    Otherwise they may play any card (including trump).
+  winning_a_trick: |
+    Highest trump played wins. If no trump, highest card of the lead suit wins.
+    Off-suit non-trump cards cannot win.
+
+scoring:
+  exact_bid: |
+    If tricks_taken == bid:
+      points = 5 + tricks_taken
+    (Bid 0 made → +5. Bid 2 made → +7.)
+  missed_bid: |
+    If tricks_taken != bid:
+      points = -abs(bid - tricks_taken)
+    Examples: bid 1 got 2 → -1; bid 0 got 2 → -2; bid 3 got 1 → -2.
+  round_total: sum of each player's round points
+  game_total: sum of round points across all 13 rounds
+  placement: |
+    Highest game total is 1st, next 2nd, etc.
+    Equal totals share the same place; next place is skipped
+    (e.g. 1st, 2nd, 2nd, 4th).
+
+validation:
+  tricks_sum: |
+    When recording results, sum(tricks_taken) MUST equal hand_size.
+  bid_sum_forbidden_equality: |
+    After all bids are in, sum(bids) must NOT equal hand_size
+    (enforced via last-bidder restriction at entry time).

@@ -1,0 +1,48 @@
+# Oh Heck — official scorekeeper rules
+# Copied into the API image; also see repo-root RULES.yaml.
+
+meta:
+  name: Oh Heck
+  players:
+    min: 2
+    max: 7
+  rounds: 13
+  deck: standard_52
+
+hand_sizes: [7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7]
+
+setup:
+  player_order: |
+    At game setup, players are listed in seat order.
+    The first name is seat 0 (first player).
+    The last name is the round-1 dealer.
+  dealer_rotation: |
+    Dealer rotates forward one seat each round.
+    Round r (1-based): dealerIndex = (playerCount - 1 + r - 1) % playerCount
+  trump: |
+    After dealing, the top card of the remaining deck is flipped.
+    That card's suit is trump for the round.
+    (Scorekeeper does not record trump; physical play only.)
+
+bidding:
+  order: |
+    Bidding starts left of the dealer and proceeds in seat order.
+    The dealer bids last.
+  range: Each player may bid an integer from 0 through hand_size (inclusive).
+  last_bidder_restriction: |
+    The dealer (last bidder) may NOT bid a value that makes
+    sum(all bids) == hand_size for that round.
+
+play:
+  lead: First trick led by player left of dealer; then winner leads.
+  following_suit: Must follow lead suit if held; else any card.
+  winning_a_trick: Highest trump wins; else highest of lead suit.
+
+scoring:
+  exact_bid: "points = 5 + tricks_taken when tricks_taken == bid"
+  missed_bid: "points = -abs(bid - tricks_taken) when missed"
+  placement: Highest total wins; equal totals share place (skip next).
+
+validation:
+  tricks_sum: sum(tricks_taken) MUST equal hand_size
+  bid_forbidden: sum(bids) must NOT equal hand_size
