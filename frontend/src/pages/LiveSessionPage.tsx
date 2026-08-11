@@ -452,6 +452,13 @@ function LivePlayTable({
   onBid: () => void;
   onPlay: (key: string) => void;
 }) {
+  const [bidSheetOpen, setBidSheetOpen] = useState(true);
+
+  // Re-open the bid sheet whenever it becomes (or returns to) our turn.
+  useEffect(() => {
+    if (view.isMyBidTurn) setBidSheetOpen(true);
+  }, [view.isMyBidTurn, view.bidderSeat, view.roundNumber]);
+
   const others = view.players.filter((p) => p.id !== view.me.playerId);
   const playBySeat = new Map(
     view.table.plays.map((p) => [p.seat, p] as const),
@@ -470,190 +477,220 @@ function LivePlayTable({
 
   const handSize = view.handSize ?? 0;
   const totalBid = view.bids.reduce((s, b) => s + (b.bid ?? 0), 0);
+  const tricksTaken = view.tricksPlayed ?? 0;
   const myPlay = playBySeat.get(view.me.seatIndex) ?? null;
-  const showTricks = view.phase === 'playing' || view.phase === 'trick_reveal';
-  const trickNum =
-    (view.tricksPlayed ?? 0) +
-    (view.table.plays.length > 0 && !view.table.complete ? 1 : 0);
+  const bidding = view.phase === 'bidding';
 
   return (
     <div className="live-play">
-      <header className="phase-header live-phase-header">
-        <h2 className="phase-title">
-          {view.phase === 'bidding' ? 'Bidding' : 'Play'}
-        </h2>
-        <p className="phase-sub">
+      <header className="live-phase-header">
+        <p className="live-phase-row">
           Round {view.roundNumber}
           <span className="phase-dot">·</span>
           {handSize} cards
         </p>
-        <p className="phase-total">
-          <strong>{totalBid}</strong>{' '}
-          {totalBid === 1 ? 'has been bid' : 'have been bid'}
-          {showTricks && handSize > 0 ? (
-            <>
-              <span className="phase-dot">·</span>
-              Trick {Math.max(1, trickNum)}/{handSize}
-            </>
-          ) : null}
+        <p className="live-phase-row live-phase-row-meta">
+          Bid {totalBid}
+          <span className="phase-dot">·</span>
+          Tricks {tricksTaken}
+          {handSize > 0 ? `/${handSize}` : ''}
         </p>
       </header>
 
-      <div className="live-felt">
-        <div className="live-felt-top">
-          {layout.top.map(({ player }) => (
-            <PlayerSlot
-              key={player.id}
-              player={player}
-              view={view}
-              play={playBySeat.get(player.seatIndex) ?? null}
-              side="top"
-            />
-          ))}
-        </div>
-        <div className="live-felt-mid">
-          <div className="live-felt-side left">
-            {layout.left.map(({ player }) => (
-              <PlayerSlot
-                key={player.id}
-                player={player}
-                view={view}
-                play={playBySeat.get(player.seatIndex) ?? null}
-                side="left"
-              />
-            ))}
-          </div>
-          <div className="live-felt-center">
-            <div className="live-center-stack">
-              {view.trumpCard ? (
-                <div
-                  className="trump-center"
-                  aria-label={`Trump ${view.trumpCard.r}${suitGlyph(view.trumpCard.s)}`}
-                >
-                  <span className="trump-center-label">Trump</span>
-                  <PlayingCard
-                    card={{
-                      key: `trump-${view.trumpCard.r}${view.trumpCard.s}`,
-                      suit: view.trumpCard.s,
-                      rank: view.trumpCard.r,
-                    }}
-                    compact
+      <div className="live-play-body">
+        <div className="live-felt-wrap">
+          <div className="live-felt">
+            <div className="live-felt-top">
+              {layout.top.map(({ player }) => (
+                <PlayerSlot
+                  key={player.id}
+                  player={player}
+                  view={view}
+                  play={playBySeat.get(player.seatIndex) ?? null}
+                  side="top"
+                />
+              ))}
+            </div>
+            <div className="live-felt-mid">
+              <div className="live-felt-side left">
+                {layout.left.map(({ player }) => (
+                  <PlayerSlot
+                    key={player.id}
+                    player={player}
+                    view={view}
+                    play={playBySeat.get(player.seatIndex) ?? null}
+                    side="left"
                   />
+                ))}
+              </div>
+              <div className="live-felt-center">
+                <div className="live-center-stack">
+                  {view.trumpCard ? (
+                    <div
+                      className="trump-center"
+                      aria-label={`Trump ${view.trumpCard.r}${suitGlyph(view.trumpCard.s)}`}
+                    >
+                      <span className="trump-center-label">Trump</span>
+                      <PlayingCard
+                        card={{
+                          key: `trump-${view.trumpCard.r}${view.trumpCard.s}`,
+                          suit: view.trumpCard.s,
+                          rank: view.trumpCard.r,
+                        }}
+                        compact
+                      />
+                    </div>
+                  ) : null}
+                  {bidding ? (
+                    <span className="trick-empty">Bidding…</span>
+                  ) : view.table.plays.length === 0 ? (
+                    <span className="trick-empty">
+                      {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
+                    </span>
+                  ) : view.table.complete && view.table.winnerSeat != null ? (
+                    <span className="trick-empty trick-winner-label">
+                      {view.players.find(
+                        (p) => p.seatIndex === view.table.winnerSeat,
+                      )?.name ?? 'Player'}{' '}
+                      takes it
+                    </span>
+                  ) : null}
                 </div>
-              ) : null}
-              {view.phase === 'bidding' ? (
-                <span className="trick-empty">Bidding…</span>
-              ) : view.table.plays.length === 0 ? (
-                <span className="trick-empty">
-                  {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
-                </span>
-              ) : view.table.complete && view.table.winnerSeat != null ? (
-                <span className="trick-empty trick-winner-label">
-                  {view.players.find((p) => p.seatIndex === view.table.winnerSeat)
-                    ?.name ?? 'Player'}{' '}
-                  takes it
-                </span>
-              ) : null}
+              </div>
+              <div className="live-felt-side right">
+                {layout.right.map(({ player }) => (
+                  <PlayerSlot
+                    key={player.id}
+                    player={player}
+                    view={view}
+                    play={playBySeat.get(player.seatIndex) ?? null}
+                    side="right"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="live-felt-bottom">
+              <PlayerSlot
+                player={
+                  view.players.find((p) => p.id === view.me.playerId) ?? {
+                    id: view.me.playerId,
+                    name: view.me.name,
+                    seatIndex: view.me.seatIndex,
+                    isHost: view.me.isHost,
+                    gone: view.me.gone,
+                  }
+                }
+                view={view}
+                play={myPlay}
+                side="bottom"
+                me
+              />
             </div>
           </div>
-          <div className="live-felt-side right">
-            {layout.right.map(({ player }) => (
-              <PlayerSlot
-                key={player.id}
-                player={player}
-                view={view}
-                play={playBySeat.get(player.seatIndex) ?? null}
-                side="right"
-              />
-            ))}
-          </div>
-        </div>
 
-        <div className="live-felt-bottom">
-          <PlayerSlot
-            player={
-              view.players.find((p) => p.id === view.me.playerId) ?? {
-                id: view.me.playerId,
-                name: view.me.name,
-                seatIndex: view.me.seatIndex,
-                isHost: view.me.isHost,
-                gone: view.me.gone,
-              }
-            }
-            view={view}
-            play={myPlay}
-            side="bottom"
-            me
-          />
-        </div>
-      </div>
-
-      <div className="live-me-area">
-        {view.isMyBidTurn && (
-          <div className="live-bid-panel card">
-            <div className="hint">Your bid (0–{handSize})</div>
-            <NumberStepper
-              value={bid}
-              min={0}
-              max={handSize}
-              forbidden={view.forbiddenLastBid}
-              onChange={setBid}
-            />
-            {view.forbiddenLastBid !== null && (
-              <label className="fb-toggle">
-                <input
-                  type="checkbox"
-                  checked={forceBurn}
-                  onChange={(e) => setForceBurn(e.target.checked)}
+          {/* Bid popup sits over the table only — hand stays fully visible below. */}
+          {view.isMyBidTurn && bidSheetOpen && (
+            <div
+              className="live-bid-backdrop"
+              onClick={() => setBidSheetOpen(false)}
+              role="presentation"
+            >
+              <div
+                className="live-bid-sheet card"
+                role="dialog"
+                aria-label="Place your bid"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="live-bid-sheet-top">
+                  <div className="live-bid-sheet-title">
+                    Your bid{' '}
+                    <span className="live-bid-range">(0–{handSize})</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    onClick={() => setBidSheetOpen(false)}
+                  >
+                    View board
+                  </button>
+                </div>
+                <NumberStepper
+                  value={bid}
+                  min={0}
+                  max={handSize}
+                  forbidden={view.forbiddenLastBid}
+                  onChange={setBid}
                 />
-                Force burn
-              </label>
-            )}
+                {view.forbiddenLastBid !== null && (
+                  <label className="fb-toggle">
+                    <input
+                      type="checkbox"
+                      checked={forceBurn}
+                      onChange={(e) => setForceBurn(e.target.checked)}
+                    />
+                    Force burn
+                  </label>
+                )}
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={busy || bid === view.forbiddenLastBid}
+                  onClick={onBid}
+                >
+                  {busy ? '…' : `Bid ${bid}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {view.isMyBidTurn && !bidSheetOpen && (
             <button
               type="button"
-              className="btn primary"
-              disabled={busy || bid === view.forbiddenLastBid}
-              onClick={onBid}
+              className="live-bid-reopen btn primary"
+              onClick={() => setBidSheetOpen(true)}
             >
-              {busy ? '…' : `Bid ${bid}`}
+              Your turn to bid
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {!view.isMyBidTurn && view.phase === 'bidding' && (
-          <p className="hint live-turn-hint">
-            {turnWaitLabel(view, view.bidderSeat)}
-          </p>
-        )}
+        <div className="live-me-area">
+          {!view.isMyBidTurn && bidding && (
+            <p className="hint live-turn-hint">
+              {turnWaitLabel(view, view.bidderSeat)}
+            </p>
+          )}
 
-        {view.phase === 'playing' && !view.isMyTurn && (
-          <p className="hint live-turn-hint">
-            {turnWaitLabel(view, view.turnSeat)}
-          </p>
-        )}
+          {view.phase === 'playing' && !view.isMyTurn && (
+            <p className="hint live-turn-hint">
+              {turnWaitLabel(view, view.turnSeat)}
+            </p>
+          )}
 
-        {(view.phase === 'playing' || view.phase === 'bidding') && (
-          <div
-            className={`live-hand ${view.phase === 'bidding' ? 'muted-hand' : ''}`}
-          >
-            {view.hand.map((c) => {
-              const legal =
-                view.phase !== 'playing' ||
-                !view.isMyTurn ||
-                view.legalCardKeys.includes(c.key);
-              const canPlay =
-                view.phase === 'playing' && view.isMyTurn && legal && !busy;
-              return (
-                <PlayingCard
-                  key={c.key}
-                  card={c}
-                  disabled={!canPlay}
-                  onClick={canPlay ? () => onPlay(c.key) : undefined}
-                />
-              );
-            })}
-          </div>
-        )}
+          {(view.phase === 'playing' || bidding) && (
+            <div className={`live-hand ${bidding ? 'live-hand-bidding' : ''}`}>
+              {view.hand.map((c) => {
+                const legal =
+                  view.phase !== 'playing' ||
+                  !view.isMyTurn ||
+                  view.legalCardKeys.includes(c.key);
+                const canPlay =
+                  view.phase === 'playing' && view.isMyTurn && legal && !busy;
+                // During bidding, never dim the hand — players need to read cards.
+                const dimmed = view.phase === 'playing' && !canPlay;
+                return (
+                  <PlayingCard
+                    key={c.key}
+                    card={c}
+                    disabled={dimmed}
+                    onClick={canPlay ? () => onPlay(c.key) : undefined}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

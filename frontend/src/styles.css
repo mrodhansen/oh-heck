@@ -1766,8 +1766,45 @@ a.btn.primary.mode-card,
   overflow: hidden;
 }
 
+.live-play-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
 .live-phase-header {
   flex: 0 0 auto;
+  text-align: center;
+  padding: 2px 4px 0;
+  margin: 0;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.live-phase-row {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--grey-900);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-phase-row-meta {
+  margin-top: 1px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--grey-700);
+}
+
+.live-felt-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .live-felt {
@@ -1850,10 +1887,21 @@ a.btn.primary.mode-card,
 }
 
 .trump-center .playing-card {
+  /* 50% larger than compact (40×56 → 60×84) */
+  width: 60px;
+  height: 84px;
   box-shadow:
     0 0 0 2px rgba(180, 130, 40, 0.35),
     0 2px 8px rgba(28, 26, 24, 0.12);
   background: linear-gradient(165deg, #fffef8 0%, #f7f0df 100%);
+}
+
+.trump-center .playing-card .playing-card-rank {
+  font-size: 1.05rem;
+}
+
+.trump-center .playing-card .playing-card-suit {
+  font-size: 1.25rem;
 }
 
 .live-felt-bottom {
@@ -1979,35 +2027,115 @@ a.btn.primary.mode-card,
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   padding-top: 4px;
-}
-
-.live-bid-panel {
+  z-index: 1;
+  min-width: 0;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
 }
 
 .live-hand {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
+  /* Center when it fits; when overflowing, pin to the start so scroll works. */
+  justify-content: safe center;
+  align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 4px 0 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 2px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 
-.live-hand.muted-hand {
-  opacity: 0.85;
+.live-hand .playing-card {
+  flex: 0 0 auto;
+}
+
+/* Bidding: keep the hand fully readable (no dim/disabled look). */
+.live-hand.live-hand-bidding .playing-card {
+  opacity: 1;
+  box-shadow: 0 2px 6px rgba(28, 26, 24, 0.1);
 }
 
 .live-turn-hint {
   margin: 0;
   text-align: center;
+}
+
+/* Bid popup — over the table only; hand below stays readable. */
+.live-bid-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(28, 26, 24, 0.28);
+  border-radius: var(--radius);
+}
+
+.live-bid-sheet {
+  width: 100%;
+  max-width: 340px;
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  padding: 14px 14px 16px;
+  box-shadow: 0 8px 28px rgba(28, 26, 24, 0.18);
+  border: 1px solid var(--line-strong);
+  animation: live-bid-rise 0.18s ease-out;
+}
+
+@keyframes live-bid-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.live-bid-sheet-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.live-bid-sheet-title {
+  font-weight: 650;
+  font-size: 1rem;
+  color: var(--grey-900);
+}
+
+.live-bid-range {
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-bid-reopen {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 21;
+  width: auto;
+  min-width: 11rem;
+  box-shadow: 0 6px 18px rgba(28, 26, 24, 0.16);
+  animation: live-bid-rise 0.16s ease-out;
 }
 
 .playing-card {

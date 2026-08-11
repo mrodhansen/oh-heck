@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { liveApi } from '../live/api';
 import { saveLiveAuth } from '../live/session';
 import type { LiveGoneSeat, LiveLookup } from '../live/types';
+import { useOnline } from '../useOnline';
 
 export function LiveHubPage() {
   const nav = useNavigate();
+  const online = useOnline();
   const [params] = useSearchParams();
   const [code, setCode] = useState('');
   const [createName, setCreateName] = useState('');
@@ -16,6 +18,7 @@ export function LiveHubPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (!online) return;
     const q = params.get('code');
     if (!q) return;
     setCode(q.toUpperCase());
@@ -32,7 +35,11 @@ export function LiveHubPage() {
     return () => {
       alive = false;
     };
-  }, [params]);
+  }, [params, online]);
+
+  if (!online) {
+    return <Navigate to="/" replace />;
+  }
 
   function applyLookup(res: LiveLookup) {
     setLookup(res);
