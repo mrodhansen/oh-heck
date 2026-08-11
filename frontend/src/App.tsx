@@ -4,7 +4,6 @@ import { NewGamePage } from './pages/NewGamePage';
 import { GamePage } from './pages/GamePage';
 import { StatsPage } from './pages/StatsPage';
 import { RulesPage } from './pages/RulesPage';
-import { SyncStatus } from './components/SyncStatus';
 
 export function App() {
   const { pathname } = useLocation();
@@ -26,7 +25,6 @@ export function App() {
           </nav>
         </header>
       )}
-      <SyncStatus />
       <main className="app-main">
         <Routes>
           <Route path="/" element={<HomePage />} />

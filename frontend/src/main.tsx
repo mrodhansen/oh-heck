@@ -8,9 +8,10 @@ import './styles.css';
 const baseraw = import.meta.env.BASE_URL || '/';
 const basename = baseraw.endsWith('/') ? baseraw.slice(0, -1) : baseraw;
 
+// Silent background sync — no UI popups
 startSyncListeners();
 void syncNow().catch(() => {
-  /* initial sync best-effort */
+  /* best-effort */
 });
 
 createRoot(document.getElementById('root')!).render(

@@ -4,9 +4,32 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? true,
-  });
+
+  // GitHub Pages (and any origin) can call the API.
+  // Note: CORS_ORIGIN="*" as a string-array breaks the cors package — use true to reflect Origin.
+  const raw = process.env.CORS_ORIGIN?.trim();
+  if (!raw || raw === '*') {
+    app.enableCors({
+      origin: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'ngrok-skip-browser-warning',
+      ],
+    });
+  } else {
+    app.enableCors({
+      origin: raw.split(',').map((s) => s.trim()),
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'ngrok-skip-browser-warning',
+      ],
+    });
+  }
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

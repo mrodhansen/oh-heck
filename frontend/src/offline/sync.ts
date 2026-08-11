@@ -212,11 +212,12 @@ export async function syncNow(): Promise<void> {
 export function startSyncListeners(): void {
   if (typeof window === 'undefined') return;
   window.addEventListener('online', () => {
-    void syncNow();
+    void syncNow().catch(() => undefined);
   });
+  // Quiet background retry — no UI
   setInterval(() => {
-    if (isOnline()) void flushOutbox();
-  }, 30_000);
+    if (isOnline()) void syncNow().catch(() => undefined);
+  }, 20_000);
 }
 
 export async function enqueue(
