@@ -1,11 +1,15 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { GameStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import {
   CreateGameDto,
   SetBidsDto,
@@ -33,10 +37,14 @@ export class GamesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rules: RulesService,
+    private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => TournamentsService))
+    private readonly tournaments: TournamentsService,
   ) {}
 
   async listGames() {
     const games = await this.prisma.game.findMany({
+      where: { tournamentId: null },
       orderBy: { createdAt: 'desc' },
       include: {
         players: { orderBy: { seatIndex: 'asc' } },
@@ -149,7 +157,7 @@ export class GamesService {
       });
     });
 
-    return this.toDetail(game);
+    return this.emitGame(this.toDetail(game));
   }
 
   async syncOperations(
@@ -294,7 +302,7 @@ export class GamesService {
       });
     });
 
-    return this.getGame(gameId);
+    return this.emitGame(await this.getGame(gameId));
   }
 
   async setTricks(gameId: string, roundNumber: number, dto: SetTricksDto) {
@@ -341,7 +349,11 @@ export class GamesService {
       });
     });
 
-    return this.getGame(gameId);
+    const detail = await this.getGame(gameId);
+    if (isLast) {
+      await this.tournaments.onGameCompleted(gameId);
+    }
+    return this.emitGame(detail);
   }
 
   async updateRound(gameId: string, roundNumber: number, dto: UpdateRoundDto) {
@@ -398,7 +410,47 @@ export class GamesService {
       });
     });
 
-    return this.getGame(gameId);
+    const before = game.status;
+    const detail = await this.getGame(gameId);
+    if (
+      before !== GameStatus.COMPLETED &&
+      detail.status === GameStatus.COMPLETED
+    ) {
+      await this.tournaments.onGameCompleted(gameId);
+    }
+    return this.emitGame(detail);
+  }
+
+  /** Public standings helper for tournament high-table qualification. */
+  computeStandingsPublic(
+    game: {
+      players: {
+        id: string;
+        name: string;
+        seatIndex: number;
+        tournamentPlayerId?: string | null;
+      }[];
+      rounds: {
+        entries: {
+          playerId: string;
+          points: number | null;
+          bid: number | null;
+          tricksTaken: number | null;
+        }[];
+      }[];
+    },
+  ) {
+    return this.computeStandings(game);
+  }
+
+  private emitGame<
+    T extends { id: string; tournamentId?: string | null },
+  >(detail: T): T {
+    this.realtime.emitGame(detail.id, detail);
+    if (detail.tournamentId) {
+      void this.tournaments.emitUpdate(detail.tournamentId);
+    }
+    return detail;
   }
 
   private async findFull(id: string): Promise<FullGame> {
@@ -677,6 +729,10 @@ export class GamesService {
         game.status === GameStatus.COMPLETED ? null : currentRound,
       createdAt: game.createdAt,
       finishedAt: game.finishedAt,
+      tournamentId: game.tournamentId,
+      tournamentTableId: game.tournamentTableId,
+      isHighTable: game.isHighTable,
+      tableNumber: game.tableNumber,
       players: game.players.map((p) => ({
         id: p.id,
         name: p.name,

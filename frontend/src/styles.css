@@ -381,6 +381,13 @@ h3,
   height: 48px;
 }
 
+.form-actions {
+  margin: 0;
+  padding: 0;
+  border: none;
+  position: static;
+}
+
 .btn.sm {
   min-height: 36px;
   padding: 0 12px;
@@ -1375,4 +1382,205 @@ table.scoreboard tbody tr:last-child td:first-child::before {
     padding: 4px 10px 10px;
     gap: 8px;
   }
+}
+
+/* —— Play mode / tournaments —— */
+/* Light surface cards — beat .btn.primary / :visited so both match */
+a.btn.mode-card,
+a.btn.mode-card:link,
+a.btn.mode-card:visited,
+a.btn.mode-card:hover,
+a.btn.mode-card:active,
+a.btn.primary.mode-card,
+.btn.mode-card,
+.btn.primary.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  height: auto;
+  max-height: none;
+  min-height: 72px;
+  padding: 16px 18px;
+  text-align: left;
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong) !important;
+  color: var(--grey-900) !important;
+}
+
+.mode-card-title {
+  font-family: var(--font);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--grey-900);
+}
+
+.mode-card-meta {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted) !important;
+}
+
+.tourney-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.tourney-count-num {
+  font-family: var(--font);
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.tourney-count-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tourney-add-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.tourney-add-bar input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.name-list .list-item.static {
+  cursor: default;
+}
+
+.table-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  cursor: pointer;
+  min-height: var(--tap);
+}
+
+.table-card.high {
+  border-color: var(--grey-700);
+  background: var(--sand-100);
+}
+
+.table-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.table-card-title {
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.table-card-status {
+  font-size: 0.8rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.table-card-names {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--grey-700);
+  line-height: 1.35;
+}
+
+.table-card-meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.dealer-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.seat-index {
+  flex-shrink: 0;
+  width: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.seat-source {
+  flex-basis: 100%;
+  margin-left: 2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.dealer-option {
+  flex-wrap: wrap;
+}
+
+.placement-list .placement-row {
+  gap: 12px;
+  align-items: center;
+}
+
+.placement-place {
+  flex-shrink: 0;
+  width: 1.75rem;
+  font-family: var(--font);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-800);
+}
+
+.placement-body {
+  flex: 1 1 auto;
+}
+
+.placement-score {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--grey-700);
+}
+
+.dealer-option.static {
+  cursor: default;
+}
+
+.dealer-option.static:active {
+  background: var(--surface);
+}
+
+.dealer-option.static.selected:active {
+  background: var(--sand-100);
 }

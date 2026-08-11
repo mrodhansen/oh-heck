@@ -73,9 +73,105 @@ export type GameDetail = {
   currentRound: number | null;
   createdAt: string;
   finishedAt: string | null;
+  tournamentId?: string | null;
+  tournamentTableId?: string | null;
+  isHighTable?: boolean;
+  tableNumber?: number | null;
   players: { id: string; name: string; seatIndex: number }[];
   rounds: RoundDetail[];
   standings: Standing[];
+};
+
+export type TournamentStatus =
+  | 'OPEN'
+  | 'SEATED'
+  | 'IN_PROGRESS'
+  | 'HIGH_TABLE'
+  | 'COMPLETED';
+
+export type TournamentSummary = {
+  id: string;
+  name: string | null;
+  status: TournamentStatus;
+  targetPlayerCount: number;
+  playerCount: number;
+  tableCount: number;
+  tablesCompleted: number;
+  preferredTableSize: number;
+  createdAt: string;
+  seatedAt: string | null;
+  startedAt: string | null;
+  highTableAt: string | null;
+  finishedAt: string | null;
+};
+
+export type TournamentPlayer = {
+  id: string;
+  name: string;
+  orderIndex: number;
+  createdAt: string;
+};
+
+export type TournamentSeat = {
+  id: string;
+  seatIndex: number;
+  tournamentPlayerId: string;
+  name: string;
+  isDealer: boolean;
+  sourceTableId: string | null;
+  sourceTableNumber: number | null;
+  sourcePlace: number | null;
+  sourceScore: number | null;
+};
+
+export type TournamentTable = {
+  id: string;
+  tableNumber: number;
+  stage: 'PRELIM' | 'HIGH_TABLE';
+  isHighTable: boolean;
+  status: 'PENDING' | 'READY' | 'IN_PROGRESS' | 'COMPLETED';
+  dealerSeat: number;
+  gameId: string | null;
+  gameStatus: GameDetail['status'] | null;
+  currentRound: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  seats: TournamentSeat[];
+  standings: Standing[] | null;
+};
+
+export type TournamentFinalStanding = {
+  tournamentPlayerId: string;
+  name: string;
+  place: number;
+  score: number;
+  source: 'HIGH_TABLE' | 'PRELIM';
+  prelimPlace: number | null;
+  prelimScore: number | null;
+  prelimTableNumber: number | null;
+  highTablePlace: number | null;
+  highTableScore: number | null;
+};
+
+export type TournamentDetail = {
+  id: string;
+  name: string | null;
+  status: TournamentStatus;
+  targetPlayerCount: number;
+  preferredTableSize: number;
+  minTableSize: number;
+  maxTableSize: number;
+  highTableSize: number;
+  playerCount: number;
+  createdAt: string;
+  seatedAt: string | null;
+  startedAt: string | null;
+  highTableAt: string | null;
+  finishedAt: string | null;
+  players: TournamentPlayer[];
+  tables: TournamentTable[];
+  finalStandings: TournamentFinalStanding[] | null;
+  proposedTableSizes: number[] | null;
 };
 
 export type StatsLeader = { name: string; value: number | string } | null;
@@ -408,5 +504,74 @@ export const api = {
     const cached = await kvGet<unknown>('rules');
     if (cached != null) return cached;
     throw new Error('Rules not available offline');
+  },
+
+  listTournaments: async (all = false): Promise<TournamentSummary[]> => {
+    const q = all ? '?all=1' : '';
+    return httpRequest<TournamentSummary[]>(`/tournaments${q}`);
+  },
+
+  getTournament: async (id: string): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>(`/tournaments/${id}`);
+  },
+
+  createTournament: async (
+    targetPlayerCount: number,
+    name?: string,
+  ): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>('/tournaments', {
+      method: 'POST',
+      body: JSON.stringify({ targetPlayerCount, name }),
+    });
+  },
+
+  addTournamentPlayer: async (
+    tournamentId: string,
+    name: string,
+  ): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>(`/tournaments/${tournamentId}/players`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  removeTournamentPlayer: async (
+    tournamentId: string,
+    playerId: string,
+  ): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>(
+      `/tournaments/${tournamentId}/players/${playerId}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  seatTournament: async (tournamentId: string): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>(`/tournaments/${tournamentId}/seat`, {
+      method: 'POST',
+    });
+  },
+
+  setTournamentTableDealer: async (
+    tournamentId: string,
+    tableId: string,
+    tournamentPlayerId: string,
+  ): Promise<TournamentDetail> => {
+    return httpRequest<TournamentDetail>(
+      `/tournaments/${tournamentId}/tables/${tableId}/dealer`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ tournamentPlayerId }),
+      },
+    );
+  },
+
+  startTournamentTable: async (
+    tournamentId: string,
+    tableId: string,
+  ): Promise<{ tournament: TournamentDetail; game: GameDetail }> => {
+    return httpRequest<{ tournament: TournamentDetail; game: GameDetail }>(
+      `/tournaments/${tournamentId}/tables/${tableId}/start`,
+      { method: 'POST' },
+    );
   },
 };

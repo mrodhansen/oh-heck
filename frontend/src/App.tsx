@@ -1,16 +1,24 @@
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { PlayModePage } from './pages/PlayModePage';
 import { HomePage } from './pages/HomePage';
 import { NewGamePage } from './pages/NewGamePage';
 import { GamePage } from './pages/GamePage';
 import { StatsPage } from './pages/StatsPage';
 import { RulesPage } from './pages/RulesPage';
+import { TournamentsPage } from './pages/TournamentsPage';
+import { TournamentPage } from './pages/TournamentPage';
 
 export function App() {
   const { pathname } = useLocation();
   const inGame = pathname.startsWith('/games/');
+  const inTournamentDeep =
+    pathname.startsWith('/play/tournaments/') &&
+    pathname !== '/play/tournaments';
 
   return (
-    <div className={`app-shell ${inGame ? 'app-shell-game' : ''}`}>
+    <div
+      className={`app-shell ${inGame || inTournamentDeep ? 'app-shell-game' : ''}`}
+    >
       {!inGame && (
         <header className="topbar">
           <div className="brand">
@@ -27,8 +35,11 @@ export function App() {
       )}
       <main className="app-main">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<PlayModePage />} />
+          <Route path="/play/single" element={<HomePage />} />
           <Route path="/new" element={<NewGamePage />} />
+          <Route path="/play/tournaments" element={<TournamentsPage />} />
+          <Route path="/play/tournaments/:id" element={<TournamentPage />} />
           <Route path="/games/:id" element={<GamePage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/rules" element={<RulesPage />} />

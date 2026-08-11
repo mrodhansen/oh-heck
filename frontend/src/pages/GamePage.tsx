@@ -5,6 +5,7 @@ import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
 import { EditRoundModal } from '../components/EditRoundModal';
 import { forbiddenLastBid as computeForbiddenLast } from '../offline/rules';
+import { useSocketRoom } from '../useSocketRoom';
 
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +36,10 @@ export function GamePage() {
       alive = false;
     };
   }, [load]);
+
+  useSocketRoom(id ? `game:${id}` : null, 'game:update', () => {
+    void load().catch(() => undefined);
+  });
 
   const current = useMemo(() => {
     if (!game || game.currentRound == null) return null;
@@ -232,7 +237,15 @@ export function GamePage() {
   return (
     <div className="game-screen">
       <header className="game-topbar">
-        <Link to="/" className="icon-btn" aria-label="Back to menu">
+        <Link
+          to={
+            game.tournamentId
+              ? `/play/tournaments/${game.tournamentId}`
+              : '/play/single'
+          }
+          className="icon-btn"
+          aria-label="Back"
+        >
           ←
         </Link>
         {isFinished ? (

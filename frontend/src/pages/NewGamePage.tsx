@@ -195,7 +195,7 @@ export function NewGamePage() {
         <button
           type="button"
           className="btn ghost"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/play/single')}
         >
           Cancel
         </button>

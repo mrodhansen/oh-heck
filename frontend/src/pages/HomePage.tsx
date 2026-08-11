@@ -38,7 +38,12 @@ export function HomePage() {
   return (
     <div className="page-fit">
       <div className="page-fit-header play-home-header">
-        <h2 className="page-title">Play</h2>
+        <div className="page-header">
+          <h2 className="page-title">Single</h2>
+          <Link to="/" className="btn ghost sm">
+            Back
+          </Link>
+        </div>
       </div>
 
       {error && <div className="banner banner-inline">{error}</div>}

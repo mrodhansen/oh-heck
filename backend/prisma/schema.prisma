@@ -14,16 +14,47 @@ enum GameStatus {
   COMPLETED
 }
 
+enum TournamentStatus {
+  OPEN
+  SEATED
+  IN_PROGRESS
+  HIGH_TABLE
+  COMPLETED
+}
+
+enum TournamentStage {
+  PRELIM
+  HIGH_TABLE
+}
+
+enum TournamentTableStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  COMPLETED
+}
+
 model Game {
-  id        String     @id @default(uuid())
-  name      String?
-  status    GameStatus @default(BIDDING)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id         String     @id @default(uuid())
+  name       String?
+  status     GameStatus @default(BIDDING)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
   finishedAt DateTime?
+
+  /// When set, this game belongs to a tournament table
+  tournamentTableId String? @unique
+  isHighTable       Boolean @default(false)
+  tableNumber       Int?
+  tournamentId      String?
 
   players Player[]
   rounds  Round[]
+
+  tournamentTable TournamentTable? @relation(fields: [tournamentTableId], references: [id], onDelete: SetNull)
+  tournament      Tournament?      @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId])
 }
 
 model Player {
@@ -33,12 +64,17 @@ model Player {
   seatIndex Int
   createdAt DateTime @default(now())
 
-  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  roundEntries RoundEntry[]
+  /// Link back to tournament roster player when applicable
+  tournamentPlayerId String?
+
+  game             Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  roundEntries     RoundEntry[]
+  tournamentPlayer TournamentPlayer?  @relation(fields: [tournamentPlayerId], references: [id], onDelete: SetNull)
 
   @@unique([gameId, seatIndex])
   @@unique([gameId, name])
   @@index([gameId])
+  @@index([tournamentPlayerId])
 }
 
 model Round {
@@ -73,4 +109,83 @@ model RoundEntry {
 
   @@unique([roundId, playerId])
   @@index([playerId])
+}
+
+model Tournament {
+  id                String           @id @default(uuid())
+  name              String?
+  status            TournamentStatus @default(OPEN)
+  /// How many players the host expected; grows if more names are added
+  targetPlayerCount Int
+  preferredTableSize Int             @default(7)
+  minTableSize      Int              @default(2)
+  maxTableSize      Int              @default(7)
+  highTableSize     Int              @default(7)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  seatedAt          DateTime?
+  startedAt         DateTime?
+  highTableAt       DateTime?
+  finishedAt        DateTime?
+
+  players TournamentPlayer[]
+  tables  TournamentTable[]
+  games   Game[]
+}
+
+model TournamentPlayer {
+  id           String   @id @default(uuid())
+  tournamentId String
+  name         String
+  orderIndex   Int
+  createdAt    DateTime @default(now())
+
+  tournament Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  seats      TournamentTableSeat[]
+  gamePlayers Player[]
+
+  @@unique([tournamentId, name])
+  @@index([tournamentId])
+}
+
+model TournamentTable {
+  id           String                @id @default(uuid())
+  tournamentId String
+  tableNumber  Int
+  stage        TournamentStage       @default(PRELIM)
+  isHighTable  Boolean               @default(false)
+  status       TournamentTableStatus @default(PENDING)
+  /// Seat index of first dealer (last in bid order convention after rotate)
+  dealerSeat   Int                   @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  tournament Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  seats      TournamentTableSeat[]
+  game       Game?
+
+  @@unique([tournamentId, tableNumber, stage])
+  @@index([tournamentId])
+}
+
+model TournamentTableSeat {
+  id                 String   @id @default(uuid())
+  tableId            String
+  tournamentPlayerId String
+  seatIndex          Int
+  /// Qualification metadata for high table (and analytics)
+  sourceTableId      String?
+  sourceTableNumber  Int?
+  sourcePlace        Int?
+  sourceScore        Int?
+  createdAt          DateTime @default(now())
+
+  table            TournamentTable  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  tournamentPlayer TournamentPlayer @relation(fields: [tournamentPlayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tableId, seatIndex])
+  @@unique([tableId, tournamentPlayerId])
+  @@index([tournamentPlayerId])
 }
