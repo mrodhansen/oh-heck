@@ -5,7 +5,7 @@ import { NumberStepper } from '../components/NumberStepper';
 import { PlayingCard } from '../components/PlayingCard';
 import { Scoreboard } from '../components/Scoreboard';
 import { liveApi } from '../live/api';
-import { suitGlyph, trumpLabel } from '../live/cards';
+import { suitGlyph } from '../live/cards';
 import { clearLiveAuth, loadLiveAuth } from '../live/session';
 import type { LivePlayerPublic, LiveView } from '../live/types';
 import { useSocketRoom } from '../useSocketRoom';
@@ -486,15 +486,6 @@ function LivePlayTable({
           Round {view.roundNumber}
           <span className="phase-dot">·</span>
           {handSize} cards
-          <span className="phase-dot">·</span>
-          Trump {trumpLabel(view.trumpSuit)}
-          {view.trumpCard ? (
-            <span className="trump-card-inline">
-              {' '}
-              ({view.trumpCard.r}
-              {suitGlyph(view.trumpCard.s)})
-            </span>
-          ) : null}
         </p>
         <p className="phase-total">
           <strong>{totalBid}</strong>{' '}
@@ -533,19 +524,37 @@ function LivePlayTable({
             ))}
           </div>
           <div className="live-felt-center">
-            {view.phase === 'bidding' ? (
-              <span className="trick-empty">Bidding…</span>
-            ) : view.table.plays.length === 0 ? (
-              <span className="trick-empty">
-                {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
-              </span>
-            ) : view.table.complete && view.table.winnerSeat != null ? (
-              <span className="trick-empty trick-winner-label">
-                {view.players.find((p) => p.seatIndex === view.table.winnerSeat)
-                  ?.name ?? 'Player'}{' '}
-                takes it
-              </span>
-            ) : null}
+            <div className="live-center-stack">
+              {view.trumpCard ? (
+                <div
+                  className="trump-center"
+                  aria-label={`Trump ${view.trumpCard.r}${suitGlyph(view.trumpCard.s)}`}
+                >
+                  <span className="trump-center-label">Trump</span>
+                  <PlayingCard
+                    card={{
+                      key: `trump-${view.trumpCard.r}${view.trumpCard.s}`,
+                      suit: view.trumpCard.s,
+                      rank: view.trumpCard.r,
+                    }}
+                    compact
+                  />
+                </div>
+              ) : null}
+              {view.phase === 'bidding' ? (
+                <span className="trick-empty">Bidding…</span>
+              ) : view.table.plays.length === 0 ? (
+                <span className="trick-empty">
+                  {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
+                </span>
+              ) : view.table.complete && view.table.winnerSeat != null ? (
+                <span className="trick-empty trick-winner-label">
+                  {view.players.find((p) => p.seatIndex === view.table.winnerSeat)
+                    ?.name ?? 'Player'}{' '}
+                  takes it
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="live-felt-side right">
             {layout.right.map(({ player }) => (

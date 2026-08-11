@@ -1822,8 +1822,38 @@ a.btn.primary.mode-card,
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-height: 48px;
+  min-height: 72px;
   padding: 4px;
+}
+
+.live-center-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.trump-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.trump-center-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.trump-center .playing-card {
+  box-shadow:
+    0 0 0 2px rgba(180, 130, 40, 0.35),
+    0 2px 8px rgba(28, 26, 24, 0.12);
+  background: linear-gradient(165deg, #fffef8 0%, #f7f0df 100%);
 }
 
 .live-felt-bottom {
@@ -2049,6 +2079,4 @@ button.playing-card:disabled {
   font-size: 0.95rem;
 }
 
-.trump-card-inline {
-  font-variant-numeric: tabular-nums;
-}
+
