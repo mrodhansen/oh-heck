@@ -1,12 +1,42 @@
 const DB_NAME = 'oh-heck';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export type GameOutboxType =
+  | 'createGame'
+  | 'setBids'
+  | 'setTricks'
+  | 'updateRound';
+
+export type TournamentOutboxType =
+  | 'createTournament'
+  | 'addTournamentPlayer'
+  | 'removeTournamentPlayer'
+  | 'seatTournament'
+  | 'startTournamentTable';
+
+export type OutboxOpType = GameOutboxType | TournamentOutboxType;
 
 export type OutboxOp = {
   id: string;
-  type: 'createGame' | 'setBids' | 'setTricks' | 'updateRound';
+  type: OutboxOpType;
   payload: Record<string, unknown>;
   createdAt: string;
 };
+
+export const TOURNAMENT_OUTBOX_TYPES: ReadonlySet<string> = new Set([
+  'createTournament',
+  'addTournamentPlayer',
+  'removeTournamentPlayer',
+  'seatTournament',
+  'startTournamentTable',
+]);
+
+export const GAME_OUTBOX_TYPES: ReadonlySet<string> = new Set([
+  'createGame',
+  'setBids',
+  'setTricks',
+  'updateRound',
+]);
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -22,6 +52,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('games')) {
         db.createObjectStore('games', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('tournaments')) {
+        db.createObjectStore('tournaments', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -127,4 +160,28 @@ export async function getAllCachedGames<T>(): Promise<T[]> {
   });
 }
 
+export async function cacheTournament(t: { id: string }): Promise<void> {
+  await withStore('tournaments', 'readwrite', (store) => store.put(t));
+}
 
+export async function getCachedTournament<T>(
+  id: string,
+): Promise<T | undefined> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('tournaments', 'readonly');
+    const req = tx.objectStore('tournaments').get(id);
+    req.onsuccess = () => resolve(req.result as T | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getAllCachedTournaments<T>(): Promise<T[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('tournaments', 'readonly');
+    const req = tx.objectStore('tournaments').getAll();
+    req.onsuccess = () => resolve((req.result as T[]) ?? []);
+    req.onerror = () => reject(req.error);
+  });
+}

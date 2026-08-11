@@ -1,7 +1,9 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, TournamentSummary } from '../api';
+import { SyncStatus } from '../components/SyncStatus';
 import { newId } from '../offline/rules';
+import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 
 export function TournamentsPage() {
@@ -38,6 +40,10 @@ export function TournamentsPage() {
     void load().catch((e: Error) => setError(e.message));
   });
 
+  useEffect(() => onSyncChange(() => {
+    void load().catch(() => undefined);
+  }), [load]);
+
   async function createTourney(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -73,6 +79,7 @@ export function TournamentsPage() {
         </div>
       </div>
 
+      <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
 
       <div className="page-fit-body stack">

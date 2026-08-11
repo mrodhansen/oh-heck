@@ -1,8 +1,11 @@
 import { httpRequest, HttpError, isNetworkError } from './api/http';
 import {
   cacheGame,
+  cacheTournament,
   getAllCachedGames,
+  getAllCachedTournaments,
   getCachedGame,
+  getCachedTournament,
   kvGet,
   kvSet,
 } from './offline/db';
@@ -14,10 +17,20 @@ import {
   toSummary,
 } from './offline/localEngine';
 import {
+  createLocalTournament,
+  localAddPlayer,
+  localMarkTableFromGame,
+  localRemovePlayer,
+  localSeatTables,
+  localStartTable,
+  toTournamentSummary,
+} from './offline/localTournament';
+import {
   enqueue,
   flushOutbox,
   gameIdsWithPendingOps,
   isOnline,
+  tournamentIdsWithPendingOps,
 } from './offline/sync';
 import { newId } from './offline/rules';
 import { hydrateRoundOrder } from './offline/analytics';
@@ -380,7 +393,27 @@ async function rememberGame(game: GameDetail): Promise<GameDetail> {
   const summary = toSummary(normalized);
   const next = [summary, ...list.filter((g) => g.id !== game.id)];
   await kvSet('gameList', next);
+
+  if (normalized.tournamentId) {
+    const t = await getCachedTournament<TournamentDetail>(
+      normalized.tournamentId,
+    );
+    if (t) {
+      await rememberTournament(localMarkTableFromGame(t, normalized));
+    }
+  }
   return normalized;
+}
+
+async function rememberTournament(
+  t: TournamentDetail,
+): Promise<TournamentDetail> {
+  await cacheTournament(t);
+  const list = (await kvGet<TournamentSummary[]>('tournamentList')) ?? [];
+  const summary = toTournamentSummary(t);
+  const next = [summary, ...list.filter((x) => x.id !== t.id)];
+  await kvSet('tournamentList', next);
+  return t;
 }
 
 async function mergeGameList(server: GameSummary[]): Promise<GameSummary[]> {
@@ -390,6 +423,23 @@ async function mergeGameList(server: GameSummary[]): Promise<GameSummary[]> {
   for (const g of localGames) {
     if (pending.has(g.id) || !byId.has(g.id)) {
       byId.set(g.id, toSummary(g));
+    }
+  }
+  return [...byId.values()].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
+
+async function mergeTournamentList(
+  server: TournamentSummary[],
+): Promise<TournamentSummary[]> {
+  const pending = await tournamentIdsWithPendingOps();
+  const local = await getAllCachedTournaments<TournamentDetail>();
+  const byId = new Map(server.map((t) => [t.id, t]));
+  for (const t of local) {
+    if (pending.has(t.id) || !byId.has(t.id)) {
+      byId.set(t.id, toTournamentSummary(t));
     }
   }
   return [...byId.values()].sort(
@@ -513,8 +563,8 @@ export const api = {
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
     const normalized = normalizeGame(current);
-    if (normalized.tournamentId) {
-      throw new Error('Tournament games require a live connection');
+    if (normalized.prelimEditsLocked) {
+      throw new Error('Prelim edits locked — reconnect to sync tournament state');
     }
     const next = localSetBids(normalized, roundNumber, bids, forceBurn);
     await rememberGame(next);
@@ -550,8 +600,8 @@ export const api = {
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
     const normalized = normalizeGame(current);
-    if (normalized.tournamentId) {
-      throw new Error('Tournament games require a live connection');
+    if (normalized.prelimEditsLocked) {
+      throw new Error('Prelim edits locked — reconnect to sync tournament state');
     }
     const next = localSetTricks(normalized, roundNumber, tricks);
     await rememberGame(next);
@@ -591,8 +641,8 @@ export const api = {
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
     const normalized = normalizeGame(current);
-    if (normalized.tournamentId) {
-      throw new Error('Tournament games require a live connection');
+    if (normalized.prelimEditsLocked) {
+      throw new Error('Prelim edits locked — reconnect to sync tournament state');
     }
     const next = localUpdateRound(
       normalized,
@@ -649,11 +699,42 @@ export const api = {
     all?: boolean;
   }): Promise<TournamentSummary[]> => {
     const q = opts?.all ? '?all=1' : '';
-    return httpRequest<TournamentSummary[]>(`/tournaments${q}`);
+    if (isOnline()) {
+      try {
+        const flush = await flushOutbox();
+        if (flush.error) {
+          const cached =
+            (await kvGet<TournamentSummary[]>('tournamentList')) ?? [];
+          return mergeTournamentList(cached);
+        }
+        const list = await httpRequest<TournamentSummary[]>(`/tournaments${q}`);
+        const merged = await mergeTournamentList(list);
+        await kvSet('tournamentList', merged);
+        return merged;
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+    const cached = (await kvGet<TournamentSummary[]>('tournamentList')) ?? [];
+    return mergeTournamentList(cached);
   },
 
   getTournament: async (id: string): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>(`/tournaments/${id}`);
+    const pending = await tournamentIdsWithPendingOps();
+    if (isOnline() && !pending.has(id)) {
+      try {
+        const flush = await flushOutbox();
+        if (!flush.error) {
+          const t = await httpRequest<TournamentDetail>(`/tournaments/${id}`);
+          return rememberTournament(t);
+        }
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+    const cached = await getCachedTournament<TournamentDetail>(id);
+    if (cached) return cached;
+    throw new Error('Tournament not available offline');
   },
 
   createTournament: async (args: {
@@ -661,53 +742,162 @@ export const api = {
     id: string;
     name?: string;
   }): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>('/tournaments', {
-      method: 'POST',
-      body: JSON.stringify({
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const t = await httpRequest<TournamentDetail>('/tournaments', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: args.id,
+              targetPlayerCount: args.targetPlayerCount,
+              name: args.name,
+            }),
+          });
+          return rememberTournament(t);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const local = createLocalTournament(args);
+    await rememberTournament(local);
+    await enqueue({
+      type: 'createTournament',
+      payload: {
         id: args.id,
         targetPlayerCount: args.targetPlayerCount,
         name: args.name,
-      }),
+      },
     });
+    return local;
   },
 
   addTournamentPlayer: async (
     tournamentId: string,
     name: string,
   ): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>(`/tournaments/${tournamentId}/players`, {
-      method: 'POST',
-      body: JSON.stringify({ name }),
+    const playerId = newId();
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const t = await httpRequest<TournamentDetail>(
+            `/tournaments/${tournamentId}/players`,
+            {
+              method: 'POST',
+              body: JSON.stringify({ name, id: playerId }),
+            },
+          );
+          return rememberTournament(t);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedTournament<TournamentDetail>(tournamentId);
+    if (!current) throw new Error('Tournament not available offline');
+    const next = localAddPlayer(current, name, playerId);
+    await rememberTournament(next);
+    await enqueue({
+      type: 'addTournamentPlayer',
+      payload: { tournamentId, name, id: playerId },
     });
+    return next;
   },
 
   removeTournamentPlayer: async (
     tournamentId: string,
     playerId: string,
   ): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>(
-      `/tournaments/${tournamentId}/players/${playerId}`,
-      { method: 'DELETE' },
-    );
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const t = await httpRequest<TournamentDetail>(
+            `/tournaments/${tournamentId}/players/${playerId}`,
+            { method: 'DELETE' },
+          );
+          return rememberTournament(t);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedTournament<TournamentDetail>(tournamentId);
+    if (!current) throw new Error('Tournament not available offline');
+    const next = localRemovePlayer(current, playerId);
+    await rememberTournament(next);
+    await enqueue({
+      type: 'removeTournamentPlayer',
+      payload: { tournamentId, playerId },
+    });
+    return next;
   },
 
   seatTournament: async (tournamentId: string): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>(`/tournaments/${tournamentId}/seat`, {
-      method: 'POST',
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const t = await httpRequest<TournamentDetail>(
+            `/tournaments/${tournamentId}/seat`,
+            { method: 'POST', body: JSON.stringify({}) },
+          );
+          return rememberTournament(t);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedTournament<TournamentDetail>(tournamentId);
+    if (!current) throw new Error('Tournament not available offline');
+    const { tournament, plan } = localSeatTables(current);
+    await rememberTournament(tournament);
+    await enqueue({
+      type: 'seatTournament',
+      payload: { tournamentId, tables: plan },
     });
+    return tournament;
   },
 
   startTournamentTable: async (
     tournamentId: string,
     tableId: string,
   ): Promise<{ tournament: TournamentDetail; game: GameDetail }> => {
-    const res = await httpRequest<{
-      tournament: TournamentDetail;
-      game: GameDetail;
-    }>(`/tournaments/${tournamentId}/tables/${tableId}/start`, {
-      method: 'POST',
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const res = await httpRequest<{
+            tournament: TournamentDetail;
+            game: GameDetail;
+          }>(`/tournaments/${tournamentId}/tables/${tableId}/start`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          await rememberTournament(res.tournament);
+          await rememberGame(res.game);
+          return res;
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedTournament<TournamentDetail>(tournamentId);
+    if (!current) throw new Error('Tournament not available offline');
+    const started = localStartTable(current, tableId);
+    await rememberTournament(started.tournament);
+    await rememberGame(started.game);
+    await enqueue({
+      type: 'startTournamentTable',
+      payload: {
+        tournamentId,
+        tableId,
+        gameId: started.gameId,
+        playerIds: started.playerIds,
+      },
     });
-    await rememberGame(res.game);
-    return res;
+    return { tournament: started.tournament, game: started.game };
   },
 };

@@ -17,6 +17,7 @@ import {
   UpdateRoundDto,
 } from './dto';
 import {
+  asIntArray,
   assignPlacesByTotal,
   clearOutcomeFields,
   computeBidAnalytics,
@@ -943,9 +944,10 @@ export class GamesService {
       }
     }
 
+    const storedOrder = asIntArray(round.bidOrderSeats);
     const order =
-      round.bidOrderSeats.length === game.players.length
-        ? round.bidOrderSeats
+      storedOrder.length === game.players.length
+        ? storedOrder
         : this.rules.bidOrderSeats(round.number, game.players.length);
     const seatToPlayer = new Map(
       game.players.map((p) => [p.seatIndex, p] as const),
@@ -1134,9 +1136,10 @@ export class GamesService {
         : this.roundPhase(game, currentRound);
 
     const rounds = game.rounds.map((round) => {
+      const storedOrder = asIntArray(round.bidOrderSeats);
       const bidOrder =
-        round.bidOrderSeats.length === game.players.length
-          ? round.bidOrderSeats
+        storedOrder.length === game.players.length
+          ? storedOrder
           : this.rules.bidOrderSeats(round.number, game.players.length);
       const entriesBySeat = new Map(
         round.entries.map((e) => [e.player.seatIndex, e] as const),

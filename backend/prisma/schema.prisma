@@ -118,8 +118,8 @@ model Round {
   firstBidderSeat     Int     @default(0)
   dealerPlayerId      String?
   firstBidderPlayerId String?
-  /// Seat indices in bid order (left of dealer → dealer last)
-  bidOrderSeats       Int[]   @default([])
+  /// Seat indices in bid order (left of dealer → dealer last). Json for PG+SQLite portability.
+  bidOrderSeats       Json    @default("[]")
   /// Sum of all bids once bidding complete
   bidSum              Int?
   /// handSize - bidSum (positive = table under-bid, negative = over-bid)

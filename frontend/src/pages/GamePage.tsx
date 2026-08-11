@@ -4,11 +4,13 @@ import { api, GameDetail } from '../api';
 import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
 import { EditRoundModal } from '../components/EditRoundModal';
+import { SyncStatus } from '../components/SyncStatus';
 import {
   forbiddenLastBid as computeForbiddenLast,
   TOTAL_ROUNDS,
 } from '../offline/rules';
 import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
+import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 
 export function GamePage() {
@@ -44,6 +46,10 @@ export function GamePage() {
   useSocketRoom(id ? `game:${id}` : null, 'game:update', () => {
     void load().catch((e: Error) => setError(e.message));
   });
+
+  useEffect(() => onSyncChange(() => {
+    void load().catch(() => undefined);
+  }), [load]);
 
   const current = useMemo(() => {
     if (!game || game.currentRound == null) return null;
@@ -269,6 +275,7 @@ export function GamePage() {
         <div className="icon-btn spacer" aria-hidden />
       </header>
 
+      <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
 
       {(isFinished || tab === 'board') && (

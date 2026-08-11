@@ -1,5 +1,19 @@
 import { GameEventType, Prisma } from '@prisma/client';
 
+/** Parse Json bid-order column (PG JSONB / SQLite Json) into seat indices. */
+export function asIntArray(value: Prisma.JsonValue | null | undefined): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: number[] = [];
+  for (const item of value) {
+    if (typeof item === 'number' && Number.isInteger(item)) {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 type SeatPlayer = {
   id: string;
   seatIndex: number;

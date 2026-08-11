@@ -6,6 +6,8 @@ import {
   TournamentFinalStanding,
   TournamentTable,
 } from '../api';
+import { SyncStatus } from '../components/SyncStatus';
+import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 
 export function TournamentPage() {
@@ -42,6 +44,10 @@ export function TournamentPage() {
   useSocketRoom(id ? `tournament:${id}` : null, 'tournament:update', () => {
     void load().catch((e: Error) => setError(e.message));
   });
+
+  useEffect(() => onSyncChange(() => {
+    void load().catch(() => undefined);
+  }), [load]);
 
   const selectedTable = useMemo(
     () => t?.tables.find((tb) => tb.id === selectedTableId) ?? null,
@@ -140,6 +146,7 @@ export function TournamentPage() {
         <p className="lede">{statusLabel(t.status)}</p>
       </div>
 
+      <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
       {t.highTableError && (
         <div className="banner banner-inline" role="alert">

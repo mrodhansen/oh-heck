@@ -18,7 +18,9 @@ import { GamesService } from '../games/games.service';
 import {
   AddTournamentPlayerDto,
   CreateTournamentDto,
+  SeatTournamentDto,
   SetTableDealerDto,
+  StartTournamentTableDto,
 } from './dto';
 import {
   balanceTableSizes,
@@ -171,6 +173,20 @@ export class TournamentsService {
 
   async addPlayer(tournamentId: string, dto: AddTournamentPlayerDto) {
     const t = await this.findFull(tournamentId);
+
+    if (dto.id) {
+      const existing = t.players.find((p) => p.id === dto.id);
+      if (existing) {
+        const name = dto.name.trim();
+        if (existing.name.toLowerCase() !== name.toLowerCase()) {
+          throw new BadRequestException(
+            'Player id already exists with different name',
+          );
+        }
+        return this.toDetail(t);
+      }
+    }
+
     if (t.status !== TournamentStatus.OPEN) {
       throw new BadRequestException('Tournament is no longer accepting names');
     }
@@ -215,19 +231,31 @@ export class TournamentsService {
 
   async removePlayer(tournamentId: string, playerId: string) {
     const t = await this.findFull(tournamentId);
+    const player = t.players.find((p) => p.id === playerId);
+    if (!player) {
+      // Idempotent for offline outbox replay
+      return this.toDetail(t);
+    }
     if (t.status !== TournamentStatus.OPEN) {
       throw new BadRequestException('Cannot remove players after seating');
     }
-    const player = t.players.find((p) => p.id === playerId);
-    if (!player) throw new NotFoundException('Player not found');
 
     await this.prisma.tournamentPlayer.delete({ where: { id: playerId } });
     return this.refreshAndEmit(tournamentId);
   }
 
-  async seatTables(tournamentId: string) {
+  async seatTables(tournamentId: string, dto: SeatTournamentDto = {}) {
     const t = await this.findFull(tournamentId);
     if (t.status !== TournamentStatus.OPEN) {
+      // Already seated — idempotent for offline replay
+      if (
+        t.status === TournamentStatus.SEATED ||
+        t.status === TournamentStatus.IN_PROGRESS ||
+        t.status === TournamentStatus.HIGH_TABLE ||
+        t.status === TournamentStatus.COMPLETED
+      ) {
+        return this.toDetail(t);
+      }
       throw new BadRequestException('Tables already seated');
     }
     if (t.players.length < t.targetPlayerCount) {
@@ -236,32 +264,50 @@ export class TournamentsService {
       );
     }
 
-    let sizes: number[];
-    try {
-      sizes = balanceTableSizes(
-        t.players.length,
-        t.preferredTableSize,
-        t.minTableSize,
-        t.maxTableSize,
-      );
-    } catch (e) {
-      throw new BadRequestException(
-        e instanceof Error ? e.message : 'Cannot balance tables for this roster',
-      );
-    }
+    type PlanRow = {
+      id?: string;
+      tableNumber: number;
+      dealerSeat: number;
+      seats: { id?: string; tournamentPlayerId: string; seatIndex: number }[];
+    };
 
-    const roster = shuffleInPlace([...t.players]);
-    let cursor = 0;
-    const tablePlans: { tableNumber: number; playerIds: string[] }[] = [];
+    let tablePlans: PlanRow[];
 
-    for (let i = 0; i < sizes.length; i++) {
-      const size = sizes[i]!;
-      const slice = roster.slice(cursor, cursor + size);
-      cursor += size;
-      tablePlans.push({
-        tableNumber: i + 1,
-        playerIds: slice.map((p) => p.id),
-      });
+    if (dto.tables && dto.tables.length > 0) {
+      tablePlans = this.validateClientSeatPlan(t, dto.tables);
+    } else {
+      let sizes: number[];
+      try {
+        sizes = balanceTableSizes(
+          t.players.length,
+          t.preferredTableSize,
+          t.minTableSize,
+          t.maxTableSize,
+        );
+      } catch (e) {
+        throw new BadRequestException(
+          e instanceof Error
+            ? e.message
+            : 'Cannot balance tables for this roster',
+        );
+      }
+
+      const roster = shuffleInPlace([...t.players]);
+      let cursor = 0;
+      tablePlans = [];
+      for (let i = 0; i < sizes.length; i++) {
+        const size = sizes[i]!;
+        const slice = roster.slice(cursor, cursor + size);
+        cursor += size;
+        tablePlans.push({
+          tableNumber: i + 1,
+          dealerSeat: slice.length - 1,
+          seats: slice.map((p, seatIndex) => ({
+            tournamentPlayerId: p.id,
+            seatIndex,
+          })),
+        });
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -279,16 +325,18 @@ export class TournamentsService {
       for (const plan of tablePlans) {
         await tx.tournamentTable.create({
           data: {
+            ...(plan.id ? { id: plan.id } : {}),
             tournamentId,
             tableNumber: plan.tableNumber,
             stage: TournamentStage.PRELIM,
             isHighTable: false,
             status: TournamentTableStatus.READY,
-            dealerSeat: plan.playerIds.length - 1,
+            dealerSeat: plan.dealerSeat,
             seats: {
-              create: plan.playerIds.map((tournamentPlayerId, seatIndex) => ({
-                tournamentPlayerId,
-                seatIndex,
+              create: plan.seats.map((s) => ({
+                ...(s.id ? { id: s.id } : {}),
+                tournamentPlayerId: s.tournamentPlayerId,
+                seatIndex: s.seatIndex,
               })),
             },
           },
@@ -297,6 +345,102 @@ export class TournamentsService {
     });
 
     return this.refreshAndEmit(tournamentId);
+  }
+
+  private validateClientSeatPlan(
+    t: FullTournament,
+    tables: NonNullable<SeatTournamentDto['tables']>,
+  ): {
+    id: string;
+    tableNumber: number;
+    dealerSeat: number;
+    seats: { id: string; tournamentPlayerId: string; seatIndex: number }[];
+  }[] {
+    const rosterIds = new Set(t.players.map((p) => p.id));
+    const seenPlayers = new Set<string>();
+    const seenTableNumbers = new Set<number>();
+    const seenTableIds = new Set<string>();
+    const seenSeatIds = new Set<string>();
+    let seatCount = 0;
+
+    const plans = tables.map((tb) => {
+      if (seenTableIds.has(tb.id)) {
+        throw new BadRequestException('Duplicate table id in seat plan');
+      }
+      seenTableIds.add(tb.id);
+      if (seenTableNumbers.has(tb.tableNumber)) {
+        throw new BadRequestException('Duplicate table number in seat plan');
+      }
+      seenTableNumbers.add(tb.tableNumber);
+
+      if (tb.seats.length < t.minTableSize || tb.seats.length > t.maxTableSize) {
+        throw new BadRequestException(
+          `Table ${tb.tableNumber} seat count out of bounds`,
+        );
+      }
+      if (tb.dealerSeat !== tb.seats.length - 1) {
+        throw new BadRequestException(
+          `Table ${tb.tableNumber} dealerSeat must be last seat`,
+        );
+      }
+
+      const seatIndexes = new Set<number>();
+      const seats = tb.seats.map((s) => {
+        if (seenSeatIds.has(s.id)) {
+          throw new BadRequestException('Duplicate seat id in seat plan');
+        }
+        seenSeatIds.add(s.id);
+        if (seatIndexes.has(s.seatIndex)) {
+          throw new BadRequestException(
+            `Duplicate seat index on table ${tb.tableNumber}`,
+          );
+        }
+        seatIndexes.add(s.seatIndex);
+        if (s.seatIndex < 0 || s.seatIndex >= tb.seats.length) {
+          throw new BadRequestException(
+            `Invalid seat index on table ${tb.tableNumber}`,
+          );
+        }
+        if (!rosterIds.has(s.tournamentPlayerId)) {
+          throw new BadRequestException(
+            `Unknown player in seat plan: ${s.tournamentPlayerId}`,
+          );
+        }
+        if (seenPlayers.has(s.tournamentPlayerId)) {
+          throw new BadRequestException('Player seated twice in plan');
+        }
+        seenPlayers.add(s.tournamentPlayerId);
+        seatCount += 1;
+        return {
+          id: s.id,
+          tournamentPlayerId: s.tournamentPlayerId,
+          seatIndex: s.seatIndex,
+        };
+      });
+
+      for (let i = 0; i < tb.seats.length; i++) {
+        if (!seatIndexes.has(i)) {
+          throw new BadRequestException(
+            `Missing seat index ${i} on table ${tb.tableNumber}`,
+          );
+        }
+      }
+
+      return {
+        id: tb.id,
+        tableNumber: tb.tableNumber,
+        dealerSeat: tb.dealerSeat,
+        seats,
+      };
+    });
+
+    if (seatCount !== t.players.length || seenPlayers.size !== t.players.length) {
+      throw new BadRequestException(
+        'Seat plan must include every tournament player exactly once',
+      );
+    }
+
+    return plans;
   }
 
   async setTableDealer(
@@ -341,12 +485,19 @@ export class TournamentsService {
     return this.refreshAndEmit(tournamentId);
   }
 
-  async startTableGame(tournamentId: string, tableId: string) {
+  async startTableGame(
+    tournamentId: string,
+    tableId: string,
+    dto: StartTournamentTableDto = {},
+  ) {
     const t = await this.findFull(tournamentId);
     const table = t.tables.find((tb) => tb.id === tableId);
     if (!table) throw new NotFoundException('Table not found');
     if (table.game) {
-      throw new BadRequestException('Game already started for this table');
+      // Idempotent: return existing linked game
+      const detail = this.toDetail(t);
+      const gameDetail = await this.games.getGame(table.game.id);
+      return { tournament: detail, game: gameDetail };
     }
     if (
       table.status !== TournamentTableStatus.READY &&
@@ -360,6 +511,13 @@ export class TournamentsService {
       throw new BadRequestException('Invalid seat count for a game');
     }
 
+    if (dto.playerIds && dto.playerIds.length !== seats.length) {
+      throw new BadRequestException('playerIds must match seat count');
+    }
+    if (dto.playerIds && new Set(dto.playerIds).size !== dto.playerIds.length) {
+      throw new BadRequestException('playerIds must be unique');
+    }
+
     const names = seats.map((s) => s.tournamentPlayer.name);
     const gameName = table.isHighTable
       ? `${t.name ?? 'Tournament'} — High Table`
@@ -368,6 +526,8 @@ export class TournamentsService {
     const game = await this.games.createGame({
       playerNames: names,
       name: gameName,
+      ...(dto.gameId ? { id: dto.gameId } : {}),
+      ...(dto.playerIds ? { playerIds: dto.playerIds } : {}),
     });
 
     // Link tournament players onto game players by seat index
@@ -382,6 +542,14 @@ export class TournamentsService {
           throw new BadRequestException(
             'Game player count does not match table seats',
           );
+        }
+
+        // Already linked (idempotent createGame path after partial prior run)
+        if (
+          fullGame.tournamentTableId === table.id &&
+          fullGame.tournamentId === tournamentId
+        ) {
+          return;
         }
 
         for (const gp of fullGame.players) {
@@ -431,10 +599,16 @@ export class TournamentsService {
         });
       });
     } catch (e) {
-      // Avoid orphan non-tournament game if link fails
-      await this.prisma.game
-        .delete({ where: { id: game.id } })
-        .catch(() => undefined);
+      // Avoid orphan non-tournament game if link fails (only if we just created it unlinked)
+      const orphan = await this.prisma.game.findUnique({
+        where: { id: game.id },
+        select: { tournamentTableId: true },
+      });
+      if (orphan && !orphan.tournamentTableId) {
+        await this.prisma.game
+          .delete({ where: { id: game.id } })
+          .catch(() => undefined);
+      }
       throw e;
     }
 
@@ -442,6 +616,125 @@ export class TournamentsService {
     const gameDetail = await this.games.getGame(game.id);
     this.realtime.emitGame(game.id, gameDetail);
     return { tournament: detail, game: gameDetail };
+  }
+
+  async syncOperations(
+    operations: {
+      type:
+        | 'createTournament'
+        | 'addTournamentPlayer'
+        | 'removeTournamentPlayer'
+        | 'seatTournament'
+        | 'startTournamentTable';
+      payload: Record<string, unknown>;
+    }[],
+  ) {
+    const { plainToInstance } = await import('class-transformer');
+    const { validateOrReject } = await import('class-validator');
+    const results: {
+      ok: boolean;
+      type: string;
+      error?: string;
+      data?: unknown;
+    }[] = [];
+
+    for (const op of operations) {
+      try {
+        let data: unknown;
+        switch (op.type) {
+          case 'createTournament': {
+            const dto = plainToInstance(CreateTournamentDto, op.payload);
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.create(dto);
+            break;
+          }
+          case 'addTournamentPlayer': {
+            const tournamentId = String(op.payload.tournamentId ?? '');
+            if (!tournamentId) {
+              throw new BadRequestException('Invalid addTournamentPlayer payload');
+            }
+            const dto = plainToInstance(AddTournamentPlayerDto, {
+              name: op.payload.name,
+              id: op.payload.id,
+            });
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.addPlayer(tournamentId, dto);
+            break;
+          }
+          case 'removeTournamentPlayer': {
+            const tournamentId = String(op.payload.tournamentId ?? '');
+            const playerId = String(op.payload.playerId ?? '');
+            if (!tournamentId || !playerId) {
+              throw new BadRequestException(
+                'Invalid removeTournamentPlayer payload',
+              );
+            }
+            data = await this.removePlayer(tournamentId, playerId);
+            break;
+          }
+          case 'seatTournament': {
+            const tournamentId = String(op.payload.tournamentId ?? '');
+            if (!tournamentId) {
+              throw new BadRequestException('Invalid seatTournament payload');
+            }
+            const dto = plainToInstance(SeatTournamentDto, {
+              tables: op.payload.tables,
+            });
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.seatTables(tournamentId, dto);
+            break;
+          }
+          case 'startTournamentTable': {
+            const tournamentId = String(op.payload.tournamentId ?? '');
+            const tableId = String(op.payload.tableId ?? '');
+            if (!tournamentId || !tableId) {
+              throw new BadRequestException(
+                'Invalid startTournamentTable payload',
+              );
+            }
+            const dto = plainToInstance(StartTournamentTableDto, {
+              gameId: op.payload.gameId,
+              playerIds: op.payload.playerIds,
+            });
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.startTableGame(tournamentId, tableId, dto);
+            break;
+          }
+          default:
+            throw new BadRequestException(`Unknown op type`);
+        }
+        results.push({ ok: true, type: op.type, data });
+      } catch (e) {
+        let message = 'Sync operation failed';
+        if (Array.isArray(e)) {
+          message = e
+            .map((err) =>
+              typeof err === 'object' && err && 'toString' in err
+                ? String(err)
+                : JSON.stringify(err),
+            )
+            .join('; ');
+        } else if (e instanceof Error) {
+          message = e.message;
+        }
+        results.push({ ok: false, type: op.type, error: message });
+        break;
+      }
+    }
+
+    return { results };
   }
 
   /**

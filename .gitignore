@@ -1,6 +1,7 @@
 node_modules
 dist
 .env
+.env.sqlite
 *.log
 .DS_Store
 pgdata
@@ -8,3 +9,5 @@ screenshots
 .peer-review
 frontend/dev-dist
 *.local
+*.db
+*.db-journal

@@ -12,7 +12,10 @@ import { TournamentsService } from './tournaments.service';
 import {
   AddTournamentPlayerDto,
   CreateTournamentDto,
+  SeatTournamentDto,
   SetTableDealerDto,
+  StartTournamentTableDto,
+  TournamentSyncDto,
 } from './dto';
 
 @Controller('tournaments')
@@ -25,6 +28,11 @@ export class TournamentsController {
       return this.tournaments.listAll();
     }
     return this.tournaments.listOpen();
+  }
+
+  @Post('sync')
+  sync(@Body() dto: TournamentSyncDto) {
+    return this.tournaments.syncOperations(dto.operations);
   }
 
   @Post()
@@ -54,8 +62,11 @@ export class TournamentsController {
   }
 
   @Post(':id/seat')
-  seat(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tournaments.seatTables(id);
+  seat(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SeatTournamentDto = {},
+  ) {
+    return this.tournaments.seatTables(id, dto ?? {});
   }
 
   @Post(':id/tables/:tableId/dealer')
@@ -71,7 +82,8 @@ export class TournamentsController {
   start(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('tableId', ParseUUIDPipe) tableId: string,
+    @Body() dto: StartTournamentTableDto = {},
   ) {
-    return this.tournaments.startTableGame(id, tableId);
+    return this.tournaments.startTableGame(id, tableId, dto ?? {});
   }
 }
