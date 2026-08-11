@@ -1149,45 +1149,75 @@ table.scoreboard tbody tr:last-child td:first-child::before {
   overflow: hidden;
 }
 
-.round-meta {
+.phase-header {
   flex: 0 0 auto;
-  display: block;
-  margin: 0;
   text-align: center;
-  font-size: 0.85rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.35;
+  padding: 4px 8px 10px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.round-meta strong {
+.phase-title {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 1.85rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--grey-900);
+  line-height: 1.15;
+}
+
+.phase-round {
+  margin: 6px 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
   color: var(--grey-800);
+  font-variant-numeric: tabular-nums;
+}
+
+.phase-cards {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.phase-first {
+  margin: 8px 0 0;
+  font-size: 0.92rem;
+  color: var(--grey-700);
+}
+
+.phase-first strong {
+  font-weight: 650;
+  color: var(--grey-900);
+}
+
+.phase-fb {
+  color: var(--muted);
   font-weight: 600;
 }
 
-.round-meta .sep {
-  margin: 0 0.35em;
-  color: var(--sand-300);
-}
-
-.bid-total {
-  flex: 0 0 auto;
-  margin: 0;
-  text-align: center;
-  font-size: 0.95rem;
+.phase-total {
+  margin: 6px 0 0;
+  font-size: 0.9rem;
   color: var(--grey-700);
   font-variant-numeric: tabular-nums;
 }
 
-.bid-total strong {
+.phase-total strong {
   font-family: var(--font);
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--grey-900);
+}
+
+@media (max-height: 700px) {
+  .phase-title {
+    font-size: 1.5rem;
+  }
+  .phase-header {
+    padding-bottom: 6px;
+  }
 }
 
 /* Accordion turn cards (bids + tricks) */

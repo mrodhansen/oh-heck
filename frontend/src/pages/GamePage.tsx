@@ -271,30 +271,33 @@ export function GamePage() {
 
       {!isFinished && tab === 'play' && current && (
         <div className="play-layout">
-          <p className="round-meta">
-            <strong>Round {current.number}</strong>
-            <span className="sep">·</span>
-            {handSize} cards
-            <span className="sep">·</span>
-            First Play {firstToPlayName}
-            {phase === 'tricks' && current.forceBurn ? (
-              <>
-                <span className="sep">·</span>
-                FB
-              </>
-            ) : null}
-          </p>
-
-          {phase === 'bidding' && (
-            <p className="bid-total">
-              <strong>{totalBidsLocked}</strong> have been bid
+          <header className="phase-header">
+            <h2 className="phase-title">
+              {phase === 'bidding' ? 'Bidding' : 'Scoring'}
+            </h2>
+            <p className="phase-round">Round {current.number}</p>
+            <p className="phase-cards">{handSize} cards</p>
+            <p className="phase-first">
+              {phase === 'bidding' ? (
+                <>
+                  First Bid <strong>{firstToPlayName}</strong>
+                </>
+              ) : (
+                <>
+                  First Score <strong>{firstToPlayName}</strong>
+                  {current.forceBurn ? (
+                    <span className="phase-fb"> · FB</span>
+                  ) : null}
+                </>
+              )}
             </p>
-          )}
-          {phase === 'tricks' && (
-            <p className="bid-total">
-              <strong>{totalBidsForRound}</strong> have been bid
+            <p className="phase-total">
+              <strong>
+                {phase === 'bidding' ? totalBidsLocked : totalBidsForRound}
+              </strong>{' '}
+              have been bid
             </p>
-          )}
+          </header>
 
           {phase === 'bidding' && currentBidder && (
             <>
