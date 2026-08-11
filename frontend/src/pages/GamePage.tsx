@@ -287,7 +287,9 @@ export function GamePage() {
               <strong>
                 {phase === 'bidding' ? totalBidsLocked : totalBidsForRound}
               </strong>{' '}
-              have been bid
+              {(phase === 'bidding' ? totalBidsLocked : totalBidsForRound) === 1
+                ? 'has been bid'
+                : 'have been bid'}
             </p>
           </header>
 
