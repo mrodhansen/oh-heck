@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GameEventType, GameStatus, Prisma } from '@prisma/client';
+import { GameEventType, GameStatus, PlayMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -37,6 +37,12 @@ const gameInclude = {
       entries: {
         include: { player: true },
       },
+      tricks: {
+        orderBy: { trickIndex: 'asc' as const },
+        include: {
+          plays: { orderBy: { playOrder: 'asc' as const } },
+        },
+      },
     },
   },
   events: {
@@ -58,7 +64,7 @@ export class GamesService {
 
   async listGames() {
     const games = await this.prisma.game.findMany({
-      where: { tournamentId: null },
+      where: { tournamentId: null, liveSession: null },
       orderBy: { createdAt: 'desc' },
       include: {
         players: { orderBy: { seatIndex: 'asc' } },
@@ -70,7 +76,7 @@ export class GamesService {
     return games.map((g) => this.toSummary(g));
   }
 
-  async createGame(dto: CreateGameDto) {
+  async createGame(dto: CreateGameDto, opts?: { fromLive?: boolean }) {
     const limits = this.rules.getPlayerLimits();
     const names = dto.playerNames.map((n) => n.trim()).filter(Boolean);
     if (names.length < limits.min || names.length > limits.max) {
@@ -131,11 +137,25 @@ export class GamesService {
     }
 
     const game = await this.prisma.$transaction(async (tx) => {
+      if (dto.playMode === 'ONLINE' && !opts?.fromLive) {
+        throw new BadRequestException(
+          'Online games can only be created by the live table',
+        );
+      }
+      const playMode =
+        dto.playMode === 'ONLINE' && opts?.fromLive === true
+          ? PlayMode.ONLINE
+          : PlayMode.IN_PERSON;
       const created = await tx.game.create({
         data: {
           ...(dto.id ? { id: dto.id } : {}),
           name: dto.name?.trim() || defaultGameName(names),
           status: GameStatus.BIDDING,
+          playMode,
+          liveCode:
+            playMode === PlayMode.ONLINE
+              ? dto.liveCode?.trim() || null
+              : null,
           playerCount,
           firstDealerSeat,
           players: {
@@ -193,6 +213,8 @@ export class GamesService {
           GameEventType.GAME_CREATED,
           {
             name: created.name,
+            playMode,
+            liveCode: created.liveCode,
             playerCount,
             firstDealerSeat,
             playerNames: names,
@@ -324,8 +346,14 @@ export class GamesService {
     return await this.toDetail(game);
   }
 
-  async setBids(gameId: string, roundNumber: number, dto: SetBidsDto) {
+  async setBids(
+    gameId: string,
+    roundNumber: number,
+    dto: SetBidsDto,
+    opts?: { fromLive?: boolean },
+  ) {
     const game = await this.findFull(gameId);
+    this.assertClientMayMutate(game, opts?.fromLive === true);
     if (game.status === GameStatus.COMPLETED) {
       throw new BadRequestException('Game is completed');
     }
@@ -446,8 +474,14 @@ export class GamesService {
     return this.emitGame(await this.getGame(gameId));
   }
 
-  async setTricks(gameId: string, roundNumber: number, dto: SetTricksDto) {
+  async setTricks(
+    gameId: string,
+    roundNumber: number,
+    dto: SetTricksDto,
+    opts?: { fromLive?: boolean },
+  ) {
     const game = await this.findFull(gameId);
+    this.assertClientMayMutate(game, opts?.fromLive === true);
     if (game.status === GameStatus.COMPLETED) {
       throw new BadRequestException('Game is completed');
     }
@@ -635,8 +669,14 @@ export class GamesService {
     return this.emitGame(await this.getGame(gameId));
   }
 
-  async updateRound(gameId: string, roundNumber: number, dto: UpdateRoundDto) {
+  async updateRound(
+    gameId: string,
+    roundNumber: number,
+    dto: UpdateRoundDto,
+    opts?: { fromLive?: boolean },
+  ) {
     const game = await this.findFull(gameId);
+    this.assertClientMayMutate(game, opts?.fromLive === true);
     const round = game.rounds.find((r) => r.number === roundNumber);
     if (!round) {
       throw new NotFoundException(`Round ${roundNumber} not found`);
@@ -1083,6 +1123,8 @@ export class GamesService {
       id: game.id,
       name: game.name,
       status: game.status,
+      playMode: game.playMode,
+      liveCode: game.liveCode,
       createdAt: game.createdAt,
       finishedAt: game.finishedAt,
       playerCount: game.players.length,
@@ -1118,6 +1160,18 @@ export class GamesService {
     return null;
   }
 
+  /** ONLINE live games are mutated only by LiveService (fromLive: true). */
+  private assertClientMayMutate(
+    game: { playMode: PlayMode },
+    fromLive: boolean,
+  ) {
+    if (game.playMode === PlayMode.ONLINE && !fromLive) {
+      throw new BadRequestException(
+        'Online live games can only be scored by the live table',
+      );
+    }
+  }
+
   private async toDetail(game: FullGame) {
     const prelimEditsLocked =
       game.tournamentId && !game.isHighTable
@@ -1128,6 +1182,10 @@ export class GamesService {
   }
 
   private toDetailSync(game: FullGame) {
+    /** Hide private card data for in-progress ONLINE games (hands leak via Board API). */
+    const redactPrivateCards =
+      game.playMode === PlayMode.ONLINE &&
+      game.status !== GameStatus.COMPLETED;
     const standings = this.computeStandings(game);
     const currentRound = this.currentRoundNumber(game);
     const phase =
@@ -1157,6 +1215,30 @@ export class GamesService {
           ? round.forbiddenLastBid
           : this.rules.forbiddenLastBid(priorSum, round.handSize);
 
+      const tricks =
+        'tricks' in round && Array.isArray(round.tricks)
+          ? round.tricks.map((t) => ({
+              id: t.id,
+              trickIndex: t.trickIndex,
+              leadSeat: t.leadSeat,
+              leadSuit: t.leadSuit,
+              winnerSeat: t.winnerSeat,
+              winnerPlayerId: t.winnerPlayerId,
+              completedAt: t.completedAt,
+              plays: t.plays.map((p) => ({
+                playOrder: p.playOrder,
+                seatIndex: p.seatIndex,
+                playerId: p.playerId,
+                cardSuit: p.cardSuit,
+                cardRank: p.cardRank,
+                cardKey: p.cardKey,
+                followedSuit: p.followedSuit,
+                playedTrump: p.playedTrump,
+                playedAt: p.playedAt,
+              })),
+            }))
+          : [];
+
       return {
         id: round.id,
         number: round.number,
@@ -1181,6 +1263,12 @@ export class GamesService {
         tricksCompletedAt: round.tricksCompletedAt,
         completedAt: round.completedAt,
         editCount: round.editCount,
+        trumpSuit: round.trumpSuit ?? null,
+        trumpCard: redactPrivateCards ? null : (round.trumpCard ?? null),
+        dealtHands: redactPrivateCards ? null : (round.dealtHands ?? null),
+        dealtAt: round.dealtAt ?? null,
+        trickHistory: redactPrivateCards ? null : (round.trickHistory ?? null),
+        tricks: redactPrivateCards ? [] : tricks,
         entries: game.players.map((p) => {
           const e = round.entries.find((x) => x.playerId === p.id)!;
           return {
@@ -1203,6 +1291,9 @@ export class GamesService {
             cumulativeScore: e.cumulativeScore,
             placeAfterRound: e.placeAfterRound,
             scoreBehindLeader: e.scoreBehindLeader,
+            bidPlacedAt: e.bidPlacedAt ?? null,
+            dealtHand: redactPrivateCards ? null : (e.dealtHand ?? null),
+            cardsPlayed: redactPrivateCards ? null : (e.cardsPlayed ?? null),
           };
         }),
         complete: round.entries.every(
@@ -1211,10 +1302,33 @@ export class GamesService {
       };
     });
 
+    const events = game.events.map((ev) => {
+      let payload: unknown = ev.payload;
+      if (
+        redactPrivateCards &&
+        (ev.type === GameEventType.ROUND_DEALT ||
+          ev.type === GameEventType.CARD_PLAYED ||
+          ev.type === GameEventType.TRICK_COMPLETED)
+      ) {
+        payload = { redacted: true, type: ev.type };
+      }
+      return {
+        id: ev.id,
+        type: ev.type,
+        roundNumber: ev.roundNumber,
+        payload,
+        createdAt: ev.createdAt,
+      };
+    });
+
     return {
       id: game.id,
       name: game.name,
       status: game.status,
+      playMode: game.playMode,
+      // Never expose join code on public Board API (seat-stealing)
+      liveCode:
+        game.playMode === PlayMode.ONLINE ? null : game.liveCode,
       phase,
       currentRound:
         game.status === GameStatus.COMPLETED ? null : currentRound,
@@ -1242,13 +1356,7 @@ export class GamesService {
       })),
       rounds,
       standings,
-      events: game.events.map((ev) => ({
-        id: ev.id,
-        type: ev.type,
-        roundNumber: ev.roundNumber,
-        payload: ev.payload,
-        createdAt: ev.createdAt,
-      })),
+      events,
     };
   }
 

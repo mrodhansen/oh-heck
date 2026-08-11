@@ -16,6 +16,14 @@ enum GameStatus {
   COMPLETED
 }
 
+/// How the game was played / scored.
+enum PlayMode {
+  /// Physical cards; app is scorekeeper only
+  IN_PERSON
+  /// Digital multiplayer card table
+  ONLINE
+}
+
 enum TournamentStatus {
   OPEN
   SEATED
@@ -41,12 +49,35 @@ enum GameEventType {
   BIDS_SET
   TRICKS_SET
   ROUND_UPDATED
+  /// Online: round dealt (hands + trump snapshot)
+  ROUND_DEALT
+  /// Online: single card play
+  CARD_PLAYED
+  /// Online: trick resolved
+  TRICK_COMPLETED
+  /// Online: individual bid placed
+  BID_PLACED
+  /// Online: seat left / claimed / joined mid-game
+  PLAYER_LEFT
+  SEAT_CLAIMED
+  PLAYER_JOINED
+  GAME_STARTED_LIVE
+}
+
+enum LiveSessionStatus {
+  LOBBY
+  PLAYING
+  COMPLETED
 }
 
 model Game {
   id         String     @id @default(uuid())
   name       String?
   status     GameStatus @default(BIDDING)
+  /// IN_PERSON = scorekeeper; ONLINE = digital card table
+  playMode   PlayMode   @default(IN_PERSON)
+  /// Join code when playMode = ONLINE (denormalized for analytics)
+  liveCode   String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   finishedAt DateTime?
@@ -74,16 +105,21 @@ model Game {
   tableNumber       Int?
   tournamentId      String?
 
-  players Player[]
-  rounds  Round[]
-  events  GameEvent[]
+  players    Player[]
+  rounds     Round[]
+  events     GameEvent[]
+  tricks     Trick[]
+  liveEvents LiveEvent[]
 
   tournamentTable TournamentTable? @relation(fields: [tournamentTableId], references: [id], onDelete: SetNull)
   tournament      Tournament?      @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  liveSession     LiveSession?
 
   @@index([tournamentId])
   @@index([status])
   @@index([finishedAt])
+  @@index([playMode])
+  @@index([liveCode])
 }
 
 model Player {
@@ -121,7 +157,7 @@ model Round {
   dealerPlayerId      String?
   firstBidderPlayerId String?
   /// Seat indices in bid order (left of dealer → dealer last). Json for PG+SQLite portability.
-  bidOrderSeats       Json    @default("[]")
+  bidOrderSeats       Json    @default("null")
   /// Sum of all bids once bidding complete
   bidSum              Int?
   /// handSize - bidSum (positive = table under-bid, negative = over-bid)
@@ -133,8 +169,20 @@ model Round {
   completedAt         DateTime?
   editCount           Int     @default(0)
 
+  /// Online card data (null for in-person scorekeeper)
+  /// C | D | H | S
+  trumpSuit   String?
+  /// { s, r } flipped trump card
+  trumpCard   Json?
+  /// Snapshot at deal: { bySeat: Card[][], byPlayerId: Record<playerId, Card[]> }
+  dealtHands  Json?
+  dealtAt     DateTime?
+  /// Full trick log mirror (same data as Trick rows) for easy export
+  trickHistory Json?
+
   game    Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
   entries RoundEntry[]
+  tricks  Trick[]
 
   @@unique([gameId, number])
   @@index([gameId])
@@ -172,6 +220,13 @@ model RoundEntry {
   /// Leader total - this total after round (0 if tied for lead or leading)
   scoreBehindLeader Int?
 
+  /// Online: when this seat's bid was placed
+  bidPlacedAt DateTime?
+  /// Online: dealt hand snapshot for this seat [{s,r}, ...]
+  dealtHand   Json?
+  /// Online: cards this seat played in order this round [{trickIndex, playOrder, s, r}, ...]
+  cardsPlayed Json?
+
   round  Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -180,6 +235,72 @@ model RoundEntry {
   @@index([made])
   @@index([isDealer])
   @@index([bidPosition])
+}
+
+/// One completed trick within a round (online play-by-play).
+model Trick {
+  id             String   @id @default(uuid())
+  gameId         String
+  roundId        String
+  /// 0-based index within the round
+  trickIndex     Int
+  leadSeat       Int
+  leadSuit       String
+  winnerSeat     Int
+  winnerPlayerId String?
+  completedAt    DateTime @default(now())
+
+  game  Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  round Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  plays TrickPlay[]
+
+  @@unique([roundId, trickIndex])
+  @@index([gameId])
+  @@index([roundId])
+  @@index([winnerPlayerId])
+}
+
+model TrickPlay {
+  id         String   @id @default(uuid())
+  trickId    String
+  /// 0 = lead
+  playOrder  Int
+  seatIndex  Int
+  playerId   String
+  cardSuit   String
+  cardRank   String
+  /// e.g. AH, TS
+  cardKey    String
+  followedSuit Boolean @default(true)
+  playedTrump  Boolean @default(false)
+  playedAt   DateTime @default(now())
+
+  trick Trick @relation(fields: [trickId], references: [id], onDelete: Cascade)
+
+  @@unique([trickId, playOrder])
+  @@unique([trickId, seatIndex])
+  @@index([playerId])
+  @@index([cardKey])
+}
+
+/// High-frequency online session telemetry (join/leave/bid/play/deal).
+model LiveEvent {
+  id          String   @id @default(uuid())
+  sessionId   String?
+  gameId      String?
+  type        String
+  playerId    String?
+  roundNumber Int?
+  payload     Json     @default("null")
+  createdAt   DateTime @default(now())
+
+  game    Game?        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  session LiveSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([gameId, createdAt])
+  @@index([type])
+  @@index([playerId])
 }
 
 model GameEvent {
@@ -275,4 +396,49 @@ model TournamentTableSeat {
   @@unique([tableId, seatIndex])
   @@unique([tableId, tournamentPlayerId])
   @@index([tournamentPlayerId])
+}
+
+/// Online multiplayer card table (lobby + live play). Separate from scorekeeper Game.
+model LiveSession {
+  id           String            @id @default(uuid())
+  code         String            @unique
+  status       LiveSessionStatus @default(LOBBY)
+  hostPlayerId String?
+  /// Linked scorekeeper game once play starts
+  gameId       String?           @unique
+  /// Full engine state (hands, tricks, bids). Server-only source of truth.
+  state        Json              @default("null")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  players LivePlayer[]
+  events  LiveEvent[]
+  game    Game?        @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model LivePlayer {
+  id        String   @id @default(uuid())
+  sessionId String
+  name      String
+  /// Seat assigned at join; host is always last seat when game starts (reindexed).
+  seatIndex Int
+  /// Secret device token — proves seat ownership
+  token     String
+  isHost    Boolean  @default(false)
+  /// Left the table; seat held for reclaim while game is active
+  gone      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, name])
+  @@unique([sessionId, seatIndex])
+  @@unique([sessionId, token])
+  @@index([sessionId])
+  @@index([sessionId, gone])
 }

@@ -13,11 +13,18 @@ function socketBaseUrl(): string | undefined {
   return undefined;
 }
 
+const joinedRooms = new Set<string>();
+
 function getSocket(): Socket {
   if (!socket) {
     socket = io(socketBaseUrl(), {
       autoConnect: true,
       transports: ['websocket', 'polling'],
+    });
+    socket.on('connect', () => {
+      for (const room of joinedRooms) {
+        socket?.emit('join', { room });
+      }
     });
   }
   return socket;
@@ -25,11 +32,13 @@ function getSocket(): Socket {
 
 export function joinRoom(room: string) {
   const s = getSocket();
+  joinedRooms.add(room);
   s.emit('join', { room });
 }
 
 export function leaveRoom(room: string) {
   const s = getSocket();
+  joinedRooms.delete(room);
   s.emit('leave', { room });
 }
 

@@ -43,6 +43,17 @@ export class CreateGameDto {
   @ArrayMaxSize(7)
   @IsUUID('4', { each: true })
   playerIds?: string[];
+
+  /** IN_PERSON (default) scorekeeper vs ONLINE digital table */
+  @IsOptional()
+  @IsIn(['IN_PERSON', 'ONLINE'])
+  playMode?: 'IN_PERSON' | 'ONLINE';
+
+  /** Online join code when playMode = ONLINE */
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  liveCode?: string;
 }
 
 export class SyncOperationDto {

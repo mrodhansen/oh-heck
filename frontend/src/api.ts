@@ -35,10 +35,14 @@ import {
 import { newId } from './offline/rules';
 import { hydrateRoundOrder } from './offline/analytics';
 
+export type PlayMode = 'IN_PERSON' | 'ONLINE';
+
 export type GameSummary = {
   id: string;
   name: string | null;
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
+  playMode?: PlayMode;
+  liveCode?: string | null;
   createdAt: string;
   finishedAt: string | null;
   playerCount: number;
@@ -77,6 +81,32 @@ export type RoundEntry = {
   cumulativeScore: number | null;
   placeAfterRound: number | null;
   scoreBehindLeader: number | null;
+  bidPlacedAt?: string | null;
+  dealtHand?: unknown;
+  cardsPlayed?: unknown;
+};
+
+export type TrickPlayDetail = {
+  playOrder: number;
+  seatIndex: number;
+  playerId: string;
+  cardSuit: string;
+  cardRank: string;
+  cardKey: string;
+  followedSuit: boolean;
+  playedTrump: boolean;
+  playedAt: string;
+};
+
+export type TrickDetail = {
+  id: string;
+  trickIndex: number;
+  leadSeat: number;
+  leadSuit: string;
+  winnerSeat: number;
+  winnerPlayerId: string | null;
+  completedAt: string;
+  plays: TrickPlayDetail[];
 };
 
 export type RoundDetail = {
@@ -97,6 +127,12 @@ export type RoundDetail = {
   tricksCompletedAt: string | null;
   completedAt: string | null;
   editCount: number;
+  trumpSuit?: string | null;
+  trumpCard?: unknown;
+  dealtHands?: unknown;
+  dealtAt?: string | null;
+  trickHistory?: unknown;
+  tricks?: TrickDetail[];
   entries: RoundEntry[];
   complete: boolean;
 };
@@ -105,11 +141,19 @@ export type GameEventType =
   | 'GAME_CREATED'
   | 'BIDS_SET'
   | 'TRICKS_SET'
-  | 'ROUND_UPDATED';
+  | 'ROUND_UPDATED'
+  | 'ROUND_DEALT'
+  | 'CARD_PLAYED'
+  | 'TRICK_COMPLETED'
+  | 'BID_PLACED'
+  | 'PLAYER_LEFT'
+  | 'SEAT_CLAIMED'
+  | 'PLAYER_JOINED'
+  | 'GAME_STARTED_LIVE';
 
 export type GameEvent = {
   id: string;
-  type: GameEventType;
+  type: GameEventType | string;
   roundNumber: number | null;
   payload: unknown;
   createdAt: string;
@@ -119,6 +163,8 @@ export type GameDetail = {
   id: string;
   name: string | null;
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
+  playMode?: PlayMode;
+  liveCode?: string | null;
   phase: 'bidding' | 'tricks' | 'completed';
   currentRound: number | null;
   createdAt: string;

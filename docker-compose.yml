@@ -25,15 +25,16 @@ services:
       PORT: "3000"
       CORS_ORIGIN: "*"
     ports:
-      - "3000:3000"
+      # Host 3010 — 3000 often taken by other local apps; container still listens on 3000
+      - "3010:3000"
     depends_on:
       db:
         condition: service_healthy
 
   web:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         # Same-origin via nginx proxy — works on phone LAN without hardcoding IP
         VITE_API_URL: /api

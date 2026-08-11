@@ -40,7 +40,7 @@ export function HomePage() {
       <div className="page-fit-header play-home-header">
         <div className="page-header">
           <h2 className="page-title">Single</h2>
-          <Link to="/" className="btn ghost sm">
+          <Link to="/play/score" className="btn ghost sm">
             Back
           </Link>
         </div>

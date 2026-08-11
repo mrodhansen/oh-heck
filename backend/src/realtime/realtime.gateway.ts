@@ -57,4 +57,8 @@ export class RealtimeGateway implements OnGatewayConnection {
   emitTournamentList() {
     this.server.to('tournaments').emit('tournaments:list', { at: Date.now() });
   }
+
+  emitLive(sessionId: string, payload: unknown) {
+    this.server.to(`live:${sessionId}`).emit('live:update', payload);
+  }
 }

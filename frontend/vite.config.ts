@@ -68,6 +68,7 @@ export default defineConfig({
             urlPattern: ({ url }) =>
               url.pathname.includes('/games') ||
               url.pathname.includes('/tournaments') ||
+              url.pathname.includes('/live') ||
               url.pathname.includes('/stats') ||
               url.pathname.includes('/rules'),
             handler: 'NetworkOnly',

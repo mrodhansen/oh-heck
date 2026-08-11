@@ -14,7 +14,9 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:push:sqlite": "prisma db push --schema=prisma/schema.sqlite.prisma",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -38,6 +40,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "prisma": "^6.1.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
   }
 }
