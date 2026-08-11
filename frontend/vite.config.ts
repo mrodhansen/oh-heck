@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [
-        'favicon.svg',
+        'favicon.png',
         'favicon-32.png',
         'apple-touch-icon.png',
         'icon-192.png',
@@ -21,19 +21,13 @@ export default defineConfig({
         name: 'Oh Heck',
         short_name: 'Oh Heck',
         description: 'Oh Heck scorekeeper with offline play',
-        theme_color: '#f7f3ec',
-        background_color: '#f3e8dc',
+        theme_color: '#f5ebe2',
+        background_color: '#f5ebe2',
         display: 'standalone',
         orientation: 'portrait',
         start_url: base,
         scope: base,
         icons: [
-          {
-            src: 'favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any',
-          },
           {
             src: 'icon-192.png',
             sizes: '192x192',
