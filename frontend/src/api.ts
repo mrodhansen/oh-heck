@@ -20,6 +20,7 @@ import {
   isOnline,
 } from './offline/sync';
 import { newId } from './offline/rules';
+import { hydrateRoundOrder } from './offline/analytics';
 
 export type GameSummary = {
   id: string;
@@ -50,6 +51,19 @@ export type RoundEntry = {
   bid: number | null;
   tricksTaken: number | null;
   points: number | null;
+  bidPosition: number | null;
+  isDealer: boolean;
+  isFirstBidder: boolean;
+  isLastBidder: boolean;
+  runningBidBefore: number | null;
+  made: boolean | null;
+  trickDelta: number | null;
+  absDelta: number | null;
+  isNilBid: boolean | null;
+  isNilMade: boolean | null;
+  cumulativeScore: number | null;
+  placeAfterRound: number | null;
+  scoreBehindLeader: number | null;
 };
 
 export type RoundDetail = {
@@ -57,12 +71,35 @@ export type RoundDetail = {
   number: number;
   handSize: number;
   dealerSeat: number;
+  firstBidderSeat: number;
   forceBurn: boolean;
   dealerPlayerId: string | undefined;
+  firstBidderPlayerId: string | undefined;
+  bidOrderSeats: number[];
   bidOrderPlayerIds: string[];
+  bidSum: number | null;
+  bidDeficit: number | null;
   forbiddenLastBid: number | null;
+  bidsCompletedAt: string | null;
+  tricksCompletedAt: string | null;
+  completedAt: string | null;
+  editCount: number;
   entries: RoundEntry[];
   complete: boolean;
+};
+
+export type GameEventType =
+  | 'GAME_CREATED'
+  | 'BIDS_SET'
+  | 'TRICKS_SET'
+  | 'ROUND_UPDATED';
+
+export type GameEvent = {
+  id: string;
+  type: GameEventType;
+  roundNumber: number | null;
+  payload: unknown;
+  createdAt: string;
 };
 
 export type GameDetail = {
@@ -72,14 +109,27 @@ export type GameDetail = {
   phase: 'bidding' | 'tricks' | 'completed';
   currentRound: number | null;
   createdAt: string;
+  startedAt: string | null;
   finishedAt: string | null;
+  durationMs: number | null;
+  playerCount: number;
+  firstDealerSeat: number;
+  winnerPlayerId: string | null;
+  winnerScore: number | null;
+  runnerUpScore: number | null;
+  winMargin: number | null;
+  totalForceBurns: number;
+  totalEdits: number;
   tournamentId?: string | null;
   tournamentTableId?: string | null;
   isHighTable?: boolean;
   tableNumber?: number | null;
+  /** True when BE will reject prelim score edits (high table formed). */
+  prelimEditsLocked?: boolean;
   players: { id: string; name: string; seatIndex: number }[];
   rounds: RoundDetail[];
   standings: Standing[];
+  events: GameEvent[];
 };
 
 export type TournamentStatus =
@@ -172,6 +222,8 @@ export type TournamentDetail = {
   tables: TournamentTable[];
   finalStandings: TournamentFinalStanding[] | null;
   proposedTableSizes: number[] | null;
+  proposedTableSizesError: string | null;
+  highTableError: string | null;
 };
 
 export type StatsLeader = { name: string; value: number | string } | null;
@@ -246,13 +298,89 @@ export type StatsResponse = {
   players: StatsPlayer[];
 };
 
+/** Fill analytics defaults for older cached payloads missing new fields. */
+function normalizeGame(raw: GameDetail): GameDetail {
+  const players = raw.players ?? [];
+  const playerCount = players.length;
+
+  return {
+    ...raw,
+    startedAt: raw.startedAt ?? null,
+    durationMs: raw.durationMs ?? null,
+    playerCount,
+    firstDealerSeat: raw.firstDealerSeat ?? Math.max(playerCount - 1, 0),
+    winnerPlayerId: raw.winnerPlayerId ?? null,
+    winnerScore: raw.winnerScore ?? null,
+    runnerUpScore: raw.runnerUpScore ?? null,
+    winMargin: raw.winMargin ?? null,
+    totalForceBurns: raw.totalForceBurns ?? 0,
+    totalEdits: raw.totalEdits ?? 0,
+    events: raw.events ?? [],
+    players,
+    rounds: (raw.rounds ?? []).map((r) => {
+      // Always recompute seating roles from dealer when roster is known.
+      const hydrated =
+        playerCount > 0 ? hydrateRoundOrder(players, r.dealerSeat) : null;
+      const bidOrderSeats = hydrated?.bidOrderSeats ?? r.bidOrderSeats ?? [];
+      const bidOrderPlayerIds =
+        hydrated?.bidOrderPlayerIds ?? r.bidOrderPlayerIds ?? [];
+      const firstBidderSeat =
+        hydrated?.firstBidderSeat ??
+        r.firstBidderSeat ??
+        (playerCount > 0 ? (r.dealerSeat + 1) % playerCount : 0);
+
+      return {
+        ...r,
+        firstBidderSeat,
+        dealerPlayerId: hydrated?.dealerPlayerId ?? r.dealerPlayerId,
+        firstBidderPlayerId:
+          hydrated?.firstBidderPlayerId ?? r.firstBidderPlayerId,
+        bidOrderSeats,
+        bidOrderPlayerIds,
+        bidSum: r.bidSum ?? null,
+        bidDeficit: r.bidDeficit ?? null,
+        forbiddenLastBid: r.forbiddenLastBid ?? null,
+        bidsCompletedAt: r.bidsCompletedAt ?? null,
+        tricksCompletedAt: r.tricksCompletedAt ?? null,
+        completedAt: r.completedAt ?? null,
+        editCount: r.editCount ?? 0,
+        entries: (r.entries ?? []).map((e) => {
+          const roles = hydrated?.entryRolesByPlayerId.get(e.playerId);
+          if (!roles && playerCount > 0) {
+            throw new Error(
+              `Cannot hydrate roles for player ${e.playerId} in round ${r.number}`,
+            );
+          }
+          return {
+            ...e,
+            bidPosition: roles?.bidPosition ?? e.bidPosition ?? null,
+            isDealer: roles?.isDealer ?? false,
+            isFirstBidder: roles?.isFirstBidder ?? false,
+            isLastBidder: roles?.isLastBidder ?? false,
+            runningBidBefore: e.runningBidBefore ?? null,
+            made: e.made ?? null,
+            trickDelta: e.trickDelta ?? null,
+            absDelta: e.absDelta ?? null,
+            isNilBid: e.isNilBid ?? null,
+            isNilMade: e.isNilMade ?? null,
+            cumulativeScore: e.cumulativeScore ?? null,
+            placeAfterRound: e.placeAfterRound ?? null,
+            scoreBehindLeader: e.scoreBehindLeader ?? null,
+          };
+        }),
+      };
+    }),
+  };
+}
+
 async function rememberGame(game: GameDetail): Promise<GameDetail> {
-  await cacheGame(game);
+  const normalized = normalizeGame(game);
+  await cacheGame(normalized);
   const list = (await kvGet<GameSummary[]>('gameList')) ?? [];
-  const summary = toSummary(game);
+  const summary = toSummary(normalized);
   const next = [summary, ...list.filter((g) => g.id !== game.id)];
   await kvSet('gameList', next);
-  return game;
+  return normalized;
 }
 
 async function mergeGameList(server: GameSummary[]): Promise<GameSummary[]> {
@@ -313,15 +441,14 @@ export const api = {
         const flush = await flushOutbox();
         if (!flush.error) {
           const game = await httpRequest<GameDetail>(`/games/${id}`);
-          await rememberGame(game);
-          return game;
+          return rememberGame(game);
         }
       } catch (e) {
         if (!shouldGoOffline(e)) throw e;
       }
     }
     const cached = await getCachedGame<GameDetail>(id);
-    if (cached) return cached;
+    if (cached) return normalizeGame(cached);
     throw new Error('Game not available offline');
   },
 
@@ -385,7 +512,11 @@ export const api = {
 
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
-    const next = localSetBids(current, roundNumber, bids, forceBurn);
+    const normalized = normalizeGame(current);
+    if (normalized.tournamentId) {
+      throw new Error('Tournament games require a live connection');
+    }
+    const next = localSetBids(normalized, roundNumber, bids, forceBurn);
     await rememberGame(next);
     await enqueue({
       type: 'setBids',
@@ -418,7 +549,11 @@ export const api = {
 
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
-    const next = localSetTricks(current, roundNumber, tricks);
+    const normalized = normalizeGame(current);
+    if (normalized.tournamentId) {
+      throw new Error('Tournament games require a live connection');
+    }
+    const next = localSetTricks(normalized, roundNumber, tricks);
     await rememberGame(next);
     await enqueue({
       type: 'setTricks',
@@ -455,8 +590,12 @@ export const api = {
 
     const current = await getCachedGame<GameDetail>(gameId);
     if (!current) throw new Error('Game not available offline');
+    const normalized = normalizeGame(current);
+    if (normalized.tournamentId) {
+      throw new Error('Tournament games require a live connection');
+    }
     const next = localUpdateRound(
-      current,
+      normalized,
       roundNumber,
       body.bids,
       body.tricks,
@@ -506,8 +645,10 @@ export const api = {
     throw new Error('Rules not available offline');
   },
 
-  listTournaments: async (all = false): Promise<TournamentSummary[]> => {
-    const q = all ? '?all=1' : '';
+  listTournaments: async (opts?: {
+    all?: boolean;
+  }): Promise<TournamentSummary[]> => {
+    const q = opts?.all ? '?all=1' : '';
     return httpRequest<TournamentSummary[]>(`/tournaments${q}`);
   },
 
@@ -515,13 +656,18 @@ export const api = {
     return httpRequest<TournamentDetail>(`/tournaments/${id}`);
   },
 
-  createTournament: async (
-    targetPlayerCount: number,
-    name?: string,
-  ): Promise<TournamentDetail> => {
+  createTournament: async (args: {
+    targetPlayerCount: number;
+    id: string;
+    name?: string;
+  }): Promise<TournamentDetail> => {
     return httpRequest<TournamentDetail>('/tournaments', {
       method: 'POST',
-      body: JSON.stringify({ targetPlayerCount, name }),
+      body: JSON.stringify({
+        id: args.id,
+        targetPlayerCount: args.targetPlayerCount,
+        name: args.name,
+      }),
     });
   },
 
@@ -551,27 +697,17 @@ export const api = {
     });
   },
 
-  setTournamentTableDealer: async (
-    tournamentId: string,
-    tableId: string,
-    tournamentPlayerId: string,
-  ): Promise<TournamentDetail> => {
-    return httpRequest<TournamentDetail>(
-      `/tournaments/${tournamentId}/tables/${tableId}/dealer`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ tournamentPlayerId }),
-      },
-    );
-  },
-
   startTournamentTable: async (
     tournamentId: string,
     tableId: string,
   ): Promise<{ tournament: TournamentDetail; game: GameDetail }> => {
-    return httpRequest<{ tournament: TournamentDetail; game: GameDetail }>(
-      `/tournaments/${tournamentId}/tables/${tableId}/start`,
-      { method: 'POST' },
-    );
+    const res = await httpRequest<{
+      tournament: TournamentDetail;
+      game: GameDetail;
+    }>(`/tournaments/${tournamentId}/tables/${tableId}/start`, {
+      method: 'POST',
+    });
+    await rememberGame(res.game);
+    return res;
   },
 };

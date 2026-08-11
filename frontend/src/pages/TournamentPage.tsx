@@ -40,7 +40,7 @@ export function TournamentPage() {
   }, [load]);
 
   useSocketRoom(id ? `tournament:${id}` : null, 'tournament:update', () => {
-    void load().catch(() => undefined);
+    void load().catch((e: Error) => setError(e.message));
   });
 
   const selectedTable = useMemo(
@@ -125,7 +125,8 @@ export function TournamentPage() {
 
   const x = t.players.length;
   const n = t.targetPlayerCount;
-  const canSeat = t.status === 'OPEN' && x >= n;
+  const canSeat =
+    t.status === 'OPEN' && x >= n && !t.proposedTableSizesError;
 
   return (
     <div className="page-fit">
@@ -140,6 +141,11 @@ export function TournamentPage() {
       </div>
 
       {error && <div className="banner banner-inline">{error}</div>}
+      {t.highTableError && (
+        <div className="banner banner-inline" role="alert">
+          {t.highTableError}
+        </div>
+      )}
 
       <div className="page-fit-body stack">
         {t.status === 'OPEN' && (
@@ -155,6 +161,11 @@ export function TournamentPage() {
               <p className="hint">
                 Tables will be:{' '}
                 {t.proposedTableSizes.map((s) => `${s}`).join(' · ')}
+              </p>
+            )}
+            {t.proposedTableSizesError && (
+              <p className="hint" role="alert">
+                {t.proposedTableSizesError}
               </p>
             )}
 

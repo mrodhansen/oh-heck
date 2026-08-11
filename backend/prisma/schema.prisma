@@ -34,6 +34,13 @@ enum TournamentTableStatus {
   COMPLETED
 }
 
+enum GameEventType {
+  GAME_CREATED
+  BIDS_SET
+  TRICKS_SET
+  ROUND_UPDATED
+}
+
 model Game {
   id         String     @id @default(uuid())
   name       String?
@@ -41,6 +48,23 @@ model Game {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   finishedAt DateTime?
+
+  /// Denormalized player count at create
+  playerCount     Int       @default(0)
+  /// Round-1 dealer seat (convention: last seat)
+  firstDealerSeat Int       @default(0)
+  /// First time bids were committed (play actually started)
+  startedAt       DateTime?
+  /// finishedAt - createdAt in ms
+  durationMs      Int?
+  /// Single winner: highest total, then lowest seatIndex on ties (not multi-winner)
+  winnerPlayerId  String?
+  winnerScore     Int?
+  runnerUpScore   Int?
+  /// winnerScore - runnerUpScore; null when no runner-up (sole player)
+  winMargin       Int?
+  totalForceBurns Int       @default(0)
+  totalEdits      Int       @default(0)
 
   /// When set, this game belongs to a tournament table
   tournamentTableId String? @unique
@@ -50,11 +74,14 @@ model Game {
 
   players Player[]
   rounds  Round[]
+  events  GameEvent[]
 
   tournamentTable TournamentTable? @relation(fields: [tournamentTableId], references: [id], onDelete: SetNull)
   tournament      Tournament?      @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
 
   @@index([tournamentId])
+  @@index([status])
+  @@index([finishedAt])
 }
 
 model Player {
@@ -87,6 +114,23 @@ model Round {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  /// Left of dealer — first bidder and first-trick lead
+  firstBidderSeat     Int     @default(0)
+  dealerPlayerId      String?
+  firstBidderPlayerId String?
+  /// Seat indices in bid order (left of dealer → dealer last)
+  bidOrderSeats       Int[]   @default([])
+  /// Sum of all bids once bidding complete
+  bidSum              Int?
+  /// handSize - bidSum (positive = table under-bid, negative = over-bid)
+  bidDeficit          Int?
+  /// Forbidden last-bid value locked when bids completed (null if unrestricted)
+  forbiddenLastBid    Int?
+  bidsCompletedAt     DateTime?
+  tricksCompletedAt   DateTime?
+  completedAt         DateTime?
+  editCount           Int     @default(0)
+
   game    Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
   entries RoundEntry[]
 
@@ -104,11 +148,52 @@ model RoundEntry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// 0 = first bidder / first lead; n-1 = dealer (last bidder)
+  bidPosition      Int?
+  isDealer         Boolean @default(false)
+  isFirstBidder    Boolean @default(false)
+  isLastBidder     Boolean @default(false)
+  /// Sum of bids by players earlier in bid order (at commit time)
+  runningBidBefore Int?
+
+  /// tricksTaken == bid
+  made       Boolean?
+  /// tricksTaken - bid
+  trickDelta Int?
+  absDelta   Int?
+  isNilBid   Boolean?
+  isNilMade  Boolean?
+
+  /// Running game total after this round completed
+  cumulativeScore   Int?
+  placeAfterRound   Int?
+  /// Leader total - this total after round (0 if tied for lead or leading)
+  scoreBehindLeader Int?
+
   round  Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([roundId, playerId])
   @@index([playerId])
+  @@index([made])
+  @@index([isDealer])
+  @@index([bidPosition])
+}
+
+model GameEvent {
+  id          String        @id @default(uuid())
+  gameId      String
+  type        GameEventType
+  roundNumber Int?
+  /// Full snapshot of the action (bids, tricks, before/after on edits, meta)
+  payload     Json
+  createdAt   DateTime      @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+  @@index([gameId, type])
+  @@index([type])
 }
 
 model Tournament {

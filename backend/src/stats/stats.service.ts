@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { GameStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assignPlacesByTotal } from '../games/analytics';
 
 type PlayerAgg = {
   name: string;
@@ -193,16 +194,7 @@ export class StatsService {
         };
       });
 
-      const ranked = [...playerTotals].sort((a, b) => b.total - a.total);
-      let place = 0;
-      let last: number | null = null;
-      const places = ranked.map((row, idx) => {
-        if (last === null || row.total !== last) {
-          place = idx + 1;
-          last = row.total;
-        }
-        return { ...row, place };
-      });
+      const places = assignPlacesByTotal(playerTotals);
 
       const scores = places.map((p) => p.total);
       const highScore = scores.length ? Math.max(...scores) : null;

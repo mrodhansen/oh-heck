@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,7 +13,6 @@ import {
   TournamentTableStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { RulesService } from '../rules/rules.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { GamesService } from '../games/games.service';
 import {
@@ -54,8 +55,8 @@ type FullTournament = Prisma.TournamentGetPayload<{
 export class TournamentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly rules: RulesService,
     private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => GamesService))
     private readonly games: GamesService,
   ) {}
 
@@ -68,7 +69,6 @@ export class TournamentsService {
             TournamentStatus.SEATED,
             TournamentStatus.IN_PROGRESS,
             TournamentStatus.HIGH_TABLE,
-            TournamentStatus.COMPLETED,
           ],
         },
       },
@@ -93,8 +93,35 @@ export class TournamentsService {
   }
 
   async get(id: string) {
+    let highTableError: string | null = null;
+    const before = await this.prisma.tournament.findUnique({
+      where: { id },
+      select: { status: true, highTableAt: true, finishedAt: true },
+    });
+    try {
+      await this.tryFinalizePrelims(id);
+      await this.tryFinalizeTournament(id);
+    } catch (e) {
+      highTableError =
+        e instanceof BadRequestException
+          ? e.message
+          : 'Tournament finalization failed';
+      if (!(e instanceof BadRequestException)) {
+        // Log non-domain failures server-side without leaking internals to clients
+        console.error('tryFinalize failed', id, e);
+      }
+    }
     const t = await this.findFull(id);
-    return this.toDetail(t);
+    if (
+      before &&
+      (before.status !== t.status ||
+        before.highTableAt?.getTime() !== t.highTableAt?.getTime() ||
+        before.finishedAt?.getTime() !== t.finishedAt?.getTime())
+    ) {
+      this.realtime.emitTournament(id, this.toDetail(t));
+      this.realtime.emitTournamentList();
+    }
+    return { ...this.toDetail(t), highTableError };
   }
 
   async create(dto: CreateTournamentDto) {
@@ -110,7 +137,20 @@ export class TournamentsService {
         where: { id: dto.id },
         include: tournamentInclude,
       });
-      if (existing) return this.toDetail(existing);
+      if (existing) {
+        if (existing.targetPlayerCount !== dto.targetPlayerCount) {
+          throw new BadRequestException(
+            'Tournament id already exists with different target player count',
+          );
+        }
+        const incomingName = dto.name?.trim() || null;
+        if (dto.name !== undefined && existing.name !== incomingName) {
+          throw new BadRequestException(
+            'Tournament id already exists with different name',
+          );
+        }
+        return this.toDetail(existing);
+      }
     }
 
     const created = await this.prisma.tournament.create({
@@ -196,12 +236,19 @@ export class TournamentsService {
       );
     }
 
-    const sizes = balanceTableSizes(
-      t.players.length,
-      t.preferredTableSize,
-      t.minTableSize,
-      t.maxTableSize,
-    );
+    let sizes: number[];
+    try {
+      sizes = balanceTableSizes(
+        t.players.length,
+        t.preferredTableSize,
+        t.minTableSize,
+        t.maxTableSize,
+      );
+    } catch (e) {
+      throw new BadRequestException(
+        e instanceof Error ? e.message : 'Cannot balance tables for this roster',
+      );
+    }
 
     const roster = shuffleInPlace([...t.players]);
     let cursor = 0;
@@ -211,16 +258,24 @@ export class TournamentsService {
       const size = sizes[i]!;
       const slice = roster.slice(cursor, cursor + size);
       cursor += size;
-      // Random dealer = last index before rotate → pick random then rotate
-      const dealerIdx = Math.floor(Math.random() * slice.length);
-      const ordered = rotateDealerLast(slice, dealerIdx);
       tablePlans.push({
         tableNumber: i + 1,
-        playerIds: ordered.map((p) => p.id),
+        playerIds: slice.map((p) => p.id),
       });
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.tournament.updateMany({
+        where: { id: tournamentId, status: TournamentStatus.OPEN },
+        data: {
+          status: TournamentStatus.SEATED,
+          seatedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Tables already seated');
+      }
+
       for (const plan of tablePlans) {
         await tx.tournamentTable.create({
           data: {
@@ -239,13 +294,6 @@ export class TournamentsService {
           },
         });
       }
-      await tx.tournament.update({
-        where: { id: tournamentId },
-        data: {
-          status: TournamentStatus.SEATED,
-          seatedAt: new Date(),
-        },
-      });
     });
 
     return this.refreshAndEmit(tournamentId);
@@ -322,56 +370,73 @@ export class TournamentsService {
       name: gameName,
     });
 
-    // Link tournament players onto game players by seat/name
-    await this.prisma.$transaction(async (tx) => {
-      const fullGame = await tx.game.findUniqueOrThrow({
-        where: { id: game.id },
-        include: { players: { orderBy: { seatIndex: 'asc' } } },
-      });
+    // Link tournament players onto game players by seat index
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const fullGame = await tx.game.findUniqueOrThrow({
+          where: { id: game.id },
+          include: { players: { orderBy: { seatIndex: 'asc' } } },
+        });
 
-      for (const gp of fullGame.players) {
-        const seat = seats.find((s) => s.seatIndex === gp.seatIndex);
-        if (seat) {
+        if (fullGame.players.length !== seats.length) {
+          throw new BadRequestException(
+            'Game player count does not match table seats',
+          );
+        }
+
+        for (const gp of fullGame.players) {
+          const seat = seats.find((s) => s.seatIndex === gp.seatIndex);
+          if (!seat) {
+            throw new BadRequestException(
+              `No tournament seat for game seat index ${gp.seatIndex}`,
+            );
+          }
           await tx.player.update({
             where: { id: gp.id },
             data: { tournamentPlayerId: seat.tournamentPlayerId },
           });
         }
-      }
 
-      await tx.game.update({
-        where: { id: game.id },
-        data: {
-          tournamentTableId: table.id,
-          tournamentId,
-          isHighTable: table.isHighTable,
-          tableNumber: table.tableNumber,
-        },
+        await tx.game.update({
+          where: { id: game.id },
+          data: {
+            tournamentTableId: table.id,
+            tournamentId,
+            isHighTable: table.isHighTable,
+            tableNumber: table.tableNumber,
+          },
+        });
+
+        await tx.tournamentTable.update({
+          where: { id: table.id },
+          data: {
+            status: TournamentTableStatus.IN_PROGRESS,
+            startedAt: new Date(),
+          },
+        });
+
+        const tourneyStatus = table.isHighTable
+          ? TournamentStatus.HIGH_TABLE
+          : TournamentStatus.IN_PROGRESS;
+
+        await tx.tournament.update({
+          where: { id: tournamentId },
+          data: {
+            status: tourneyStatus,
+            startedAt: t.startedAt ?? new Date(),
+            ...(table.isHighTable && !t.highTableAt
+              ? { highTableAt: new Date() }
+              : {}),
+          },
+        });
       });
-
-      await tx.tournamentTable.update({
-        where: { id: table.id },
-        data: {
-          status: TournamentTableStatus.IN_PROGRESS,
-          startedAt: new Date(),
-        },
-      });
-
-      const tourneyStatus = table.isHighTable
-        ? TournamentStatus.HIGH_TABLE
-        : TournamentStatus.IN_PROGRESS;
-
-      await tx.tournament.update({
-        where: { id: tournamentId },
-        data: {
-          status: tourneyStatus,
-          startedAt: t.startedAt ?? new Date(),
-          ...(table.isHighTable && !t.highTableAt
-            ? { highTableAt: new Date() }
-            : {}),
-        },
-      });
-    });
+    } catch (e) {
+      // Avoid orphan non-tournament game if link fails
+      await this.prisma.game
+        .delete({ where: { id: game.id } })
+        .catch(() => undefined);
+      throw e;
+    }
 
     const detail = await this.refreshAndEmit(tournamentId);
     const gameDetail = await this.games.getGame(game.id);
@@ -404,41 +469,77 @@ export class TournamentsService {
       },
     });
 
-    const t = await this.findFull(tournamentId);
-    const stage = game.isHighTable
-      ? TournamentStage.HIGH_TABLE
-      : TournamentStage.PRELIM;
-
-    const stageTables = t.tables.filter((tb) => tb.stage === stage);
-    const allDone = stageTables.every(
-      (tb) =>
-        tb.id === tableId ||
-        tb.status === TournamentTableStatus.COMPLETED ||
-        tb.game?.status === GameStatus.COMPLETED,
-    );
-
-    if (!allDone) {
+    if (game.isHighTable) {
+      await this.tryFinalizeTournament(tournamentId);
       return this.refreshAndEmit(tournamentId);
     }
 
-    if (stage === TournamentStage.HIGH_TABLE) {
-      await this.prisma.tournament.update({
-        where: { id: tournamentId },
-        data: {
-          status: TournamentStatus.COMPLETED,
-          finishedAt: new Date(),
-        },
-      });
-      return this.refreshAndEmit(tournamentId);
-    }
-
-    // Form high table from prelim results
-    await this.formHighTable(tournamentId);
+    await this.tryFinalizePrelims(tournamentId);
     return this.refreshAndEmit(tournamentId);
+  }
+
+  /**
+   * Idempotent: if high table game is done, mark tournament COMPLETED.
+   */
+  async tryFinalizeTournament(tournamentId: string): Promise<void> {
+    const t = await this.findFull(tournamentId);
+    if (t.status === TournamentStatus.COMPLETED) return;
+    if (t.status !== TournamentStatus.HIGH_TABLE) return;
+
+    const high = t.tables.find(isHighTableRow);
+    if (!high) return;
+    if (!isTableCompleted(high)) return;
+
+    await this.prisma.tournament.updateMany({
+      where: {
+        id: tournamentId,
+        status: TournamentStatus.HIGH_TABLE,
+      },
+      data: {
+        status: TournamentStatus.COMPLETED,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Idempotent: if every prelim table is done and no high table exists, form it.
+   * Safe to call from GET and onGameCompleted (recovery after crash/throw).
+   */
+  async tryFinalizePrelims(tournamentId: string): Promise<void> {
+    const t = await this.findFull(tournamentId);
+    if (
+      t.status === TournamentStatus.HIGH_TABLE ||
+      t.status === TournamentStatus.COMPLETED ||
+      t.status === TournamentStatus.OPEN ||
+      t.status === TournamentStatus.SEATED
+    ) {
+      return;
+    }
+
+    if (t.tables.some(isHighTableRow)) return;
+
+    const prelim = t.tables.filter((tb) => tb.stage === TournamentStage.PRELIM);
+    if (prelim.length === 0) return;
+
+    if (!prelim.every(isTableCompleted)) return;
+
+    await this.formHighTable(tournamentId);
   }
 
   private async formHighTable(tournamentId: string) {
     const t = await this.findFull(tournamentId);
+    if (
+      t.status === TournamentStatus.HIGH_TABLE ||
+      t.status === TournamentStatus.COMPLETED
+    ) {
+      return;
+    }
+    const existingHigh = t.tables.find(
+      (tb) => tb.stage === TournamentStage.HIGH_TABLE || tb.isHighTable,
+    );
+    if (existingHigh) return;
+
     const prelim = t.tables.filter((tb) => tb.stage === TournamentStage.PRELIM);
 
     type Qualifier = {
@@ -460,27 +561,14 @@ export class TournamentsService {
       const standings = this.games.computeStandingsPublic(table.game);
       for (const s of standings) {
         const gp = table.game.players.find((p) => p.id === s.playerId);
-        const tpId = gp?.tournamentPlayerId;
-        if (!tpId) {
-          // Fallback match by name
-          const byName = t.players.find(
-            (p) => p.name.toLowerCase() === s.playerName.toLowerCase(),
-          );
-          if (!byName) continue;
-          const q: Qualifier = {
-            tournamentPlayerId: byName.id,
-            sourceTableId: table.id,
-            sourceTableNumber: table.tableNumber,
-            sourcePlace: s.place,
-            sourceScore: s.total,
-          };
-          const list = byPlace.get(s.place) ?? [];
-          list.push(q);
-          byPlace.set(s.place, list);
-          continue;
-        }
+        const resolved = this.resolveTournamentPlayer(
+          t,
+          gp?.tournamentPlayerId,
+          s.playerName,
+          `table ${table.tableNumber}`,
+        );
         const q: Qualifier = {
-          tournamentPlayerId: tpId,
+          tournamentPlayerId: resolved.id,
           sourceTableId: table.id,
           sourceTableNumber: table.tableNumber,
           sourcePlace: s.place,
@@ -530,35 +618,104 @@ export class TournamentsService {
     const dealerIdx = Math.floor(Math.random() * selected.length);
     const ordered = rotateDealerLast(selected, dealerIdx);
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.tournamentTable.create({
-        data: {
-          tournamentId,
-          tableNumber: 1,
-          stage: TournamentStage.HIGH_TABLE,
-          isHighTable: true,
-          status: TournamentTableStatus.READY,
-          dealerSeat: ordered.length - 1,
-          seats: {
-            create: ordered.map((q, seatIndex) => ({
-              tournamentPlayerId: q.tournamentPlayerId,
-              seatIndex,
-              sourceTableId: q.sourceTableId,
-              sourceTableNumber: q.sourceTableNumber,
-              sourcePlace: q.sourcePlace,
-              sourceScore: q.sourceScore,
-            })),
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Re-check inside txn to shrink race window with concurrent prelim finishes
+        const already = await tx.tournamentTable.findFirst({
+          where: {
+            tournamentId,
+            stage: TournamentStage.HIGH_TABLE,
           },
-        },
+        });
+        if (already) return;
+
+        await tx.tournamentTable.create({
+          data: {
+            tournamentId,
+            tableNumber: 1,
+            stage: TournamentStage.HIGH_TABLE,
+            isHighTable: true,
+            status: TournamentTableStatus.READY,
+            dealerSeat: ordered.length - 1,
+            seats: {
+              create: ordered.map((q, seatIndex) => ({
+                tournamentPlayerId: q.tournamentPlayerId,
+                seatIndex,
+                sourceTableId: q.sourceTableId,
+                sourceTableNumber: q.sourceTableNumber,
+                sourcePlace: q.sourcePlace,
+                sourceScore: q.sourceScore,
+              })),
+            },
+          },
+        });
+        await tx.tournament.update({
+          where: { id: tournamentId },
+          data: {
+            status: TournamentStatus.HIGH_TABLE,
+            highTableAt: new Date(),
+          },
+        });
       });
-      await tx.tournament.update({
-        where: { id: tournamentId },
-        data: {
-          status: TournamentStatus.HIGH_TABLE,
-          highTableAt: new Date(),
+    } catch (e) {
+      // Unique (tournamentId, tableNumber, stage) — concurrent former won
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const existing = await this.prisma.tournamentTable.findFirst({
+          where: {
+            tournamentId,
+            OR: [{ stage: TournamentStage.HIGH_TABLE }, { isHighTable: true }],
+          },
+        });
+        if (existing) return;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Block prelim score edits once high table (or finals) exists so
+   * qualification seats cannot silently diverge from live scores.
+   */
+  async assertPrelimEditable(tournamentId: string) {
+    const t = await this.prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: {
+        status: true,
+        highTableAt: true,
+        tables: {
+          where: {
+            OR: [{ stage: TournamentStage.HIGH_TABLE }, { isHighTable: true }],
+          },
+          select: { id: true },
+          take: 1,
         },
-      });
+      },
     });
+    if (!t) throw new NotFoundException('Tournament not found');
+    if (
+      t.status === TournamentStatus.HIGH_TABLE ||
+      t.status === TournamentStatus.COMPLETED ||
+      t.highTableAt != null ||
+      t.tables.length > 0
+    ) {
+      throw new BadRequestException(
+        'Cannot edit prelim scores after the high table has been formed',
+      );
+    }
+  }
+
+  /** True when prelim score edits must be blocked for UI consumers. */
+  async isPrelimEditsLocked(tournamentId: string): Promise<boolean> {
+    try {
+      await this.assertPrelimEditable(tournamentId);
+      return false;
+    } catch (e) {
+      if (e instanceof BadRequestException) return true;
+      throw e;
+    }
   }
 
   /** Push latest tournament detail to socket room (e.g. after linked game scores). */
@@ -668,16 +825,33 @@ export class TournamentsService {
       })),
       tables,
       finalStandings: this.computeFinalStandings(t),
-      proposedTableSizes:
-        t.status === TournamentStatus.OPEN && t.players.length >= 2
-          ? safeBalance(
-              t.players.length,
-              t.preferredTableSize,
-              t.minTableSize,
-              t.maxTableSize,
-            )
-          : null,
+      highTableError: null as string | null,
+      ...this.proposedSeating(t),
     };
+  }
+
+  private proposedSeating(t: FullTournament): {
+    proposedTableSizes: number[] | null;
+    proposedTableSizesError: string | null;
+  } {
+    if (t.status !== TournamentStatus.OPEN || t.players.length < 2) {
+      return { proposedTableSizes: null, proposedTableSizesError: null };
+    }
+    try {
+      return {
+        proposedTableSizes: balanceTableSizes(
+          t.players.length,
+          t.preferredTableSize,
+          t.minTableSize,
+          t.maxTableSize,
+        ),
+        proposedTableSizesError: null,
+      };
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : 'Cannot balance tables for this roster';
+      return { proposedTableSizes: null, proposedTableSizesError: message };
+    }
   }
 
   /**
@@ -722,24 +896,18 @@ export class TournamentsService {
 
     for (const s of sortedHigh) {
       const gp = high.game.players.find((p) => p.id === s.playerId);
-      let tpId = gp?.tournamentPlayerId ?? null;
-      let name = s.playerName;
-      if (!tpId) {
-        const byName = t.players.find(
-          (p) => p.name.toLowerCase() === s.playerName.toLowerCase(),
-        );
-        if (!byName) continue;
-        tpId = byName.id;
-        name = byName.name;
-      } else {
-        name = t.players.find((p) => p.id === tpId)?.name ?? name;
-      }
-      if (placed.has(tpId)) continue;
-      placed.add(tpId);
-      const seat = high.seats.find((x) => x.tournamentPlayerId === tpId);
+      const resolved = this.resolveTournamentPlayer(
+        t,
+        gp?.tournamentPlayerId,
+        s.playerName,
+        'high table',
+      );
+      if (placed.has(resolved.id)) continue;
+      placed.add(resolved.id);
+      const seat = high.seats.find((x) => x.tournamentPlayerId === resolved.id);
       rows.push({
-        tournamentPlayerId: tpId,
-        name,
+        tournamentPlayerId: resolved.id,
+        name: resolved.name,
         place: 0,
         score: s.total,
         source: 'HIGH_TABLE',
@@ -762,26 +930,24 @@ export class TournamentsService {
     const prelim = t.tables.filter((tb) => tb.stage === TournamentStage.PRELIM);
 
     for (const table of prelim) {
-      if (!table.game) continue;
+      if (!table.game) {
+        throw new BadRequestException(
+          `Prelim table ${table.tableNumber} has no game for final standings`,
+        );
+      }
       const standings = this.games.computeStandingsPublic(table.game);
       for (const s of standings) {
         const gp = table.game.players.find((p) => p.id === s.playerId);
-        let tpId = gp?.tournamentPlayerId ?? null;
-        let name = s.playerName;
-        if (!tpId) {
-          const byName = t.players.find(
-            (p) => p.name.toLowerCase() === s.playerName.toLowerCase(),
-          );
-          if (!byName) continue;
-          tpId = byName.id;
-          name = byName.name;
-        } else {
-          name = t.players.find((p) => p.id === tpId)?.name ?? name;
-        }
-        if (placed.has(tpId)) continue;
+        const resolved = this.resolveTournamentPlayer(
+          t,
+          gp?.tournamentPlayerId,
+          s.playerName,
+          `prelim table ${table.tableNumber}`,
+        );
+        if (placed.has(resolved.id)) continue;
         prelimRows.push({
-          tournamentPlayerId: tpId,
-          name,
+          tournamentPlayerId: resolved.id,
+          name: resolved.name,
           prelimPlace: s.place,
           prelimScore: s.total,
           prelimTableNumber: table.tableNumber,
@@ -818,19 +984,44 @@ export class TournamentsService {
       place: idx + 1,
     }));
   }
+
+  private resolveTournamentPlayer(
+    t: FullTournament,
+    tournamentPlayerId: string | null | undefined,
+    standingName: string,
+    context: string,
+  ): { id: string; name: string } {
+    if (tournamentPlayerId) {
+      const byId = t.players.find((p) => p.id === tournamentPlayerId);
+      if (byId) return { id: byId.id, name: byId.name };
+    }
+    const byName = t.players.find(
+      (p) => p.name.toLowerCase() === standingName.toLowerCase(),
+    );
+    if (!byName) {
+      throw new BadRequestException(
+        `Cannot map standing "${standingName}" on ${context} to a tournament player`,
+      );
+    }
+    return { id: byName.id, name: byName.name };
+  }
 }
 
-function safeBalance(
-  n: number,
-  preferred: number,
-  min: number,
-  max: number,
-): number[] | null {
-  try {
-    return balanceTableSizes(n, preferred, min, max);
-  } catch {
-    return null;
-  }
+function isHighTableRow(tb: {
+  stage: TournamentStage;
+  isHighTable: boolean;
+}): boolean {
+  return tb.stage === TournamentStage.HIGH_TABLE || tb.isHighTable;
+}
+
+function isTableCompleted(tb: {
+  status: TournamentTableStatus;
+  game?: { status: GameStatus } | null;
+}): boolean {
+  return (
+    tb.status === TournamentTableStatus.COMPLETED ||
+    tb.game?.status === GameStatus.COMPLETED
+  );
 }
 
 function currentRoundFromGame(game: {

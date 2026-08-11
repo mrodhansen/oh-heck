@@ -48,7 +48,11 @@ export class RulesService implements OnModuleInit {
     if (roundNumber < 1 || roundNumber > this.rules.meta.rounds) {
       throw new Error(`Round must be 1–${this.rules.meta.rounds}`);
     }
-    return this.rules.hand_sizes[roundNumber - 1];
+    const size = this.rules.hand_sizes[roundNumber - 1];
+    if (size === undefined) {
+      throw new Error(`Missing hand size for round ${roundNumber}`);
+    }
+    return size;
   }
 
   getTotalRounds(): number {

@@ -1,8 +1,12 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const base = process.env.VITE_BASE || '/';
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const backendTournaments = path.resolve(rootDir, '../backend/src/tournaments');
 
 export default defineConfig({
   base,
@@ -79,5 +83,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Only pure tournament helpers — not monorepo root / backend .env
+    fs: { allow: [backendTournaments] },
   },
 });

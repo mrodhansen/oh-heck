@@ -10,6 +10,9 @@ export function assertBids(
   const round = game.rounds.find((r) => r.number === roundNumber);
   if (!round) throw new Error(`Round ${roundNumber} not found`);
   if (!opts?.allowEditPast) {
+    if (game.status === 'COMPLETED' || game.phase === 'completed') {
+      throw new Error('Game is completed');
+    }
     if (game.currentRound != null && roundNumber !== game.currentRound) {
       throw new Error(`Can only set bids on current round (${game.currentRound})`);
     }
@@ -38,7 +41,10 @@ export function assertBids(
     }
   }
 
-  const order = bidOrderSeats(round.number, game.players.length);
+  const order =
+    round.bidOrderSeats?.length === game.players.length
+      ? round.bidOrderSeats
+      : bidOrderSeats(round.number, game.players.length);
   const seatToPlayer = new Map(game.players.map((p) => [p.seatIndex, p]));
   const bidByPlayer = new Map(bids.map((b) => [b.playerId, b.bid]));
   let running = 0;
@@ -69,6 +75,9 @@ export function assertTricks(
   const round = game.rounds.find((r) => r.number === roundNumber);
   if (!round) throw new Error(`Round ${roundNumber} not found`);
   if (!opts?.allowEditPast) {
+    if (game.status === 'COMPLETED' || game.phase === 'completed') {
+      throw new Error('Game is completed');
+    }
     if (game.currentRound != null && roundNumber !== game.currentRound) {
       throw new Error(
         `Can only set tricks on current round (${game.currentRound})`,

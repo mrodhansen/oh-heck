@@ -41,6 +41,11 @@ describe('hand sizes', () => {
     const sizes = Array.from({ length: 13 }, (_, i) => getHandSize(i + 1));
     expect(sizes).toEqual([7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7]);
   });
+
+  it('throws on out-of-range round', () => {
+    expect(() => getHandSize(0)).toThrow(/Invalid round/);
+    expect(() => getHandSize(14)).toThrow(/Invalid round/);
+  });
 });
 
 describe('dealerSeat / bidOrderSeats', () => {

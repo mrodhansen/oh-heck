@@ -4,7 +4,11 @@ import { api, GameDetail } from '../api';
 import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
 import { EditRoundModal } from '../components/EditRoundModal';
-import { forbiddenLastBid as computeForbiddenLast } from '../offline/rules';
+import {
+  forbiddenLastBid as computeForbiddenLast,
+  TOTAL_ROUNDS,
+} from '../offline/rules';
+import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
 import { useSocketRoom } from '../useSocketRoom';
 
 export function GamePage() {
@@ -38,7 +42,7 @@ export function GamePage() {
   }, [load]);
 
   useSocketRoom(id ? `game:${id}` : null, 'game:update', () => {
-    void load().catch(() => undefined);
+    void load().catch((e: Error) => setError(e.message));
   });
 
   const current = useMemo(() => {
@@ -140,10 +144,7 @@ export function GamePage() {
       const updated = await api.setBids(
         game.id,
         current.number,
-        game.players.map((p) => ({
-          playerId: p.id,
-          bid: nextLocked[p.id] ?? 0,
-        })),
+        buildBidPayload(game.players, nextLocked),
         applyForceBurn,
       );
       setGame(updated);
@@ -186,10 +187,7 @@ export function GamePage() {
       const updated = await api.setTricks(
         game.id,
         current.number,
-        order.map((playerId) => ({
-          playerId,
-          tricksTaken: nextLocked[playerId] ?? 0,
-        })),
+        buildTrickPayload(order, nextLocked),
       );
       setGame(updated);
       setLockedTricks({});
@@ -275,7 +273,14 @@ export function GamePage() {
 
       {(isFinished || tab === 'board') && (
         <div className="panel-scroll">
-          <Scoreboard game={game} onEditRound={(n) => setEditRound(n)} />
+          <Scoreboard
+            game={game}
+            onEditRound={
+              game.prelimEditsLocked
+                ? undefined
+                : (n) => setEditRound(n)
+            }
+          />
         </div>
       )}
 
@@ -508,7 +513,7 @@ export function GamePage() {
                   {saving
                     ? '…'
                     : isLastTrickEntry
-                      ? current.number === 13
+                      ? current.number === TOTAL_ROUNDS
                         ? 'Finish game'
                         : 'Score round'
                       : 'Confirm tricks'}

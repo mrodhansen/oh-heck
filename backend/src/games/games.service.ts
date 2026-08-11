@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GameStatus, Prisma } from '@prisma/client';
+import { GameEventType, GameStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -16,7 +16,17 @@ import {
   SetTricksDto,
   UpdateRoundDto,
 } from './dto';
-// CreateGameDto etc. also used by syncOperations validation
+import {
+  assignPlacesByTotal,
+  clearOutcomeFields,
+  computeBidAnalytics,
+  computeGameFinishStats,
+  computeOutcome,
+  cumulativeFieldsForRound,
+  entryRoles,
+  eventCreate,
+  roundSetupFields,
+} from './analytics';
 
 const gameInclude = {
   players: { orderBy: { seatIndex: 'asc' as const } },
@@ -27,6 +37,9 @@ const gameInclude = {
         include: { player: true },
       },
     },
+  },
+  events: {
+    orderBy: { createdAt: 'asc' as const },
   },
 } satisfies Prisma.GameInclude;
 
@@ -71,6 +84,7 @@ export class GamesService {
 
     const totalRounds = this.rules.getTotalRounds();
     const playerCount = names.length;
+    const firstDealerSeat = this.rules.dealerSeat(1, playerCount);
 
     if (dto.playerIds && dto.playerIds.length !== names.length) {
       throw new BadRequestException('playerIds must match playerNames length');
@@ -111,7 +125,7 @@ export class GamesService {
             );
           }
         }
-        return this.toDetail(existing);
+        return await this.toDetail(existing);
       }
     }
 
@@ -121,6 +135,8 @@ export class GamesService {
           ...(dto.id ? { id: dto.id } : {}),
           name: dto.name?.trim() || defaultGameName(names),
           status: GameStatus.BIDDING,
+          playerCount,
+          firstDealerSeat,
           players: {
             create: names.map((name, seatIndex) => ({
               ...(dto.playerIds ? { id: dto.playerIds[seatIndex] } : {}),
@@ -132,24 +148,62 @@ export class GamesService {
         include: { players: { orderBy: { seatIndex: 'asc' } } },
       });
 
+      const players = created.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        seatIndex: p.seatIndex,
+      }));
+
       for (let r = 1; r <= totalRounds; r++) {
         const handSize = this.rules.getHandSize(r);
         const dealerSeat = this.rules.dealerSeat(r, playerCount);
-        const round = await tx.round.create({
+        const setup = roundSetupFields(players, dealerSeat);
+        const order = setup.bidOrderSeats;
+
+        await tx.round.create({
           data: {
             gameId: created.id,
             number: r,
             handSize,
             dealerSeat,
+            firstBidderSeat: setup.firstBidderSeat,
+            dealerPlayerId: setup.dealerPlayerId,
+            firstBidderPlayerId: setup.firstBidderPlayerId,
+            bidOrderSeats: order,
             entries: {
-              create: created.players.map((p) => ({
-                playerId: p.id,
-              })),
+              create: players.map((p) => {
+                const roles = entryRoles(p.seatIndex, dealerSeat, order);
+                return {
+                  playerId: p.id,
+                  bidPosition: roles.bidPosition,
+                  isDealer: roles.isDealer,
+                  isFirstBidder: roles.isFirstBidder,
+                  isLastBidder: roles.isLastBidder,
+                };
+              }),
             },
           },
         });
-        void round;
       }
+
+      await tx.gameEvent.create({
+        data: eventCreate(
+          created.id,
+          GameEventType.GAME_CREATED,
+          {
+            name: created.name,
+            playerCount,
+            firstDealerSeat,
+            playerNames: names,
+            playerIds: players.map((p) => p.id),
+            seatOrder: players.map((p) => ({
+              playerId: p.id,
+              name: p.name,
+              seatIndex: p.seatIndex,
+            })),
+          },
+        ),
+      });
 
       return tx.game.findUniqueOrThrow({
         where: { id: created.id },
@@ -157,7 +211,7 @@ export class GamesService {
       });
     });
 
-    return this.emitGame(this.toDetail(game));
+    return this.emitGame(await this.toDetail(game));
   }
 
   async syncOperations(
@@ -266,13 +320,16 @@ export class GamesService {
 
   async getGame(id: string) {
     const game = await this.findFull(id);
-    return this.toDetail(game);
+    return await this.toDetail(game);
   }
 
   async setBids(gameId: string, roundNumber: number, dto: SetBidsDto) {
     const game = await this.findFull(gameId);
     if (game.status === GameStatus.COMPLETED) {
       throw new BadRequestException('Game is completed');
+    }
+    if (game.tournamentId && !game.isHighTable) {
+      await this.tournaments.assertPrelimEditable(game.tournamentId);
     }
 
     const round = game.rounds.find((r) => r.number === roundNumber);
@@ -283,22 +340,105 @@ export class GamesService {
     this.assertCurrentRoundForBids(game, roundNumber);
     this.validateBids(game, round, dto.bids);
 
+    const players = game.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      seatIndex: p.seatIndex,
+    }));
+    const analytics = computeBidAnalytics(
+      players,
+      round.dealerSeat,
+      round.handSize,
+      dto.bids,
+      (prior, hand) => this.rules.forbiddenLastBid(prior, hand),
+    );
+    const now = new Date();
+    const forceBurn = dto.forceBurn === true;
+    const bidOrder = dto.bids
+      .map((b) => {
+        const a = analytics.perPlayer.get(b.playerId)!;
+        return {
+          playerId: b.playerId,
+          bid: b.bid,
+          bidPosition: a.bidPosition,
+          runningBidBefore: a.runningBidBefore,
+          isDealer: a.isDealer,
+          isLastBidder: a.isLastBidder,
+        };
+      })
+      .sort((a, b) => a.bidPosition - b.bidPosition);
+
     await this.prisma.$transaction(async (tx) => {
       for (const b of dto.bids) {
+        const a = analytics.perPlayer.get(b.playerId)!;
         await tx.roundEntry.update({
           where: {
             roundId_playerId: { roundId: round.id, playerId: b.playerId },
           },
-          data: { bid: b.bid, tricksTaken: null, points: null },
+          data: {
+            bid: b.bid,
+            ...clearOutcomeFields(),
+            bidPosition: a.bidPosition,
+            isDealer: a.isDealer,
+            isFirstBidder: a.isFirstBidder,
+            isLastBidder: a.isLastBidder,
+            runningBidBefore: a.runningBidBefore,
+            isNilBid: b.bid === 0,
+          },
         });
       }
+
       await tx.round.update({
         where: { id: round.id },
-        data: { forceBurn: dto.forceBurn === true },
+        data: {
+          forceBurn,
+          bidSum: analytics.bidSum,
+          bidDeficit: analytics.bidDeficit,
+          forbiddenLastBid: analytics.forbiddenLastBid,
+          bidsCompletedAt: round.bidsCompletedAt ?? now,
+          tricksCompletedAt: null,
+          completedAt: null,
+        },
       });
+
       await tx.game.update({
         where: { id: gameId },
-        data: { status: GameStatus.PLAYING },
+        data: {
+          status: GameStatus.PLAYING,
+          startedAt: game.startedAt ?? now,
+          // clear finish stats if re-bidding somehow
+          finishedAt: null,
+          durationMs: null,
+          winnerPlayerId: null,
+          winnerScore: null,
+          runnerUpScore: null,
+          winMargin: null,
+          totalForceBurns: game.rounds.filter((r) =>
+            r.number === roundNumber ? forceBurn : r.forceBurn,
+          ).length,
+        },
+      });
+
+      await tx.gameEvent.create({
+        data: eventCreate(
+          gameId,
+          GameEventType.BIDS_SET,
+          {
+            roundNumber,
+            handSize: round.handSize,
+            dealerSeat: round.dealerSeat,
+            dealerPlayerId: round.dealerPlayerId,
+            firstBidderSeat: round.firstBidderSeat,
+            firstBidderPlayerId: round.firstBidderPlayerId,
+            bidOrderSeats: analytics.order,
+            bidSum: analytics.bidSum,
+            bidDeficit: analytics.bidDeficit,
+            forbiddenLastBid: analytics.forbiddenLastBid,
+            forceBurn,
+            bids: bidOrder,
+          },
+          roundNumber,
+        ),
       });
     });
 
@@ -309,6 +449,9 @@ export class GamesService {
     const game = await this.findFull(gameId);
     if (game.status === GameStatus.COMPLETED) {
       throw new BadRequestException('Game is completed');
+    }
+    if (game.tournamentId && !game.isHighTable) {
+      await this.tournaments.assertPrelimEditable(game.tournamentId);
     }
 
     const round = game.rounds.find((r) => r.number === roundNumber);
@@ -325,35 +468,170 @@ export class GamesService {
 
     const totalRounds = this.rules.getTotalRounds();
     const isLast = roundNumber === totalRounds;
+    const now = new Date();
+    const players = game.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      seatIndex: p.seatIndex,
+    }));
+
+    const outcomes = new Map<
+      string,
+      ReturnType<typeof computeOutcome> & { tricksTaken: number; bid: number }
+    >();
+    for (const t of dto.tricks) {
+      const entry = round.entries.find((e) => e.playerId === t.playerId);
+      if (!entry || entry.bid === null) {
+        throw new BadRequestException('Missing bid for player');
+      }
+      outcomes.set(t.playerId, {
+        ...computeOutcome(entry.bid, t.tricksTaken, (b, tr) =>
+          this.rules.scoreRound(b, tr),
+        ),
+        tricksTaken: t.tricksTaken,
+        bid: entry.bid,
+      });
+    }
+
+    // Build snapshot rounds for cumulative calc (this round with new points)
+    const roundsSnap = game.rounds.map((r) => ({
+      number: r.number,
+      forceBurn: r.forceBurn,
+      entries: r.entries.map((e) => {
+        if (r.number !== roundNumber) {
+          return {
+            playerId: e.playerId,
+            bid: e.bid,
+            tricksTaken: e.tricksTaken,
+            points: e.points,
+          };
+        }
+        const o = outcomes.get(e.playerId)!;
+        return {
+          playerId: e.playerId,
+          bid: o.bid,
+          tricksTaken: o.tricksTaken,
+          points: o.points,
+        };
+      }),
+    }));
+    const cum = cumulativeFieldsForRound(players, roundsSnap, roundNumber);
+
+    const trickOrder = [...dto.tricks]
+      .map((t) => {
+        const e = round.entries.find((x) => x.playerId === t.playerId)!;
+        return {
+          playerId: t.playerId,
+          bid: e.bid,
+          tricksTaken: t.tricksTaken,
+          points: outcomes.get(t.playerId)!.points,
+          made: outcomes.get(t.playerId)!.made,
+          trickDelta: outcomes.get(t.playerId)!.trickDelta,
+          bidPosition: e.bidPosition,
+        };
+      })
+      .sort((a, b) => {
+        if (a.bidPosition == null || b.bidPosition == null) {
+          throw new BadRequestException('Missing bidPosition for event payload');
+        }
+        return a.bidPosition - b.bidPosition;
+      });
 
     await this.prisma.$transaction(async (tx) => {
       for (const t of dto.tricks) {
-        const entry = round.entries.find((e) => e.playerId === t.playerId);
-        if (!entry || entry.bid === null) {
-          throw new BadRequestException('Missing bid for player');
-        }
-        const points = this.rules.scoreRound(entry.bid, t.tricksTaken);
+        const o = outcomes.get(t.playerId)!;
+        const c = cum.get(t.playerId)!;
         await tx.roundEntry.update({
           where: {
             roundId_playerId: { roundId: round.id, playerId: t.playerId },
           },
-          data: { tricksTaken: t.tricksTaken, points },
+          data: {
+            tricksTaken: t.tricksTaken,
+            points: o.points,
+            made: o.made,
+            trickDelta: o.trickDelta,
+            absDelta: o.absDelta,
+            isNilBid: o.isNilBid,
+            isNilMade: o.isNilMade,
+            cumulativeScore: c.cumulativeScore,
+            placeAfterRound: c.placeAfterRound,
+            scoreBehindLeader: c.scoreBehindLeader,
+          },
         });
       }
+
+      await tx.round.update({
+        where: { id: round.id },
+        data: {
+          tricksCompletedAt: now,
+          completedAt: now,
+        },
+      });
+
+      const finish = isLast
+        ? computeGameFinishStats(
+            players,
+            roundsSnap,
+            game.createdAt,
+            now,
+          )
+        : null;
 
       await tx.game.update({
         where: { id: gameId },
         data: isLast
-          ? { status: GameStatus.COMPLETED, finishedAt: new Date() }
+          ? {
+              status: GameStatus.COMPLETED,
+              finishedAt: now,
+              durationMs: finish!.durationMs,
+              winnerPlayerId: finish!.winnerPlayerId,
+              winnerScore: finish!.winnerScore,
+              runnerUpScore: finish!.runnerUpScore,
+              winMargin: finish!.winMargin,
+              totalForceBurns: finish!.totalForceBurns,
+            }
           : { status: GameStatus.BIDDING },
+      });
+
+      await tx.gameEvent.create({
+        data: eventCreate(
+          gameId,
+          GameEventType.TRICKS_SET,
+          {
+            roundNumber,
+            handSize: round.handSize,
+            bidSum: round.bidSum,
+            forceBurn: round.forceBurn,
+            tricks: trickOrder,
+            standingsAfter: [...cum.entries()].map(([playerId, c]) => ({
+              playerId,
+              ...c,
+            })),
+            gameCompleted: isLast,
+            ...(finish
+              ? {
+                  winnerPlayerId: finish.winnerPlayerId,
+                  winnerScore: finish.winnerScore,
+                  runnerUpScore: finish.runnerUpScore,
+                  winMargin: finish.winMargin,
+                  durationMs: finish.durationMs,
+                }
+              : {}),
+          },
+          roundNumber,
+        ),
       });
     });
 
-    const detail = await this.getGame(gameId);
     if (isLast) {
-      await this.tournaments.onGameCompleted(gameId);
+      try {
+        await this.tournaments.onGameCompleted(gameId);
+      } catch (e) {
+        // Score already committed; recovery via GET tryFinalize*
+        console.error('onGameCompleted after setTricks', gameId, e);
+      }
     }
-    return this.emitGame(detail);
+    return this.emitGame(await this.getGame(gameId));
   }
 
   async updateRound(gameId: string, roundNumber: number, dto: UpdateRoundDto) {
@@ -363,7 +641,11 @@ export class GamesService {
       throw new NotFoundException(`Round ${roundNumber} not found`);
     }
 
-    const maxEditable = this.highestReachableRound(game);
+    if (game.tournamentId && !game.isHighTable) {
+      await this.tournaments.assertPrelimEditable(game.tournamentId);
+    }
+
+    const maxEditable = this.currentRoundNumber(game);
     if (roundNumber > maxEditable) {
       throw new BadRequestException('Cannot edit a future round');
     }
@@ -371,52 +653,225 @@ export class GamesService {
     this.validateBids(game, round, dto.bids);
     this.validateTricks(game, round, dto.tricks);
 
+    const players = game.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      seatIndex: p.seatIndex,
+    }));
+    const bidAnalytics = computeBidAnalytics(
+      players,
+      round.dealerSeat,
+      round.handSize,
+      dto.bids,
+      (prior, hand) => this.rules.forbiddenLastBid(prior, hand),
+    );
     const bidByPlayer = new Map(dto.bids.map((b) => [b.playerId, b.bid]));
+    const now = new Date();
+    const forceBurn = dto.forceBurn === true;
+
+    const before = {
+      forceBurn: round.forceBurn,
+      entries: round.entries.map((e) => ({
+        playerId: e.playerId,
+        bid: e.bid,
+        tricksTaken: e.tricksTaken,
+        points: e.points,
+      })),
+    };
+
+    const outcomes = new Map<
+      string,
+      ReturnType<typeof computeOutcome> & { tricksTaken: number; bid: number }
+    >();
+    for (const t of dto.tricks) {
+      const bid = bidByPlayer.get(t.playerId);
+      if (bid === undefined) {
+        throw new BadRequestException('Bid missing for player');
+      }
+      outcomes.set(t.playerId, {
+        ...computeOutcome(bid, t.tricksTaken, (b, tr) =>
+          this.rules.scoreRound(b, tr),
+        ),
+        tricksTaken: t.tricksTaken,
+        bid,
+      });
+    }
+
+    const roundsSnap = game.rounds.map((r) => ({
+      number: r.number,
+      forceBurn: r.number === roundNumber ? forceBurn : r.forceBurn,
+      entries: r.entries.map((e) => {
+        if (r.number !== roundNumber) {
+          return {
+            playerId: e.playerId,
+            bid: e.bid,
+            tricksTaken: e.tricksTaken,
+            points: e.points,
+          };
+        }
+        const o = outcomes.get(e.playerId)!;
+        return {
+          playerId: e.playerId,
+          bid: o.bid,
+          tricksTaken: o.tricksTaken,
+          points: o.points,
+        };
+      }),
+    }));
+
+    // Recompute cumulative for this round and every later completed round
+    const completedRoundNumbers = roundsSnap
+      .filter((r) =>
+        r.entries.every(
+          (e) => e.bid !== null && e.tricksTaken !== null && e.points !== null,
+        ),
+      )
+      .map((r) => r.number);
 
     await this.prisma.$transaction(async (tx) => {
       for (const t of dto.tricks) {
-        const bid = bidByPlayer.get(t.playerId);
-        if (bid === undefined) {
-          throw new BadRequestException('Bid missing for player');
-        }
-        const points = this.rules.scoreRound(bid, t.tricksTaken);
+        const o = outcomes.get(t.playerId)!;
+        const a = bidAnalytics.perPlayer.get(t.playerId)!;
         await tx.roundEntry.update({
           where: {
             roundId_playerId: { roundId: round.id, playerId: t.playerId },
           },
-          data: { bid, tricksTaken: t.tricksTaken, points },
+          data: {
+            bid: o.bid,
+            tricksTaken: o.tricksTaken,
+            points: o.points,
+            bidPosition: a.bidPosition,
+            isDealer: a.isDealer,
+            isFirstBidder: a.isFirstBidder,
+            isLastBidder: a.isLastBidder,
+            runningBidBefore: a.runningBidBefore,
+            made: o.made,
+            trickDelta: o.trickDelta,
+            absDelta: o.absDelta,
+            isNilBid: o.isNilBid,
+            isNilMade: o.isNilMade,
+          },
         });
       }
 
       await tx.round.update({
         where: { id: round.id },
-        data: { forceBurn: dto.forceBurn === true },
+        data: {
+          forceBurn,
+          bidSum: bidAnalytics.bidSum,
+          bidDeficit: bidAnalytics.bidDeficit,
+          forbiddenLastBid: bidAnalytics.forbiddenLastBid,
+          bidsCompletedAt: round.bidsCompletedAt ?? now,
+          tricksCompletedAt: round.tricksCompletedAt ?? now,
+          completedAt: round.completedAt ?? now,
+          editCount: { increment: 1 },
+        },
       });
+
+      // Refresh cumulative/place for all completed rounds (edit can reshuffle places)
+      for (const rn of completedRoundNumbers) {
+        const cum = cumulativeFieldsForRound(players, roundsSnap, rn);
+        const rnd = game.rounds.find((r) => r.number === rn)!;
+        for (const p of players) {
+          const c = cum.get(p.id)!;
+          await tx.roundEntry.update({
+            where: {
+              roundId_playerId: { roundId: rnd.id, playerId: p.id },
+            },
+            data: {
+              cumulativeScore: c.cumulativeScore,
+              placeAfterRound: c.placeAfterRound,
+              scoreBehindLeader: c.scoreBehindLeader,
+            },
+          });
+        }
+      }
 
       const refreshed = await tx.game.findUniqueOrThrow({
         where: { id: gameId },
         include: gameInclude,
       });
       const status = this.deriveStatus(refreshed);
+      const allComplete = status === GameStatus.COMPLETED;
+      const finishedAt = allComplete
+        ? (refreshed.finishedAt ?? now)
+        : null;
+      const finish = allComplete
+        ? computeGameFinishStats(
+            players,
+            roundsSnap,
+            game.createdAt,
+            finishedAt!,
+          )
+        : null;
+
       await tx.game.update({
         where: { id: gameId },
         data: {
           status,
-          finishedAt:
-            status === GameStatus.COMPLETED
-              ? (refreshed.finishedAt ?? new Date())
-              : null,
+          finishedAt,
+          totalEdits: { increment: 1 },
+          totalForceBurns: roundsSnap.filter((r) => r.forceBurn).length,
+          ...(allComplete && finish
+            ? {
+                durationMs: finish.durationMs,
+                winnerPlayerId: finish.winnerPlayerId,
+                winnerScore: finish.winnerScore,
+                runnerUpScore: finish.runnerUpScore,
+                winMargin: finish.winMargin,
+              }
+            : {
+                durationMs: null,
+                winnerPlayerId: null,
+                winnerScore: null,
+                runnerUpScore: null,
+                winMargin: null,
+              }),
         },
+      });
+
+      await tx.gameEvent.create({
+        data: eventCreate(
+          gameId,
+          GameEventType.ROUND_UPDATED,
+          {
+            roundNumber,
+            before,
+            after: {
+              forceBurn,
+              bidSum: bidAnalytics.bidSum,
+              bidDeficit: bidAnalytics.bidDeficit,
+              forbiddenLastBid: bidAnalytics.forbiddenLastBid,
+              entries: dto.tricks.map((t) => {
+                const o = outcomes.get(t.playerId)!;
+                return {
+                  playerId: t.playerId,
+                  bid: o.bid,
+                  tricksTaken: o.tricksTaken,
+                  points: o.points,
+                  made: o.made,
+                  trickDelta: o.trickDelta,
+                };
+              }),
+            },
+          },
+          roundNumber,
+        ),
       });
     });
 
-    const before = game.status;
-    const detail = await this.getGame(gameId);
+    const beforeStatus = game.status;
+    let detail = await this.getGame(gameId);
     if (
-      before !== GameStatus.COMPLETED &&
+      beforeStatus !== GameStatus.COMPLETED &&
       detail.status === GameStatus.COMPLETED
     ) {
-      await this.tournaments.onGameCompleted(gameId);
+      try {
+        await this.tournaments.onGameCompleted(gameId);
+      } catch (e) {
+        console.error('onGameCompleted after updateRound', gameId, e);
+      }
+      detail = await this.getGame(gameId);
     }
     return this.emitGame(detail);
   }
@@ -488,7 +943,10 @@ export class GamesService {
       }
     }
 
-    const order = this.rules.bidOrderSeats(round.number, game.players.length);
+    const order =
+      round.bidOrderSeats.length === game.players.length
+        ? round.bidOrderSeats
+        : this.rules.bidOrderSeats(round.number, game.players.length);
     const seatToPlayer = new Map(
       game.players.map((p) => [p.seatIndex, p] as const),
     );
@@ -559,10 +1017,6 @@ export class GamesService {
       }
     }
     return this.rules.getTotalRounds();
-  }
-
-  private highestReachableRound(game: FullGame): number {
-    return this.currentRoundNumber(game);
   }
 
   private assertCurrentRoundForBids(game: FullGame, roundNumber: number) {
@@ -662,7 +1116,16 @@ export class GamesService {
     return null;
   }
 
-  private toDetail(game: FullGame) {
+  private async toDetail(game: FullGame) {
+    const prelimEditsLocked =
+      game.tournamentId && !game.isHighTable
+        ? await this.tournaments.isPrelimEditsLocked(game.tournamentId)
+        : false;
+    const base = this.toDetailSync(game);
+    return { ...base, prelimEditsLocked };
+  }
+
+  private toDetailSync(game: FullGame) {
     const standings = this.computeStandings(game);
     const currentRound = this.currentRoundNumber(game);
     const phase =
@@ -671,10 +1134,10 @@ export class GamesService {
         : this.roundPhase(game, currentRound);
 
     const rounds = game.rounds.map((round) => {
-      const bidOrder = this.rules.bidOrderSeats(
-        round.number,
-        game.players.length,
-      );
+      const bidOrder =
+        round.bidOrderSeats.length === game.players.length
+          ? round.bidOrderSeats
+          : this.rules.bidOrderSeats(round.number, game.players.length);
       const entriesBySeat = new Map(
         round.entries.map((e) => [e.player.seatIndex, e] as const),
       );
@@ -686,9 +1149,9 @@ export class GamesService {
         }
         return sum;
       })();
-      const forbiddenLast =
+      const liveForbidden =
         round.entries.every((e) => e.bid !== null)
-          ? null
+          ? round.forbiddenLastBid
           : this.rules.forbiddenLastBid(priorSum, round.handSize);
 
       return {
@@ -696,13 +1159,25 @@ export class GamesService {
         number: round.number,
         handSize: round.handSize,
         dealerSeat: round.dealerSeat,
+        firstBidderSeat: round.firstBidderSeat,
         forceBurn: round.forceBurn,
-        dealerPlayerId: game.players.find((p) => p.seatIndex === round.dealerSeat)
-          ?.id,
+        dealerPlayerId:
+          round.dealerPlayerId ??
+          game.players.find((p) => p.seatIndex === round.dealerSeat)?.id,
+        firstBidderPlayerId:
+          round.firstBidderPlayerId ??
+          game.players.find((p) => p.seatIndex === round.firstBidderSeat)?.id,
+        bidOrderSeats: bidOrder,
         bidOrderPlayerIds: bidOrder.map(
           (seat) => game.players.find((p) => p.seatIndex === seat)!.id,
         ),
-        forbiddenLastBid: forbiddenLast,
+        bidSum: round.bidSum,
+        bidDeficit: round.bidDeficit,
+        forbiddenLastBid: liveForbidden ?? null,
+        bidsCompletedAt: round.bidsCompletedAt,
+        tricksCompletedAt: round.tricksCompletedAt,
+        completedAt: round.completedAt,
+        editCount: round.editCount,
         entries: game.players.map((p) => {
           const e = round.entries.find((x) => x.playerId === p.id)!;
           return {
@@ -712,6 +1187,19 @@ export class GamesService {
             bid: e.bid,
             tricksTaken: e.tricksTaken,
             points: e.points,
+            bidPosition: e.bidPosition,
+            isDealer: e.isDealer,
+            isFirstBidder: e.isFirstBidder,
+            isLastBidder: e.isLastBidder,
+            runningBidBefore: e.runningBidBefore,
+            made: e.made,
+            trickDelta: e.trickDelta,
+            absDelta: e.absDelta,
+            isNilBid: e.isNilBid,
+            isNilMade: e.isNilMade,
+            cumulativeScore: e.cumulativeScore,
+            placeAfterRound: e.placeAfterRound,
+            scoreBehindLeader: e.scoreBehindLeader,
           };
         }),
         complete: round.entries.every(
@@ -728,11 +1216,22 @@ export class GamesService {
       currentRound:
         game.status === GameStatus.COMPLETED ? null : currentRound,
       createdAt: game.createdAt,
+      startedAt: game.startedAt,
       finishedAt: game.finishedAt,
+      durationMs: game.durationMs,
+      playerCount: game.players.length,
+      firstDealerSeat: game.firstDealerSeat,
+      winnerPlayerId: game.winnerPlayerId,
+      winnerScore: game.winnerScore,
+      runnerUpScore: game.runnerUpScore,
+      winMargin: game.winMargin,
+      totalForceBurns: game.totalForceBurns,
+      totalEdits: game.totalEdits,
       tournamentId: game.tournamentId,
       tournamentTableId: game.tournamentTableId,
       isHighTable: game.isHighTable,
       tableNumber: game.tableNumber,
+      prelimEditsLocked: false as boolean,
       players: game.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -740,10 +1239,12 @@ export class GamesService {
       })),
       rounds,
       standings,
-      totals: standings.map((s) => ({
-        playerId: s.playerId,
-        total: s.total,
-        place: s.place,
+      events: game.events.map((ev) => ({
+        id: ev.id,
+        type: ev.type,
+        roundNumber: ev.roundNumber,
+        payload: ev.payload,
+        createdAt: ev.createdAt,
       })),
     };
   }
@@ -795,18 +1296,7 @@ export class GamesService {
       };
     });
 
-    const sorted = [...totals].sort((a, b) => b.total - a.total);
-    let place = 0;
-    let lastScore: number | null = null;
-    const withPlace = sorted.map((row, idx) => {
-      if (lastScore === null || row.total !== lastScore) {
-        place = idx + 1;
-        lastScore = row.total;
-      }
-      return { ...row, place };
-    });
-
-    return withPlace.sort((a, b) => a.seatIndex - b.seatIndex);
+    return assignPlacesByTotal(totals).sort((a, b) => a.seatIndex - b.seatIndex);
   }
 }
 

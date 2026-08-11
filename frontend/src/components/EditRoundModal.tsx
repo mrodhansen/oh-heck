@@ -22,17 +22,25 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
 
   const [bids, setBids] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    round?.entries.forEach((e) => {
-      init[e.playerId] = e.bid ?? 0;
-    });
+    if (!round?.complete) return init;
+    for (const e of round.entries) {
+      if (e.bid === null || e.tricksTaken === null) {
+        throw new Error('Cannot edit incomplete round');
+      }
+      init[e.playerId] = e.bid;
+    }
     return init;
   });
 
   const [tricks, setTricks] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    round?.entries.forEach((e) => {
-      init[e.playerId] = e.tricksTaken ?? 0;
-    });
+    if (!round?.complete) return init;
+    for (const e of round.entries) {
+      if (e.tricksTaken === null) {
+        throw new Error('Cannot edit incomplete round');
+      }
+      init[e.playerId] = e.tricksTaken;
+    }
     return init;
   });
 
@@ -40,10 +48,12 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
   const bidOrder = round?.bidOrderPlayerIds ?? [];
 
   const forbiddenLast = useMemo(() => {
-    if (!round) return null;
+    if (!round?.complete) return null;
     let sum = 0;
     for (let i = 0; i < bidOrder.length - 1; i++) {
-      sum += bids[bidOrder[i]] ?? 0;
+      const v = bids[bidOrder[i]!];
+      if (v === undefined) return null;
+      sum += v;
     }
     return forbiddenLastBid(sum, handSize);
   }, [bids, bidOrder, handSize, round]);
@@ -51,7 +61,18 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
   const trickSum = Object.values(tricks).reduce((a, b) => a + b, 0);
   const lastId = bidOrder[bidOrder.length - 1];
 
-  if (!round) return null;
+  if (!round?.complete) {
+    return (
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal stack" onClick={(e) => e.stopPropagation()}>
+          <p className="banner">Cannot edit an incomplete round.</p>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   async function submit() {
     setError(null);
@@ -65,15 +86,23 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
     }
     setSaving(true);
     try {
+      const bidPayload = game.players.map((p) => {
+        const bid = bids[p.id];
+        if (bid === undefined) {
+          throw new Error(`Missing bid for ${p.name}`);
+        }
+        return { playerId: p.id, bid };
+      });
+      const trickPayload = game.players.map((p) => {
+        const tricksTaken = tricks[p.id];
+        if (tricksTaken === undefined) {
+          throw new Error(`Missing tricks for ${p.name}`);
+        }
+        return { playerId: p.id, tricksTaken };
+      });
       await onSave({
-        bids: game.players.map((p) => ({
-          playerId: p.id,
-          bid: bids[p.id] ?? 0,
-        })),
-        tricks: game.players.map((p) => ({
-          playerId: p.id,
-          tricksTaken: tricks[p.id] ?? 0,
-        })),
+        bids: bidPayload,
+        tricks: trickPayload,
         forceBurn,
       });
       onClose();

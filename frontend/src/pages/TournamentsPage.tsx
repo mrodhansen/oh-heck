@@ -1,6 +1,7 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, TournamentSummary } from '../api';
+import { newId } from '../offline/rules';
 import { useSocketRoom } from '../useSocketRoom';
 
 export function TournamentsPage() {
@@ -12,9 +13,10 @@ export function TournamentsPage() {
   const [playerCount, setPlayerCount] = useState('16');
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  const createIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
-    const data = await api.listTournaments();
+    const data = await api.listTournaments({ all: true });
     setList(data);
   }, []);
 
@@ -33,7 +35,7 @@ export function TournamentsPage() {
   }, [load]);
 
   useSocketRoom('tournaments', 'tournaments:list', () => {
-    void load().catch(() => undefined);
+    void load().catch((e: Error) => setError(e.message));
   });
 
   async function createTourney(e: FormEvent) {
@@ -45,8 +47,14 @@ export function TournamentsPage() {
       return;
     }
     setSaving(true);
+    if (!createIdRef.current) createIdRef.current = newId();
     try {
-      const t = await api.createTournament(n, name.trim() || undefined);
+      const t = await api.createTournament({
+        targetPlayerCount: n,
+        id: createIdRef.current,
+        name: name.trim() || undefined,
+      });
+      createIdRef.current = null;
       navigate(`/play/tournaments/${t.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create');
@@ -115,38 +123,18 @@ export function TournamentsPage() {
           </form>
         )}
 
-        <section className="stack-sm">
-          <h3 className="section-title">Open</h3>
-          {loading && <div className="empty">Loading…</div>}
-          {!loading && list.length === 0 && (
-            <div className="card empty">No open tournaments.</div>
-          )}
-          {!loading && list.length > 0 && (
-            <div className="list">
-              {list.map((t) => (
-                <Link
-                  key={t.id}
-                  to={`/play/tournaments/${t.id}`}
-                  className="list-item"
-                >
-                  <div className="min-w-0">
-                    <p className="list-item-title truncate">
-                      {t.name ?? 'Tournament'}
-                    </p>
-                    <p className="list-item-meta">
-                      {t.playerCount}/{t.targetPlayerCount} players
-                      {t.tableCount > 0 ? ` · ${t.tableCount} tables` : ''}
-                    </p>
-                    <p className="list-item-status">{formatStatus(t.status)}</p>
-                  </div>
-                  <span className="list-item-chevron" aria-hidden>
-                    ›
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
+        <TournamentListSection
+          title="Active"
+          empty="No active tournaments."
+          loading={loading}
+          items={list.filter((t) => t.status !== 'COMPLETED')}
+        />
+        <TournamentListSection
+          title="Completed"
+          empty="No completed tournaments yet."
+          loading={loading}
+          items={list.filter((t) => t.status === 'COMPLETED')}
+        />
       </div>
     </div>
   );
@@ -167,4 +155,51 @@ function formatStatus(s: TournamentSummary['status']): string {
     default:
       return s;
   }
+}
+
+function TournamentListSection({
+  title,
+  empty,
+  loading,
+  items,
+}: {
+  title: string;
+  empty: string;
+  loading: boolean;
+  items: TournamentSummary[];
+}) {
+  return (
+    <section className="stack-sm">
+      <h3 className="section-title">{title}</h3>
+      {loading && <div className="empty">Loading…</div>}
+      {!loading && items.length === 0 && (
+        <div className="card empty">{empty}</div>
+      )}
+      {!loading && items.length > 0 && (
+        <div className="list">
+          {items.map((t) => (
+            <Link
+              key={t.id}
+              to={`/play/tournaments/${t.id}`}
+              className="list-item"
+            >
+              <div className="min-w-0">
+                <p className="list-item-title truncate">
+                  {t.name ?? 'Tournament'}
+                </p>
+                <p className="list-item-meta">
+                  {t.playerCount}/{t.targetPlayerCount} players
+                  {t.tableCount > 0 ? ` · ${t.tableCount} tables` : ''}
+                </p>
+                <p className="list-item-status">{formatStatus(t.status)}</p>
+              </div>
+              <span className="list-item-chevron" aria-hidden>
+                ›
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

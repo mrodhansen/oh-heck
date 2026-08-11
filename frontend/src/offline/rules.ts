@@ -2,7 +2,11 @@ const HAND_SIZES = [7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7] as const;
 export const TOTAL_ROUNDS = 13;
 
 export function getHandSize(roundNumber: number): number {
-  return HAND_SIZES[roundNumber - 1];
+  const size = HAND_SIZES[roundNumber - 1];
+  if (size === undefined) {
+    throw new Error(`Invalid round number: ${roundNumber}`);
+  }
+  return size;
 }
 
 export function dealerSeat(roundNumber: number, playerCount: number): number {
