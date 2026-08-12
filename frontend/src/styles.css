@@ -1683,7 +1683,6 @@ a.btn.primary.mode-card,
 .seat-chip.me {
   border-color: var(--grey-800);
   background: var(--sand-100);
-  min-width: 140px;
 }
 
 .seat-chip.host:not(.me) {
@@ -2390,12 +2389,17 @@ button.playing-card:disabled {
   box-sizing: border-box;
 }
 
-/* Center column seats (top opp / me) — same chip width budget via max */
-.board-seat.is-me,
-.live-board.heads-up .board-seat,
-.live-board.has-top .board-seat {
-  max-width: 160px;
-  justify-self: center;
+/* You sit in the right seat column — same size as other seat chips */
+.board-seat.is-me {
+  justify-self: stretch;
+  max-width: none;
+  width: 100%;
+}
+
+.live-board .board-seat.is-me .seat-chip.me {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .board-seat.active-turn .seat-chip {
@@ -2569,9 +2573,8 @@ button.playing-card:disabled {
     text-align: center;
   }
 
-  .live-board .board-seat.is-me,
-  .live-board.heads-up .board-seat {
-    max-width: 140px;
+  .live-board .board-seat.is-me {
+    max-width: none;
   }
 
   .live-board .board-play {
@@ -2607,9 +2610,8 @@ button.playing-card:disabled {
       minmax(0, 1fr);
   }
 
-  .board-seat.is-me,
-  .live-board.heads-up .board-seat {
-    max-width: 200px;
+  .board-seat.is-me {
+    max-width: none;
   }
 
   .live-board .board-seat .seat-chip {
@@ -3246,16 +3248,25 @@ button.playing-card:disabled {
     font-size: 0.78rem;
   }
 
+  /* Board left, hand right — children of live-play-body */
   .live-play {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .live-play-body {
+    flex: 1 1 auto;
+    min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.95fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 4px 10px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(200px, 0.9fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px 10px;
     align-items: stretch;
   }
 
   .live-phase-header {
-    grid-column: 1 / -1;
+    flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -3275,21 +3286,73 @@ button.playing-card:disabled {
     font-size: 0.76rem;
   }
 
-  .live-board {
-    grid-column: 1;
-    grid-row: 2;
+  .live-felt-wrap {
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .live-felt-wrap > .live-board {
+    height: 100%;
   }
 
   .live-me-area {
-    grid-column: 2;
-    grid-row: 2;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
     justify-content: stretch;
     align-items: stretch;
     padding-top: 0;
     gap: 4px;
+  }
+
+  .live-me-area .live-turn-hint {
+    flex: 0 0 auto;
+  }
+
+  .live-hand {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 4px 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Landscape hand: ~half column height, scroll sideways (not giant) */
+  .live-hand .playing-card,
+  .live-hand .playing-card:not(.compact),
+  .live-play .live-hand .playing-card,
+  .live-play .live-hand .playing-card:not(.compact) {
+    flex: 0 0 auto;
+    align-self: center;
+    box-sizing: border-box;
+    height: min(50%, 148px) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: 148px !important;
+    aspect-ratio: 5 / 7;
+    padding: 5px;
+    border-radius: 8px;
+  }
+
+  .live-hand .playing-card .playing-card-rank {
+    font-size: clamp(0.8rem, 2.2vh, 1.05rem);
+  }
+
+  .live-hand .playing-card .playing-card-suit {
+    font-size: clamp(0.9rem, 2.6vh, 1.2rem);
   }
 
   .seat-chip {
@@ -3483,70 +3546,22 @@ button.playing-card:disabled {
     padding-right: 4px;
   }
 
-  .live-play {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.95fr);
-    grid-template-rows: auto minmax(0, 1fr);
+  .live-play-body {
+    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.95fr);
     gap: 8px 12px;
   }
 
   .live-phase-header {
-    grid-column: 1 / -1;
-    padding: 6px 4px 2px;
-    margin-top: 0;
-  }
-
-  .live-phase-header .phase-title {
-    font-size: 1.35rem;
-  }
-
-  .live-board {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .live-me-area {
-    grid-column: 2;
-    grid-row: 2;
-    min-height: 0;
-    overflow: hidden;
-    justify-content: stretch;
-    align-items: stretch;
-    gap: 6px;
-  }
-
-  .live-hand {
-    flex: 1 1 auto;
-    min-height: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
+    padding: 4px 4px 2px;
   }
 
   .live-hand .playing-card,
-  .live-play.crowd .live-hand .playing-card {
-    flex: 0 0 auto;
-    height: 50% !important;
+  .live-hand .playing-card:not(.compact),
+  .live-play .live-hand .playing-card {
+    height: min(50%, 160px) !important;
+    max-height: 160px !important;
     width: auto !important;
     aspect-ratio: 5 / 7;
-    padding: 6px;
-    border-radius: 8px;
-  }
-
-  .live-hand .playing-card .playing-card-rank {
-    font-size: clamp(0.9rem, 2.2vh, 1.2rem);
-  }
-
-  .live-hand .playing-card .playing-card-suit {
-    font-size: clamp(1rem, 2.6vh, 1.35rem);
-  }
-
-  :root {
-    --trick-w: 36px;
-    --trick-band-nudge: 10px;
   }
 }
 
@@ -3741,9 +3756,6 @@ button.playing-card:disabled {
     gap: 14px;
   }
 
-  .seat-chip.me {
-    min-width: 200px;
-  }
 }
 
 /* Very short portrait (small phones / browser chrome) */

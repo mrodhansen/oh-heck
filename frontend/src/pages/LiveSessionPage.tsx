@@ -629,54 +629,53 @@ function LivePlayTable({
   );
 }
 
+/**
+ * orderedAway[0] = first seat clockwise from me (engine seat+1).
+ * Clockwise around the table from me at bottom-right:
+ *   up the left column (bottom = nearest = first CW), then down the right.
+ * left/right arrays are top→bottom for display.
+ *
+ * Even tables (2/4/6p): balanced L/R with you as bottom-right seat
+ *   2p → 1L 1R(you) | 4p → 2L 2R(you) | 6p → 3L 3R(you)
+ */
 function layoutOpponents(
   orderedAway: { player: LivePlayerPublic; rel: number }[],
 ): {
-  top: { player: LivePlayerPublic; rel: number }[];
   left: { player: LivePlayerPublic; rel: number }[];
   right: { player: LivePlayerPublic; rel: number }[];
 } {
   const m = orderedAway.length;
-  if (m === 0) return { top: [], left: [], right: [] };
-  if (m === 1) return { top: [orderedAway[0]!], left: [], right: [] };
-  if (m === 2) {
-    return { top: [], left: [orderedAway[1]!], right: [orderedAway[0]!] };
-  }
-  if (m === 3) {
+  if (m === 0) return { left: [], right: [] };
+
+  // Take first `leftCount` clockwise players for the left column (near me = last in list).
+  const split = (leftCount: number) => {
+    const leftCw = orderedAway.slice(0, leftCount); // nearest-first
+    const rightCw = orderedAway.slice(leftCount); // continue CW, far-to-near toward me on right
     return {
-      top: [orderedAway[1]!],
-      left: [orderedAway[2]!],
-      right: [orderedAway[0]!],
+      left: [...leftCw].reverse(), // top → bottom
+      right: rightCw, // top → bottom
     };
-  }
-  if (m === 4) {
-    // 5-player: 2 left, 2 right, you bottom
-    return {
-      top: [],
-      left: [orderedAway[2]!, orderedAway[3]!],
-      right: [orderedAway[1]!, orderedAway[0]!],
-    };
-  }
-  if (m === 5) {
-    // 6-player: 2 left, 2 right, 1 top, you bottom
-    return {
-      top: [orderedAway[2]!],
-      left: [orderedAway[3]!, orderedAway[4]!],
-      right: [orderedAway[1]!, orderedAway[0]!],
-    };
-  }
-  // 7-player: 3 per side, you bottom
-  return {
-    top: [],
-    left: [orderedAway[3]!, orderedAway[4]!, orderedAway[5]!],
-    right: [orderedAway[2]!, orderedAway[1]!, orderedAway[0]!],
   };
+
+  // Opponents only — you are placed separately as bottom-right.
+  // 2p (1 opp): 1L
+  // 3p (2): 1L 1R
+  // 4p (3): 2L 1R  (+ you = 2R)
+  // 5p (4): 2L 2R
+  // 6p (5): 3L 2R  (+ you = 3R)
+  // 7p (6): 3L 3R
+  if (m === 1) return split(1);
+  if (m === 2) return split(1);
+  if (m === 3) return split(2);
+  if (m === 4) return split(2);
+  if (m === 5) return split(3);
+  return split(3);
 }
 
 /**
  * 5-column board grid:
  *   [seat-L | play-L | mid/trump | play-R | seat-R]
- * Seat columns share equal 1fr weight so all player chips match width.
+ * You are always bottom-right (col 5); your play slot is col 4 on that row.
  */
 function LiveBoard({
   view,
@@ -687,7 +686,6 @@ function LiveBoard({
 }: {
   view: LiveView;
   layout: {
-    top: { player: LivePlayerPublic; rel: number }[];
     left: { player: LivePlayerPublic; rel: number }[];
     right: { player: LivePlayerPublic; rel: number }[];
   };
@@ -696,54 +694,18 @@ function LiveBoard({
   mePlayer: LivePlayerPublic;
 }) {
   const showSlots = view.phase !== 'bidding';
-  const sideRows = Math.max(layout.left.length, layout.right.length, 0);
-  const hasTop = layout.top.length > 0;
-  const hasSides = sideRows > 0;
-  // 2p heads-up: single opponent stacked in center column
-  const headsUp = hasTop && !hasSides && layout.top.length === 1;
-
-  let row = 1;
-  const topSeatRow = hasTop ? row++ : 0;
-  const topPlayRow = hasTop && showSlots ? row++ : 0;
-  const sideStartRow = hasSides ? row : 0;
-  if (hasSides) row += sideRows;
-  // heads-up: dedicated trump row; with sides: trump spans side rows
-  const trumpRow = headsUp ? row++ : 0;
-  const myPlayRow = showSlots ? row++ : 0;
-  const meRow = row;
-
-  const sideSpan = Math.max(sideRows, 1);
+  // Right column includes you at the bottom
+  const sideRows = Math.max(layout.left.length, layout.right.length + 1, 1);
+  const meRow = sideRows;
   const cells: ReactNode[] = [];
-
-  // Top opponent(s)
-  layout.top.forEach(({ player }, i) => {
-    const col = layout.top.length === 1 ? 3 : 2 + i; // center, or spread if multiple
-    cells.push(
-      <BoardSeat
-        key={`ts-${player.id}`}
-        player={player}
-        view={view}
-        style={{ gridColumn: col, gridRow: topSeatRow }}
-      />,
-    );
-    if (showSlots && topPlayRow) {
-      cells.push(
-        <BoardPlay
-          key={`tp-${player.id}`}
-          player={player}
-          view={view}
-          play={playBySeat.get(player.seatIndex) ?? null}
-          style={{ gridColumn: col, gridRow: topPlayRow }}
-        />,
-      );
-    }
-  });
 
   // Side rows: seat-L | play-L | (mid) | play-R | seat-R
   for (let i = 0; i < sideRows; i++) {
-    const r = sideStartRow + i;
+    const r = i + 1;
     const lp = layout.left[i];
-    const rp = layout.right[i];
+    const rp = layout.right[i]; // undefined on me row when right is shorter
+    const isMeRow = r === meRow;
+
     if (lp) {
       cells.push(
         <BoardSeat
@@ -765,7 +727,30 @@ function LiveBoard({
         );
       }
     }
-    if (rp) {
+
+    if (isMeRow) {
+      if (showSlots) {
+        cells.push(
+          <BoardPlay
+            key="my-play"
+            player={mePlayer}
+            view={view}
+            play={myPlay}
+            me
+            style={{ gridColumn: 4, gridRow: r }}
+          />,
+        );
+      }
+      cells.push(
+        <BoardSeat
+          key="me"
+          player={mePlayer}
+          view={view}
+          me
+          style={{ gridColumn: 5, gridRow: r }}
+        />,
+      );
+    } else if (rp) {
       if (showSlots) {
         cells.push(
           <BoardPlay
@@ -788,76 +773,24 @@ function LiveBoard({
     }
   }
 
-  // Trump + status (center)
-  if (headsUp) {
-    cells.push(
-      <div
-        key="mid"
-        className="board-mid"
-        style={{ gridColumn: 3, gridRow: trumpRow }}
-      >
-        <BoardTrump view={view} />
-        <TrickStatus view={view} />
-      </div>,
-    );
-  } else if (hasSides) {
-    cells.push(
-      <div
-        key="mid"
-        className="board-mid"
-        style={{
-          gridColumn: 3,
-          gridRow: `${sideStartRow} / span ${sideSpan}`,
-        }}
-      >
-        <BoardTrump view={view} />
-        <TrickStatus view={view} />
-      </div>,
-    );
-  } else {
-    cells.push(
-      <div
-        key="mid"
-        className="board-mid"
-        style={{ gridColumn: 3, gridRow: 1 }}
-      >
-        <BoardTrump view={view} />
-        <TrickStatus view={view} />
-      </div>,
-    );
-  }
-
-  // My played card
-  if (showSlots && myPlayRow) {
-    cells.push(
-      <BoardPlay
-        key="my-play"
-        player={mePlayer}
-        view={view}
-        play={myPlay}
-        me
-        style={{ gridColumn: 3, gridRow: myPlayRow }}
-      />,
-    );
-  }
-
-  // Me
+  // Trump + status spans all side rows in the center
   cells.push(
-    <BoardSeat
-      key="me"
-      player={mePlayer}
-      view={view}
-      me
-      style={{ gridColumn: 3, gridRow: meRow }}
-    />,
+    <div
+      key="mid"
+      className="board-mid"
+      style={{ gridColumn: 3, gridRow: `1 / span ${sideRows}` }}
+    >
+      <BoardTrump view={view} />
+      <TrickStatus view={view} />
+    </div>,
   );
 
   return (
     <div
-      className={`live-board players-${view.players.length} ${headsUp ? 'heads-up' : ''} ${hasTop ? 'has-top' : ''}`}
+      className={`live-board players-${view.players.length}`}
       style={
         {
-          '--board-rows': meRow,
+          '--board-rows': sideRows,
         } as CSSProperties
       }
     >
