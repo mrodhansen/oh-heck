@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
+    "db:seed": "node scripts/seed.mjs",
     "postinstall": "prisma generate",
     "test": "vitest run",
     "test:watch": "vitest"
