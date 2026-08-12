@@ -19,7 +19,7 @@ import {
   UpdateNotesDto,
   UpdateRoundDto,
 } from './dto';
-import { AuthGuard, CurrentUser } from '../auth/auth.decorators';
+import { AuthGuard, CurrentUser, OptionalAuth } from '../auth/auth.decorators';
 import type { PublicUser } from '../auth/auth.service';
 
 @Controller('games')
@@ -37,8 +37,10 @@ export class GamesController {
   }
 
   @Post()
-  create(@Body() dto: CreateGameDto) {
-    return this.games.createGame(dto);
+  @UseGuards(AuthGuard)
+  @OptionalAuth()
+  create(@Body() dto: CreateGameDto, @CurrentUser() user: PublicUser | null) {
+    return this.games.createGame(dto, { actorUserId: user?.id });
   }
 
   @Post(':id/claim')

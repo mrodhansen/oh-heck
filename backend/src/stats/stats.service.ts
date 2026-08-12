@@ -52,7 +52,6 @@ export class StatsService {
       include: {
         players: {
           orderBy: { seatIndex: 'asc' },
-          include: { user: { select: { id: true, username: true } } },
         },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
       },
@@ -92,9 +91,6 @@ export class StatsService {
           perfectGames: 0,
         };
         byKey.set(seat.key, row);
-      } else if (seat.userId && seat.name) {
-        // Prefer account username for display when claimed
-        row.name = seat.name;
       }
       return row;
     };
@@ -420,17 +416,16 @@ function seatRef(p: {
   id: string;
   name: string;
   userId: string | null;
-  user?: { id: string; username: string } | null;
 }): SeatRef {
+  const name = p.name.trim();
   if (p.userId) {
     return {
       id: p.id,
       userId: p.userId,
-      name: p.user?.username ?? p.name,
+      name,
       key: userKey(p.userId),
     };
   }
-  const name = p.name.trim();
   return {
     id: p.id,
     userId: null,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api, GameDetail } from '../api';
 import { hasGameNotes } from '../offline/notes';
 import { NumberStepper } from '../components/NumberStepper';
@@ -18,6 +18,7 @@ import { useAuth } from '../useAuth';
 
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const { user } = useAuth();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,13 @@ export function GamePage() {
   const [tab, setTab] = useState<'play' | 'board' | 'notes'>('play');
   const [editRound, setEditRound] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [claimBusy, setClaimBusy] = useState<string | null>(null);
+  const [pickingClaim, setPickingClaim] = useState(false);
+  const [pendingClaim, setPendingClaim] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -249,9 +256,16 @@ export function GamePage() {
       <header className="game-topbar">
         <Link
           to={
-            game.tournamentId
-              ? `/play/tournaments/${game.tournamentId}`
-              : '/play/single'
+            (location.state as { from?: string } | null)?.from === 'stats'
+              ? '/stats'
+              : game.tournamentId
+                ? `/play/tournaments/${game.tournamentId}`
+                : '/play/single'
+          }
+          state={
+            (location.state as { from?: string } | null)?.from === 'stats'
+              ? { tab: 'games' }
+              : undefined
           }
           className="icon-btn"
           aria-label="Back"
@@ -296,45 +310,52 @@ export function GamePage() {
 
       <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
+      {claimMessage && (
+        <div className="banner banner-ok banner-inline">{claimMessage}</div>
+      )}
 
       {(isFinished || tab === 'board') && tab !== 'notes' && (
         <div className="panel-scroll">
-          {user &&
-            !game.players.some((p) => p.userId === user.id) &&
-            game.players.some((p) => !p.userId) && (
-              <div className="card claim-panel stack-sm">
-                <p className="section-title" style={{ margin: 0 }}>
-                  Claim your seat
-                </p>
-                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  Link the seat you played so stats count for {user.username}.
-                  Name alone is not enough.
-                </p>
-                <div className="claim-seats">
-                  {game.players
-                    .filter((p) => !p.userId)
-                    .map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className="btn ghost sm"
-                        disabled={claimBusy != null}
-                        onClick={() => {
-                          setClaimBusy(p.id);
-                          setError(null);
-                          void api
-                            .claimSeat(game.id, p.id)
-                            .then((g) => setGame(g))
-                            .catch((e: Error) => setError(e.message))
-                            .finally(() => setClaimBusy(null));
-                        }}
-                      >
-                        {claimBusy === p.id ? '…' : `Claim ${p.name}`}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
+          <ClaimGamePanel
+            game={game}
+            userId={user?.id ?? null}
+            picking={pickingClaim}
+            pending={pendingClaim}
+            busy={claimBusy}
+            onStart={() => {
+              setError(null);
+              setClaimMessage(null);
+              if (!user) {
+                setError('Sign in to claim this game.');
+                return;
+              }
+              setPickingClaim(true);
+            }}
+            onCancelPick={() => {
+              setPickingClaim(false);
+              setPendingClaim(null);
+            }}
+            onPick={(p) => setPendingClaim(p)}
+            onCancelConfirm={() => setPendingClaim(null)}
+            onConfirm={async () => {
+              if (!pendingClaim) return;
+              setClaimBusy(true);
+              setError(null);
+              try {
+                const g = await api.claimSeat(game.id, pendingClaim.id);
+                setGame(g);
+                setClaimMessage(
+                  `Claimed ${possessive(pendingClaim.name)} game.`,
+                );
+                setPickingClaim(false);
+                setPendingClaim(null);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Could not claim');
+              } finally {
+                setClaimBusy(false);
+              }
+            }}
+          />
           <Scoreboard
             game={game}
             onEditRound={
@@ -605,4 +626,115 @@ export function GamePage() {
       )}
     </div>
   );
+}
+
+function ClaimGamePanel({
+  game,
+  userId,
+  picking,
+  pending,
+  busy,
+  onStart,
+  onCancelPick,
+  onPick,
+  onCancelConfirm,
+  onConfirm,
+}: {
+  game: GameDetail;
+  userId: string | null;
+  picking: boolean;
+  pending: { id: string; name: string } | null;
+  busy: boolean;
+  onStart: () => void;
+  onCancelPick: () => void;
+  onPick: (p: { id: string; name: string }) => void;
+  onCancelConfirm: () => void;
+  onConfirm: () => void;
+}) {
+  const alreadyMine = userId
+    ? game.players.some((p) => p.userId === userId)
+    : false;
+  const unclaimed = game.players.filter((p) => !p.userId);
+  if (alreadyMine || unclaimed.length === 0) return null;
+
+  return (
+    <>
+      <div className="card claim-panel stack-sm">
+        {!picking ? (
+          <button type="button" className="btn primary" onClick={onStart}>
+            Claim game
+          </button>
+        ) : (
+          <>
+            <p className="section-title" style={{ margin: 0 }}>
+              Who did you play as?
+            </p>
+            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+              Only unclaimed seats are listed. The table name stays the same.
+            </p>
+            <div className="claim-seats">
+              {unclaimed.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="btn ghost sm"
+                  disabled={busy}
+                  onClick={() => onPick({ id: p.id, name: p.name })}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={busy}
+              onClick={onCancelPick}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+      {pending && (
+        <div
+          className="modal-backdrop"
+          onClick={busy ? undefined : onCancelConfirm}
+        >
+          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
+            <p className="section-title" style={{ margin: 0 }}>
+              Claim this game?
+            </p>
+            <p style={{ margin: 0 }}>
+              Are you sure you want to claim {possessive(pending.name)} game?
+              These stats will count as yours.
+            </p>
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={busy}
+                onClick={onCancelConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={busy}
+                onClick={onConfirm}
+                style={{ flex: 1 }}
+              >
+                {busy ? '…' : 'Yes, claim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function possessive(name: string): string {
+  return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }

@@ -1,10 +1,4 @@
-import {
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -31,17 +25,10 @@ export class LoginDto {
 }
 
 export class UpdateAccountDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(32)
-  username?: string;
-
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  password?: string;
+  password!: string;
 }
 
 export class ClaimPlayerDto {

@@ -25,9 +25,17 @@ export class AuthService {
     await this.assertUsernameAvailable(username);
 
     const passwordHash = await hashPassword(dto.password);
-    const user = await this.prisma.user.create({
-      data: { username, passwordHash },
-    });
+    let user;
+    try {
+      user = await this.prisma.user.create({
+        data: { username, passwordHash },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('Username already taken');
+      }
+      throw e;
+    }
     const token = await this.createSession(user.id);
     return { user: toPublic(user), token };
   }
@@ -71,29 +79,12 @@ export class AuthService {
     userId: string,
     dto: UpdateAccountDto,
   ): Promise<PublicUser> {
-    const data: { username?: string; passwordHash?: string } = {};
-
-    if (dto.username !== undefined) {
-      const username = normalizeUsername(dto.username);
-      if (!username) throw new BadRequestException('Username required');
-      await this.assertUsernameAvailable(username, userId);
-      data.username = username;
+    if (!dto.password.length) {
+      throw new BadRequestException('Password required');
     }
-
-    if (dto.password !== undefined) {
-      if (!dto.password.length) {
-        throw new BadRequestException('Password required');
-      }
-      data.passwordHash = await hashPassword(dto.password);
-    }
-
-    if (Object.keys(data).length === 0) {
-      throw new BadRequestException('No changes');
-    }
-
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data,
+      data: { passwordHash: await hashPassword(dto.password) },
     });
     return toPublic(user);
   }
@@ -121,6 +112,7 @@ export class AuthService {
       );
     }
 
+    // Link the account only. Keep the originally entered table name.
     await this.prisma.player.update({
       where: { id: playerId },
       data: { userId },
@@ -170,15 +162,21 @@ export class AuthService {
     return token;
   }
 
-  private async assertUsernameAvailable(username: string, exceptUserId?: string) {
-    const existing = await this.prisma.user.findFirst({
-      where: {
-        username,
-        ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}),
-      },
+  private async assertUsernameAvailable(username: string) {
+    const existing = await this.prisma.user.findUnique({
+      where: { username },
     });
     if (existing) throw new ConflictException('Username already taken');
   }
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'code' in e &&
+    (e as { code: string }).code === 'P2002'
+  );
 }
 
 function normalizeUsername(raw: string): string {

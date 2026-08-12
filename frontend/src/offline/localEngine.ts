@@ -148,7 +148,11 @@ function computeStandings(game: GameDetail): Standing[] {
 export function createLocalGame(
   playerNames: string[],
   name?: string,
-  ids?: { gameId: string; playerIds: string[] },
+  ids?: {
+    gameId: string;
+    playerIds: string[];
+    playerUserIds?: (string | null)[];
+  },
 ): GameDetail {
   const names = playerNames.map((n) => n.trim()).filter(Boolean);
   if (names.length < 2 || names.length > 7) {
@@ -162,6 +166,7 @@ export function createLocalGame(
     id: ids?.playerIds[seatIndex] ?? newId(),
     name: n,
     seatIndex,
+    userId: ids?.playerUserIds?.[seatIndex] ?? null,
   }));
   const n = players.length;
   const now = new Date().toISOString();

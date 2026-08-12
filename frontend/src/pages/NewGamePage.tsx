@@ -1,6 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../useAuth';
 
 const MIN = 2;
 const MAX = 7;
@@ -9,12 +10,23 @@ type Step = 'names' | 'dealer';
 
 export function NewGamePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('names');
   const [names, setNames] = useState<string[]>(() => Array.from({ length: MAX }, () => ''));
+  const [selfSlot, setSelfSlot] = useState<number | null>(null);
   const [gameName, setGameName] = useState('');
   const [dealerIndex, setDealerIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.username) return;
+    setNames((prev) => {
+      if (prev.some((n) => n.trim())) return prev;
+      return prev.map((n, i) => (i === 0 ? user.username : n));
+    });
+    setSelfSlot((s) => (s == null ? 0 : s));
+  }, [user]);
 
   const cleaned = names.map((n) => n.trim()).filter(Boolean);
 
@@ -30,6 +42,11 @@ export function NewGamePage() {
   function removePlayer(i: number) {
     if (names.length <= MIN) return;
     setNames((prev) => prev.filter((_, idx) => idx !== i));
+    setSelfSlot((s) => {
+      if (s == null) return s;
+      if (s === i) return null;
+      return s > i ? s - 1 : s;
+    });
   }
 
   function goToDealer(e: FormEvent) {
@@ -53,13 +70,24 @@ export function NewGamePage() {
     try {
       // Seating order stays clockwise; rotate so chosen dealer is last
       // (API: last seat = round-1 dealer, first seat = left of dealer).
+      const seated = names
+        .map((n, i) => ({
+          name: n.trim(),
+          userId:
+            user && selfSlot === i && n.trim() ? user.id : null,
+        }))
+        .filter((p) => p.name);
       const rotated = [
-        ...cleaned.slice(dealerIndex + 1),
-        ...cleaned.slice(0, dealerIndex + 1),
+        ...seated.slice(dealerIndex + 1),
+        ...seated.slice(0, dealerIndex + 1),
       ];
+      const playerUserIds = rotated.map((p) => p.userId);
       const game = await api.createGame(
-        rotated,
+        rotated.map((p) => p.name),
         gameName.trim() || undefined,
+        playerUserIds.some((id) => id)
+          ? { playerUserIds }
+          : undefined,
       );
       navigate(`/games/${game.id}`);
     } catch (err) {
@@ -154,6 +182,9 @@ export function NewGamePage() {
           </h3>
           <p className="hint" style={{ margin: '0 0 4px' }}>
             Enter names in the order everyone is sitting.
+            {user
+              ? ' Your seat is pre-filled — you can change the name; your account still links to that seat.'
+              : ''}
           </p>
 
           <div className="stack-sm">

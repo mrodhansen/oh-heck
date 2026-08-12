@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api, StatsGame, StatsPlayer, StatsResponse, StatsLeader } from '../api';
 
 type Tab = 'overview' | 'games' | 'players';
 
 export function StatsPage() {
+  const location = useLocation();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(() => {
+    const from = (location.state as { tab?: Tab } | null)?.tab;
+    return from === 'games' || from === 'players' ? from : 'overview';
+  });
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
 
   const playerKey = (p: StatsPlayer) => p.key ?? p.name;
@@ -167,7 +171,11 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
             {games.map((g) => (
               <tr key={g.id}>
                 <td>
-                  <Link to={`/games/${g.id}`} className="table-link">
+                  <Link
+                    to={`/games/${g.id}`}
+                    state={{ from: 'stats' }}
+                    className="table-link"
+                  >
                     <span className="table-primary">
                       {g.name ?? 'Untitled'}
                     </span>

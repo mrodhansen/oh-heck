@@ -41,7 +41,7 @@ export const authApi = {
   logout: () =>
     httpRequest<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
-  update: (data: { username?: string; password?: string }) =>
+  update: (data: { password: string }) =>
     httpRequest<{ user: AuthUser }>('/auth/me', {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi, type ClaimableGame } from '../auth';
+import { authApi } from '../auth';
 import type { StatsPlayer } from '../api';
 import { useAuth } from '../useAuth';
 
@@ -11,33 +11,27 @@ export function AccountPage() {
   const [mode, setMode] = useState<Mode>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<StatsPlayer | null>(null);
-  const [claimable, setClaimable] = useState<ClaimableGame[]>([]);
-  const [claimBusy, setClaimBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setStats(null);
-      setClaimable([]);
       return;
     }
-    setNewUsername(user.username);
     let alive = true;
-    Promise.all([authApi.myStats(), authApi.claimable()])
-      .then(([s, c]) => {
+    authApi
+      .myStats()
+      .then((s) => {
         if (!alive) return;
         setStats(s.stats);
-        setClaimable(c);
       })
       .catch(() => {
         if (!alive) return;
         setStats(null);
-        setClaimable([]);
       });
     return () => {
       alive = false;
@@ -86,44 +80,19 @@ export function AccountPage() {
     setMessage(null);
     setBusy(true);
     try {
-      const body: { username?: string; password?: string } = {};
-      if (newUsername.trim() && newUsername.trim() !== user.username) {
-        body.username = newUsername.trim();
-      }
-      if (newPassword.length > 0) body.password = newPassword;
-      if (!body.username && !body.password) {
-        setError('Change username or password first');
+      if (!newPassword.length) {
+        setError('Enter a new password');
         return;
       }
-      const res = await authApi.update(body);
+      const res = await authApi.update({ password: newPassword });
       setUser(res.user);
       setNewPassword('');
-      setMessage('Account updated.');
+      setMessage('Password updated.');
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update');
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function onClaim(gameId: string, playerId: string) {
-    setError(null);
-    setMessage(null);
-    setClaimBusy(`${gameId}:${playerId}`);
-    try {
-      await authApi.claim(gameId, playerId);
-      setMessage('Seat claimed — stats will count for your account.');
-      const [s, c] = await Promise.all([
-        authApi.myStats(),
-        authApi.claimable(),
-      ]);
-      setStats(s.stats);
-      setClaimable(c);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not claim');
-    } finally {
-      setClaimBusy(null);
     }
   }
 
@@ -137,8 +106,8 @@ export function AccountPage() {
         <div className="page-fit-header">
           <h2 className="page-title">Account</h2>
           <p className="lede">
-            Optional. Sign in to keep stats and auto-join live games with your
-            name. Scoring mode stays guest-friendly.
+            Optional. Sign in to keep stats. Table names stay as entered;
+            your account is a separate link on the seat.
           </p>
         </div>
         <div className="page-fit-body stack">
@@ -186,7 +155,8 @@ export function AccountPage() {
               />
             </label>
             <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Password can be anything — even a single character.
+              Username is unique and cannot be changed later. Password can be
+              anything — even a single character.
             </p>
             <button
               type="submit"
@@ -221,8 +191,7 @@ export function AccountPage() {
           <h3 className="section-title">Your stats</h3>
           {!stats ? (
             <p className="muted" style={{ margin: 0 }}>
-              No claimed games yet. Finish games while signed in, or claim seats
-              below.
+              No claimed games yet. Open a game from Stats and tap Claim game.
             </p>
           ) : (
             <div className="stats-grid">
@@ -248,17 +217,11 @@ export function AccountPage() {
         </section>
 
         <section className="card stack">
-          <h3 className="section-title">Edit account</h3>
+          <h3 className="section-title">Password</h3>
+          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+            Username cannot be changed.
+          </p>
           <form className="stack" onSubmit={onSave}>
-            <label className="field">
-              Username
-              <input
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                maxLength={32}
-                autoComplete="username"
-              />
-            </label>
             <label className="field">
               New password
               <input
@@ -267,59 +230,16 @@ export function AccountPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 maxLength={200}
                 autoComplete="new-password"
-                placeholder="Leave blank to keep"
               />
             </label>
-            <button type="submit" className="btn primary" disabled={busy}>
-              Save changes
+            <button
+              type="submit"
+              className="btn primary"
+              disabled={busy || !newPassword}
+            >
+              Update password
             </button>
           </form>
-        </section>
-
-        <section className="card stack">
-          <h3 className="section-title">Claim past games</h3>
-          <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
-            Link a seat you actually played. Same display name as someone else
-            does not auto-merge — only an explicit claim counts for your stats.
-          </p>
-          {claimable.length === 0 ? (
-            <div className="empty">No unclaimed seats right now.</div>
-          ) : (
-            <div className="stack">
-              {claimable.map((g) => (
-                <div key={g.id} className="claim-game">
-                  <div className="claim-game-head">
-                    <Link to={`/games/${g.id}`} className="table-link">
-                      <span className="table-primary">
-                        {g.name ?? 'Untitled game'}
-                      </span>
-                      <span className="table-secondary">
-                        {g.playMode === 'ONLINE' ? 'Online' : 'Score'} ·{' '}
-                        {formatDate(g.finishedAt ?? g.createdAt)}
-                      </span>
-                    </Link>
-                  </div>
-                  <div className="claim-seats">
-                    {g.players
-                      .filter((p) => p.claimable)
-                      .map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className="btn ghost sm"
-                          disabled={claimBusy != null}
-                          onClick={() => onClaim(g.id, p.id)}
-                        >
-                          {claimBusy === `${g.id}:${p.id}`
-                            ? '…'
-                            : `Claim ${p.name}`}
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
 
         <button
@@ -352,10 +272,4 @@ function Metric({
   );
 }
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
-}
+

@@ -71,7 +71,7 @@ enum LiveSessionStatus {
 /// Optional durable account. Guests still play by display name only.
 model User {
   id           String   @id @default(uuid())
-  /// Unique login handle (stored trimmed; uniqueness is case-insensitive in app)
+  /// Unique, immutable login handle (stored lowercase).
   username     String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
@@ -155,11 +155,13 @@ model Game {
 model Player {
   id        String   @id @default(uuid())
   gameId    String
+  /// Table display name as entered (auto-filled from username on signed-in join).
+  /// Claim / account link must not overwrite this.
   name      String
   seatIndex Int
   createdAt DateTime @default(now())
 
-  /// Optional account claim — stats attribute here, not by display name alone
+  /// Nullable account that owns this seat's score. Independent of `name`.
   userId String?
 
   /// Link back to tournament roster player when applicable
@@ -459,6 +461,7 @@ model LiveSession {
 model LivePlayer {
   id        String   @id @default(uuid())
   sessionId String
+  /// Table display name as entered. Claim links `userId` only — never renames.
   name      String
   /// Seat assigned at join; host is always last seat when game starts (reindexed).
   seatIndex Int
@@ -467,7 +470,7 @@ model LivePlayer {
   isHost    Boolean  @default(false)
   /// Left the table; seat held for reclaim while game is active
   gone      Boolean  @default(false)
-  /// Optional account linked at create/join/claim
+  /// Nullable account linked at create/join/claim. Independent of `name`.
   userId    String?
   createdAt DateTime @default(now())
 

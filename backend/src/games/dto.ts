@@ -46,7 +46,8 @@ export class CreateGameDto {
 
   /**
    * Optional account ids aligned with playerNames (null = guest).
-   * Only set from live start / explicit claim — never inferred from name.
+   * Independent of display names. Never inferred from name; claim does not
+   * rename the seat. Scorekeeper create may only set the signed-in user's id.
    */
   @IsOptional()
   @IsArray()

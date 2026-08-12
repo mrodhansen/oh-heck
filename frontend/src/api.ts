@@ -566,9 +566,11 @@ export const api = {
   createGame: async (
     playerNames: string[],
     name?: string,
+    opts?: { playerUserIds?: (string | null)[] },
   ): Promise<GameDetail> => {
     const gameId = newId();
     const playerIds = playerNames.map(() => newId());
+    const playerUserIds = opts?.playerUserIds;
 
     if (isOnline()) {
       try {
@@ -580,6 +582,7 @@ export const api = {
               name,
               id: gameId,
               playerIds,
+              ...(playerUserIds ? { playerUserIds } : {}),
             }),
           });
           return rememberGame(game);
@@ -589,11 +592,21 @@ export const api = {
       }
     }
 
-    const local = createLocalGame(playerNames, name, { gameId, playerIds });
+    const local = createLocalGame(playerNames, name, {
+      gameId,
+      playerIds,
+      playerUserIds,
+    });
     await rememberGame(local);
     await enqueue({
       type: 'createGame',
-      payload: { playerNames, name, id: gameId, playerIds },
+      payload: {
+        playerNames,
+        name,
+        id: gameId,
+        playerIds,
+        ...(playerUserIds ? { playerUserIds } : {}),
+      },
     });
     return local;
   },

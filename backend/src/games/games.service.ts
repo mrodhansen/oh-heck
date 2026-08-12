@@ -78,7 +78,10 @@ export class GamesService {
     return games.map((g) => this.toSummary(g));
   }
 
-  async createGame(dto: CreateGameDto, opts?: { fromLive?: boolean }) {
+  async createGame(
+    dto: CreateGameDto,
+    opts?: { fromLive?: boolean; actorUserId?: string },
+  ) {
     const limits = this.rules.getPlayerLimits();
     const names = dto.playerNames.map((n) => n.trim()).filter(Boolean);
     if (names.length < limits.min || names.length > limits.max) {
@@ -101,13 +104,12 @@ export class GamesService {
     if (dto.playerIds && new Set(dto.playerIds).size !== dto.playerIds.length) {
       throw new BadRequestException('playerIds must be unique');
     }
-    if (dto.playerUserIds && dto.playerUserIds.length !== names.length) {
-      throw new BadRequestException(
-        'playerUserIds must match playerNames length',
-      );
-    }
-    if (dto.playerUserIds) {
-      const claimed = dto.playerUserIds.filter((id): id is string => !!id);
+    const playerUserIds = sanitizePlayerUserIds(dto.playerUserIds, names.length, {
+      fromLive: opts?.fromLive === true,
+      actorUserId: opts?.actorUserId,
+    });
+    if (playerUserIds) {
+      const claimed = playerUserIds.filter((id): id is string => !!id);
       if (new Set(claimed).size !== claimed.length) {
         throw new BadRequestException('playerUserIds must be unique when set');
       }
@@ -176,8 +178,8 @@ export class GamesService {
               ...(dto.playerIds ? { id: dto.playerIds[seatIndex] } : {}),
               name,
               seatIndex,
-              ...(dto.playerUserIds?.[seatIndex]
-                ? { userId: dto.playerUserIds[seatIndex]! }
+              ...(playerUserIds?.[seatIndex]
+                ? { userId: playerUserIds[seatIndex]! }
                 : {}),
             })),
           },
@@ -1452,6 +1454,7 @@ export class GamesService {
       );
     }
 
+    // Link the account only. Keep the originally entered table name.
     await this.prisma.player.update({
       where: { id: playerId },
       data: { userId },
@@ -1508,6 +1511,22 @@ export class GamesService {
 
     return assignPlacesByTotal(totals).sort((a, b) => a.seatIndex - b.seatIndex);
   }
+}
+
+function sanitizePlayerUserIds(
+  raw: (string | null)[] | undefined,
+  length: number,
+  opts: { fromLive: boolean; actorUserId?: string },
+): (string | null)[] | undefined {
+  if (!raw) return undefined;
+  if (raw.length !== length) {
+    throw new BadRequestException(
+      'playerUserIds must match playerNames length',
+    );
+  }
+  if (opts.fromLive) return raw;
+  if (!opts.actorUserId) return undefined;
+  return raw.map((id) => (id === opts.actorUserId ? id : null));
 }
 
 function defaultGameName(names: string[]): string {
