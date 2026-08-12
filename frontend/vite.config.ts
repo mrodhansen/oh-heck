@@ -28,7 +28,7 @@ export default defineConfig({
         theme_color: '#f5ebe2',
         background_color: '#f5ebe2',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'any',
         start_url: base,
         scope: base,
         // PNG only — iOS home screen ignores SVG favicons

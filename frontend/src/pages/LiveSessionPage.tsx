@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, GameDetail } from '../api';
 import { NumberStepper } from '../components/NumberStepper';
 import { PlayingCard } from '../components/PlayingCard';
 import { Scoreboard } from '../components/Scoreboard';
 import { liveApi } from '../live/api';
-import { suitGlyph } from '../live/cards';
+import { trumpLabel } from '../live/cards';
 import { clearLiveAuth, loadLiveAuth } from '../live/session';
 import type { LivePlayerPublic, LiveView } from '../live/types';
 import { useSocketRoom } from '../useSocketRoom';
@@ -480,9 +487,17 @@ function LivePlayTable({
   const tricksTaken = view.tricksPlayed ?? 0;
   const myPlay = playBySeat.get(view.me.seatIndex) ?? null;
   const bidding = view.phase === 'bidding';
+  const mePlayer =
+    view.players.find((p) => p.id === view.me.playerId) ?? {
+      id: view.me.playerId,
+      name: view.me.name,
+      seatIndex: view.me.seatIndex,
+      isHost: view.me.isHost,
+      gone: view.me.gone,
+    };
 
   return (
-    <div className="live-play">
+    <div className={`live-play players-${n}`}>
       <header className="live-phase-header">
         <p className="live-phase-row">
           Round {view.roundNumber}
@@ -499,95 +514,13 @@ function LivePlayTable({
 
       <div className="live-play-body">
         <div className="live-felt-wrap">
-          <div className="live-felt">
-            <div className="live-felt-top">
-              {layout.top.map(({ player }) => (
-                <PlayerSlot
-                  key={player.id}
-                  player={player}
-                  view={view}
-                  play={playBySeat.get(player.seatIndex) ?? null}
-                  side="top"
-                />
-              ))}
-            </div>
-            <div className="live-felt-mid">
-              <div className="live-felt-side left">
-                {layout.left.map(({ player }) => (
-                  <PlayerSlot
-                    key={player.id}
-                    player={player}
-                    view={view}
-                    play={playBySeat.get(player.seatIndex) ?? null}
-                    side="left"
-                  />
-                ))}
-              </div>
-              <div className="live-felt-center">
-                <div className="live-center-stack">
-                  {view.trumpCard ? (
-                    <div
-                      className="trump-center"
-                      aria-label={`Trump ${view.trumpCard.r}${suitGlyph(view.trumpCard.s)}`}
-                    >
-                      <span className="trump-center-label">Trump</span>
-                      <PlayingCard
-                        card={{
-                          key: `trump-${view.trumpCard.r}${view.trumpCard.s}`,
-                          suit: view.trumpCard.s,
-                          rank: view.trumpCard.r,
-                        }}
-                        compact
-                      />
-                    </div>
-                  ) : null}
-                  {bidding ? (
-                    <span className="trick-empty">Bidding…</span>
-                  ) : view.table.plays.length === 0 ? (
-                    <span className="trick-empty">
-                      {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
-                    </span>
-                  ) : view.table.complete && view.table.winnerSeat != null ? (
-                    <span className="trick-empty trick-winner-label">
-                      {view.players.find(
-                        (p) => p.seatIndex === view.table.winnerSeat,
-                      )?.name ?? 'Player'}{' '}
-                      takes it
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="live-felt-side right">
-                {layout.right.map(({ player }) => (
-                  <PlayerSlot
-                    key={player.id}
-                    player={player}
-                    view={view}
-                    play={playBySeat.get(player.seatIndex) ?? null}
-                    side="right"
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="live-felt-bottom">
-              <PlayerSlot
-                player={
-                  view.players.find((p) => p.id === view.me.playerId) ?? {
-                    id: view.me.playerId,
-                    name: view.me.name,
-                    seatIndex: view.me.seatIndex,
-                    isHost: view.me.isHost,
-                    gone: view.me.gone,
-                  }
-                }
-                view={view}
-                play={myPlay}
-                side="bottom"
-                me
-              />
-            </div>
-          </div>
+          <LiveBoard
+            view={view}
+            layout={layout}
+            playBySeat={playBySeat}
+            myPlay={myPlay}
+            mePlayer={mePlayer}
+          />
 
           {/* Bid popup sits over the table only — hand stays fully visible below. */}
           {view.isMyBidTurn && bidSheetOpen && (
@@ -717,70 +650,317 @@ function layoutOpponents(
     };
   }
   if (m === 4) {
+    // 5-player: 2 left, 2 right, you bottom
     return {
-      top: [orderedAway[1]!, orderedAway[2]!],
-      left: [orderedAway[3]!],
-      right: [orderedAway[0]!],
+      top: [],
+      left: [orderedAway[2]!, orderedAway[3]!],
+      right: [orderedAway[1]!, orderedAway[0]!],
     };
   }
   if (m === 5) {
+    // 6-player: 2 left, 2 right, 1 top, you bottom
     return {
       top: [orderedAway[2]!],
-      left: [orderedAway[4]!, orderedAway[3]!],
-      right: [orderedAway[0]!, orderedAway[1]!],
+      left: [orderedAway[3]!, orderedAway[4]!],
+      right: [orderedAway[1]!, orderedAway[0]!],
     };
   }
+  // 7-player: 3 per side, you bottom
   return {
-    top: [orderedAway[2]!, orderedAway[3]!],
-    left: [orderedAway[5]!, orderedAway[4]!],
-    right: [orderedAway[0]!, orderedAway[1]!],
+    top: [],
+    left: [orderedAway[3]!, orderedAway[4]!, orderedAway[5]!],
+    right: [orderedAway[2]!, orderedAway[1]!, orderedAway[0]!],
   };
 }
 
-function PlayerSlot({
-  player,
+/**
+ * 5-column board grid:
+ *   [seat-L | play-L | mid/trump | play-R | seat-R]
+ * Seat columns share equal 1fr weight so all player chips match width.
+ */
+function LiveBoard({
   view,
-  play,
-  side,
-  me,
+  layout,
+  playBySeat,
+  myPlay,
+  mePlayer,
 }: {
-  player: LivePlayerPublic;
   view: LiveView;
-  play: LiveView['table']['plays'][number] | null;
-  side: 'top' | 'left' | 'right' | 'bottom';
-  me?: boolean;
+  layout: {
+    top: { player: LivePlayerPublic; rel: number }[];
+    left: { player: LivePlayerPublic; rel: number }[];
+    right: { player: LivePlayerPublic; rel: number }[];
+  };
+  playBySeat: Map<number, LiveView['table']['plays'][number]>;
+  myPlay: LiveView['table']['plays'][number] | null;
+  mePlayer: LivePlayerPublic;
 }) {
-  const active = isActiveSeat(view, player.seatIndex);
-  const winner =
-    view.table.complete && view.table.winnerSeat === player.seatIndex;
-  const cardEl = (
-    <div
-      className={`seat-play-slot ${play ? 'has-card' : ''} ${winner ? 'winner' : ''}`}
-    >
-      {play ? (
-        <PlayingCard card={play.card} compact />
-      ) : (
-        <div className="seat-play-empty" aria-hidden />
-      )}
-    </div>
+  const showSlots = view.phase !== 'bidding';
+  const sideRows = Math.max(layout.left.length, layout.right.length, 0);
+  const hasTop = layout.top.length > 0;
+  const hasSides = sideRows > 0;
+  // 2p heads-up: single opponent stacked in center column
+  const headsUp = hasTop && !hasSides && layout.top.length === 1;
+
+  let row = 1;
+  const topSeatRow = hasTop ? row++ : 0;
+  const topPlayRow = hasTop && showSlots ? row++ : 0;
+  const sideStartRow = hasSides ? row : 0;
+  if (hasSides) row += sideRows;
+  // heads-up: dedicated trump row; with sides: trump spans side rows
+  const trumpRow = headsUp ? row++ : 0;
+  const myPlayRow = showSlots ? row++ : 0;
+  const meRow = row;
+
+  const sideSpan = Math.max(sideRows, 1);
+  const cells: ReactNode[] = [];
+
+  // Top opponent(s)
+  layout.top.forEach(({ player }, i) => {
+    const col = layout.top.length === 1 ? 3 : 2 + i; // center, or spread if multiple
+    cells.push(
+      <BoardSeat
+        key={`ts-${player.id}`}
+        player={player}
+        view={view}
+        style={{ gridColumn: col, gridRow: topSeatRow }}
+      />,
+    );
+    if (showSlots && topPlayRow) {
+      cells.push(
+        <BoardPlay
+          key={`tp-${player.id}`}
+          player={player}
+          view={view}
+          play={playBySeat.get(player.seatIndex) ?? null}
+          style={{ gridColumn: col, gridRow: topPlayRow }}
+        />,
+      );
+    }
+  });
+
+  // Side rows: seat-L | play-L | (mid) | play-R | seat-R
+  for (let i = 0; i < sideRows; i++) {
+    const r = sideStartRow + i;
+    const lp = layout.left[i];
+    const rp = layout.right[i];
+    if (lp) {
+      cells.push(
+        <BoardSeat
+          key={`ls-${lp.player.id}`}
+          player={lp.player}
+          view={view}
+          style={{ gridColumn: 1, gridRow: r }}
+        />,
+      );
+      if (showSlots) {
+        cells.push(
+          <BoardPlay
+            key={`lpl-${lp.player.id}`}
+            player={lp.player}
+            view={view}
+            play={playBySeat.get(lp.player.seatIndex) ?? null}
+            style={{ gridColumn: 2, gridRow: r }}
+          />,
+        );
+      }
+    }
+    if (rp) {
+      if (showSlots) {
+        cells.push(
+          <BoardPlay
+            key={`rpl-${rp.player.id}`}
+            player={rp.player}
+            view={view}
+            play={playBySeat.get(rp.player.seatIndex) ?? null}
+            style={{ gridColumn: 4, gridRow: r }}
+          />,
+        );
+      }
+      cells.push(
+        <BoardSeat
+          key={`rs-${rp.player.id}`}
+          player={rp.player}
+          view={view}
+          style={{ gridColumn: 5, gridRow: r }}
+        />,
+      );
+    }
+  }
+
+  // Trump + status (center)
+  if (headsUp) {
+    cells.push(
+      <div
+        key="mid"
+        className="board-mid"
+        style={{ gridColumn: 3, gridRow: trumpRow }}
+      >
+        <BoardTrump view={view} />
+        <TrickStatus view={view} />
+      </div>,
+    );
+  } else if (hasSides) {
+    cells.push(
+      <div
+        key="mid"
+        className="board-mid"
+        style={{
+          gridColumn: 3,
+          gridRow: `${sideStartRow} / span ${sideSpan}`,
+        }}
+      >
+        <BoardTrump view={view} />
+        <TrickStatus view={view} />
+      </div>,
+    );
+  } else {
+    cells.push(
+      <div
+        key="mid"
+        className="board-mid"
+        style={{ gridColumn: 3, gridRow: 1 }}
+      >
+        <BoardTrump view={view} />
+        <TrickStatus view={view} />
+      </div>,
+    );
+  }
+
+  // My played card
+  if (showSlots && myPlayRow) {
+    cells.push(
+      <BoardPlay
+        key="my-play"
+        player={mePlayer}
+        view={view}
+        play={myPlay}
+        me
+        style={{ gridColumn: 3, gridRow: myPlayRow }}
+      />,
+    );
+  }
+
+  // Me
+  cells.push(
+    <BoardSeat
+      key="me"
+      player={mePlayer}
+      view={view}
+      me
+      style={{ gridColumn: 3, gridRow: meRow }}
+    />,
   );
 
   return (
     <div
-      className={`player-slot side-${side} ${me ? 'is-me' : ''} ${active ? 'active-turn' : ''} ${player.gone ? 'gone' : ''}`}
+      className={`live-board players-${view.players.length} ${headsUp ? 'heads-up' : ''} ${hasTop ? 'has-top' : ''}`}
+      style={
+        {
+          '--board-rows': meRow,
+        } as CSSProperties
+      }
     >
-      {side === 'bottom' || side === 'right' ? (
-        <>
-          {cardEl}
-          <SeatInfo player={player} view={view} me={me} />
-        </>
+      {cells}
+    </div>
+  );
+}
+
+function BoardTrump({ view }: { view: LiveView }) {
+  if (!view.trumpCard && !view.trumpSuit) return null;
+  return (
+    <div className="board-trump">
+      <span className="board-trump-label">Trump</span>
+      {view.trumpCard ? (
+        <PlayingCard
+          card={{
+            key: `${view.trumpCard.r}${view.trumpCard.s}`,
+            rank: view.trumpCard.r,
+            suit: view.trumpCard.s,
+          }}
+          compact
+        />
       ) : (
-        <>
-          <SeatInfo player={player} view={view} me={me} />
-          {cardEl}
-        </>
+        <span className="board-trump-suit">{trumpLabel(view.trumpSuit)}</span>
       )}
     </div>
+  );
+}
+
+function BoardSeat({
+  player,
+  view,
+  me,
+  style,
+}: {
+  player: LivePlayerPublic;
+  view: LiveView;
+  me?: boolean;
+  style: CSSProperties;
+}) {
+  const active = isActiveSeat(view, player.seatIndex);
+  return (
+    <div
+      className={`board-seat ${me ? 'is-me' : ''} ${active ? 'active-turn' : ''} ${player.gone ? 'gone' : ''}`}
+      style={style}
+    >
+      <SeatInfo player={player} view={view} me={me} />
+    </div>
+  );
+}
+
+function BoardPlay({
+  player,
+  view,
+  play,
+  me,
+  style,
+}: {
+  player: LivePlayerPublic;
+  view: LiveView;
+  play: LiveView['table']['plays'][number] | null;
+  me?: boolean;
+  style: CSSProperties;
+}) {
+  const winner =
+    view.table.complete && view.table.winnerSeat === player.seatIndex;
+  return (
+    <div
+      className={`board-play trick-slot ${play ? 'has-card' : 'is-empty'} ${winner ? 'winner' : ''} ${me ? 'is-me' : ''}`}
+      style={style}
+      title={player.name}
+      aria-hidden={play ? undefined : true}
+    >
+      {play ? <PlayingCard card={play.card} compact /> : null}
+    </div>
+  );
+}
+
+function TrickStatus({ view }: { view: LiveView }) {
+  if (view.phase === 'bidding') {
+    return <span className="trick-empty">Bidding…</span>;
+  }
+  const hasPlays = view.table.plays.length > 0;
+  const winnerSeat = view.table.complete ? view.table.winnerSeat : null;
+  if (!hasPlays) {
+    return (
+      <span className="trick-empty">
+        {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
+      </span>
+    );
+  }
+  if (view.table.complete && winnerSeat != null) {
+    return (
+      <span className="trick-winner-label">
+        {view.players.find((p) => p.seatIndex === winnerSeat)?.name ?? 'Player'}{' '}
+        takes it
+      </span>
+    );
+  }
+  return (
+    <span className="trick-count">
+      {view.table.plays.length}/{view.players.length}
+    </span>
   );
 }
 
@@ -793,11 +973,11 @@ function SeatInfo({
   view: LiveView;
   me?: boolean;
 }) {
+  const label = me ? `${player.name} (you)` : player.name;
   return (
     <div className={`seat-chip ${me ? 'me' : ''} ${player.gone ? 'gone' : ''}`}>
-      <span className="seat-chip-name">
-        {player.name}
-        {me ? ' (you)' : ''}
+      <span className="seat-chip-name" title={label}>
+        {label}
       </span>
       {player.gone ? (
         <span className="seat-chip-tag">Gone</span>
@@ -815,6 +995,7 @@ function turnWaitLabel(view: LiveView, seat: number | null): string {
   return `Waiting for ${p.name}…`;
 }
 
+/** n = tricks taken, m = bid. Mobile shows compact n/m; desktop keeps labeled stats. */
 function BidTricksBadge({
   view,
   playerId,
@@ -828,30 +1009,47 @@ function BidTricksBadge({
   const tricks = row.tricksTaken;
   const playing = view.phase === 'playing' || view.phase === 'trick_reveal';
 
+  const n = tricks ?? 0;
+  const m = bidVal == null ? '…' : bidVal;
+  const compact = `${n}/${m}`;
+  const aria = `Tricks ${n} of bid ${bidVal == null ? 'pending' : bidVal}`;
+
   if (view.phase === 'bidding') {
     return (
-      <span className="seat-stats">
-        <span className="seat-stat">
-          <span className="seat-stat-label">Bid</span>
-          <span className="seat-stat-value">{bidVal == null ? '…' : bidVal}</span>
+      <>
+        <span className="seat-nm" aria-label={aria}>
+          {compact}
         </span>
-      </span>
+        <span className="seat-stats seat-stats-full">
+          <span className="seat-stat">
+            <span className="seat-stat-label">Bid</span>
+            <span className="seat-stat-value">
+              {bidVal == null ? '…' : bidVal}
+            </span>
+          </span>
+        </span>
+      </>
     );
   }
 
   if (!playing && bidVal == null && tricks == null) return null;
 
   return (
-    <span className="seat-stats">
-      <span className="seat-stat">
-        <span className="seat-stat-label">Bid</span>
-        <span className="seat-stat-value">{bidVal ?? '—'}</span>
+    <>
+      <span className="seat-nm" aria-label={aria}>
+        {compact}
       </span>
-      <span className="seat-stat seat-stat-tricks">
-        <span className="seat-stat-label">Tricks</span>
-        <span className="seat-stat-value tricks-num">{tricks ?? 0}</span>
+      <span className="seat-stats seat-stats-full">
+        <span className="seat-stat">
+          <span className="seat-stat-label">Bid</span>
+          <span className="seat-stat-value">{bidVal ?? '—'}</span>
+        </span>
+        <span className="seat-stat seat-stat-tricks">
+          <span className="seat-stat-label">Tricks</span>
+          <span className="seat-stat-value tricks-num">{tricks ?? 0}</span>
+        </span>
       </span>
-    </span>
+    </>
   );
 }
 
