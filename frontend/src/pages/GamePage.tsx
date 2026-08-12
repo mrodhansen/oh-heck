@@ -251,6 +251,47 @@ export function GamePage() {
   const isLastTrickEntry =
     trickStep >= bidOrder.length - 1 && bidOrder.length > 0;
 
+  const alreadyClaimed = user
+    ? game.players.some((p) => p.userId === user.id)
+    : false;
+  const unclaimed = game.players.filter((p) => !p.userId);
+  const canClaim = !alreadyClaimed && unclaimed.length > 0;
+
+  if (pickingClaim) {
+    return (
+      <ClaimGameScreen
+        gameName={game.name}
+        players={unclaimed}
+        pending={pendingClaim}
+        busy={claimBusy}
+        error={error}
+        onPick={(p) => setPendingClaim(p)}
+        onCancel={() => {
+          setPickingClaim(false);
+          setPendingClaim(null);
+          setError(null);
+        }}
+        onCancelConfirm={() => setPendingClaim(null)}
+        onConfirm={async () => {
+          if (!pendingClaim) return;
+          setClaimBusy(true);
+          setError(null);
+          try {
+            const g = await api.claimSeat(game.id, pendingClaim.id);
+            setGame(g);
+            setClaimMessage(`Claimed ${possessive(pendingClaim.name)} game.`);
+            setPickingClaim(false);
+            setPendingClaim(null);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not claim');
+          } finally {
+            setClaimBusy(false);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="game-screen">
       <header className="game-topbar">
@@ -316,46 +357,25 @@ export function GamePage() {
 
       {(isFinished || tab === 'board') && tab !== 'notes' && (
         <div className="panel-scroll">
-          <ClaimGamePanel
-            game={game}
-            userId={user?.id ?? null}
-            picking={pickingClaim}
-            pending={pendingClaim}
-            busy={claimBusy}
-            onStart={() => {
-              setError(null);
-              setClaimMessage(null);
-              if (!user) {
-                setError('Sign in to claim this game.');
-                return;
-              }
-              setPickingClaim(true);
-            }}
-            onCancelPick={() => {
-              setPickingClaim(false);
-              setPendingClaim(null);
-            }}
-            onPick={(p) => setPendingClaim(p)}
-            onCancelConfirm={() => setPendingClaim(null)}
-            onConfirm={async () => {
-              if (!pendingClaim) return;
-              setClaimBusy(true);
-              setError(null);
-              try {
-                const g = await api.claimSeat(game.id, pendingClaim.id);
-                setGame(g);
-                setClaimMessage(
-                  `Claimed ${possessive(pendingClaim.name)} game.`,
-                );
-                setPickingClaim(false);
-                setPendingClaim(null);
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'Could not claim');
-              } finally {
-                setClaimBusy(false);
-              }
-            }}
-          />
+          {canClaim && (
+            <div className="card claim-panel">
+              <button
+                type="button"
+                className="btn primary block"
+                onClick={() => {
+                  setError(null);
+                  setClaimMessage(null);
+                  if (!user) {
+                    setError('Sign in to claim this game.');
+                    return;
+                  }
+                  setPickingClaim(true);
+                }}
+              >
+                Claim game
+              </button>
+            </div>
+          )}
           <Scoreboard
             game={game}
             onEditRound={
@@ -628,73 +648,66 @@ export function GamePage() {
   );
 }
 
-function ClaimGamePanel({
-  game,
-  userId,
-  picking,
+function ClaimGameScreen({
+  gameName,
+  players,
   pending,
   busy,
-  onStart,
-  onCancelPick,
+  error,
   onPick,
+  onCancel,
   onCancelConfirm,
   onConfirm,
 }: {
-  game: GameDetail;
-  userId: string | null;
-  picking: boolean;
+  gameName: string | null;
+  players: { id: string; name: string }[];
   pending: { id: string; name: string } | null;
   busy: boolean;
-  onStart: () => void;
-  onCancelPick: () => void;
+  error: string | null;
   onPick: (p: { id: string; name: string }) => void;
+  onCancel: () => void;
   onCancelConfirm: () => void;
   onConfirm: () => void;
 }) {
-  const alreadyMine = userId
-    ? game.players.some((p) => p.userId === userId)
-    : false;
-  const unclaimed = game.players.filter((p) => !p.userId);
-  if (alreadyMine || unclaimed.length === 0) return null;
-
   return (
-    <>
-      <div className="card claim-panel stack-sm">
-        {!picking ? (
-          <button type="button" className="btn primary" onClick={onStart}>
-            Claim game
-          </button>
+    <div className="page-fit">
+      <div className="page-fit-header">
+        <h2 className="page-title">Claim game</h2>
+        <p className="lede">
+          Who did you play as
+          {gameName ? ` in ${gameName}` : ''}? The table name stays the same.
+        </p>
+      </div>
+      <div className="page-fit-body stack">
+        {error && <div className="banner">{error}</div>}
+        {players.length === 0 ? (
+          <div className="empty">No unclaimed seats left.</div>
         ) : (
-          <>
-            <p className="section-title" style={{ margin: 0 }}>
-              Who did you play as?
-            </p>
-            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Only unclaimed seats are listed. The table name stays the same.
-            </p>
-            <div className="claim-seats">
-              {unclaimed.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="btn ghost sm"
-                  disabled={busy}
-                  onClick={() => onPick({ id: p.id, name: p.name })}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="btn ghost sm"
-              disabled={busy}
-              onClick={onCancelPick}
-            >
-              Cancel
-            </button>
-          </>
+          <div className="claim-card-list">
+            {players.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="btn mode-card"
+                disabled={busy}
+                onClick={() => onPick({ id: p.id, name: p.name })}
+              >
+                <span className="mode-card-title">{p.name}</span>
+                <span className="mode-card-meta">Tap to claim this seat</span>
+              </button>
+            ))}
+          </div>
         )}
+      </div>
+      <div className="action-bar">
+        <button
+          type="button"
+          className="btn ghost block"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
       </div>
       {pending && (
         <div
@@ -731,7 +744,7 @@ function ClaimGamePanel({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

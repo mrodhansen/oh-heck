@@ -722,6 +722,12 @@ a.list-item:active {
   gap: 6px;
 }
 
+.claim-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .empty {
   text-align: center;
   padding: 28px 14px;
