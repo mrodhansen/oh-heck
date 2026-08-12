@@ -1,5 +1,24 @@
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
+const TOKEN_KEY = 'oh_heck_session';
+
+export function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
 export class HttpError extends Error {
   constructor(
     message: string,
@@ -34,6 +53,10 @@ export async function httpRequest<T>(
       'Content-Type': 'application/json',
       ...(init?.headers as Record<string, string> | undefined),
     };
+    const token = getAuthToken();
+    if (token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     // Free ngrok interstitial breaks SPA fetch without this header
     if (API_URL.includes('ngrok')) {
       headers['ngrok-skip-browser-warning'] = 'true';

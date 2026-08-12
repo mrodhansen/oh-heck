@@ -22,7 +22,7 @@ import { AuthGuard, CurrentUser, OptionalAuth } from './auth.decorators';
 import type { PublicUser } from './auth.service';
 import {
   clearSessionCookie,
-  readSessionToken,
+  readAuthToken,
   setSessionCookie,
 } from './cookies';
 import { StatsService } from '../stats/stats.service';
@@ -41,7 +41,7 @@ export class AuthController {
   ) {
     const { user, token } = await this.auth.register(dto);
     setSessionCookie(res, token);
-    return { user };
+    return { user, token };
   }
 
   @Post('login')
@@ -51,7 +51,7 @@ export class AuthController {
   ) {
     const { user, token } = await this.auth.login(dto);
     setSessionCookie(res, token);
-    return { user };
+    return { user, token };
   }
 
   @Post('logout')
@@ -59,7 +59,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    await this.auth.logout(readSessionToken(req));
+    await this.auth.logout(readAuthToken(req));
     clearSessionCookie(res);
     return { ok: true };
   }

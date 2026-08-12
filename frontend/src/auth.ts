@@ -1,4 +1,4 @@
-import { httpRequest } from './api/http';
+import { httpRequest, setAuthToken } from './api/http';
 import type { StatsPlayer } from './api';
 
 export type AuthUser = {
@@ -26,20 +26,39 @@ export type ClaimableGame = {
 export const authApi = {
   me: () => httpRequest<{ user: AuthUser | null }>('/auth/me'),
 
-  register: (username: string, password: string) =>
-    httpRequest<{ user: AuthUser }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
+  register: async (username: string, password: string) => {
+    const res = await httpRequest<{ user: AuthUser; token: string }>(
+      '/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      },
+    );
+    setAuthToken(res.token);
+    return res;
+  },
 
-  login: (username: string, password: string) =>
-    httpRequest<{ user: AuthUser }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
+  login: async (username: string, password: string) => {
+    const res = await httpRequest<{ user: AuthUser; token: string }>(
+      '/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      },
+    );
+    setAuthToken(res.token);
+    return res;
+  },
 
-  logout: () =>
-    httpRequest<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    try {
+      return await httpRequest<{ ok: boolean }>('/auth/logout', {
+        method: 'POST',
+      });
+    } finally {
+      setAuthToken(null);
+    }
+  },
 
   update: (data: { password: string }) =>
     httpRequest<{ user: AuthUser }>('/auth/me', {

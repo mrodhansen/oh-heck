@@ -9,7 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AuthService, type PublicUser } from './auth.service';
-import { readSessionToken } from './cookies';
+import { readAuthToken } from './cookies';
 
 export type AuthedRequest = Request & { user?: PublicUser | null };
 
@@ -36,7 +36,7 @@ export class AuthGuard implements CanActivate {
       ctx.getClass(),
     ]);
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
-    const token = readSessionToken(req);
+    const token = readAuthToken(req);
     const user = await this.auth.userFromToken(token);
     req.user = user;
     if (optional) return true;
