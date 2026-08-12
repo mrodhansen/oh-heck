@@ -307,7 +307,7 @@ export function LiveHubPage() {
         </form>
       </div>
       <div className="action-bar">
-        <Link to="/" className="btn ghost block">
+        <Link to="/" className="btn primary block">
           Back
         </Link>
       </div>

@@ -1,7 +1,7 @@
 import { GameEventType, Prisma } from '@prisma/client';
 import { toInputJson, type JsonValue } from '../common/json';
 
-/** Parse Json bid-order column (PG JSONB / SQLite Json) into seat indices. */
+/** Parse Json bid-order column into seat indices. */
 export function asIntArray(value: Prisma.JsonValue | null | undefined): number[] {
   if (!Array.isArray(value)) {
     return [];

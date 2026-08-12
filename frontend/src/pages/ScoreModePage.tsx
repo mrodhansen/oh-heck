@@ -16,6 +16,11 @@ export function ScoreModePage() {
           <span className="mode-card-meta">Multiple tables · high table</span>
         </Link>
       </div>
+      <div className="action-bar">
+        <Link to="/" className="btn primary block">
+          Back
+        </Link>
+      </div>
     </div>
   );
 }

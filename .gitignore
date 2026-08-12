@@ -1,7 +1,6 @@
 node_modules
 dist
 .env
-.env.sqlite
 *.log
 .DS_Store
 pgdata

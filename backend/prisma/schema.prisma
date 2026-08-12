@@ -183,7 +183,7 @@ model Round {
   firstBidderSeat     Int     @default(0)
   dealerPlayerId      String?
   firstBidderPlayerId String?
-  /// Seat indices in bid order (left of dealer → dealer last). Json for PG+SQLite portability.
+  /// Seat indices in bid order (left of dealer → dealer last).
   bidOrderSeats   Json      @default("[]")
   bidsCompletedAt DateTime?
   tricksCompletedAt   DateTime?

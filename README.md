@@ -30,8 +30,6 @@ Both the browser tab and the installed PWA use the **same backend** (`VITE_API_U
 | **Full Docker** | `docker compose up --build` | Postgres container | Closest to prod, all-in-one |
 | **Postgres local** | `docker compose up db -d` + `npm run start:dev` | Postgres only | App on host, DB in Docker |
 
-Copy an existing SQLite `prisma/dev.db` into Postgres with `npm run db:migrate-from-sqlite` after migrate deploy.
-
 ---
 
 ### 1) Full Docker
@@ -62,14 +60,6 @@ cd frontend
 export VITE_API_URL=http://localhost:3000
 npm install
 npm run dev
-```
-
-If you still have a SQLite `backend/prisma/dev.db`, copy it in after the first migrate:
-
-```bash
-cd backend
-DATABASE_URL=postgresql://ohheck:ohheck@localhost:5433/ohheck?schema=public \
-  npm run db:migrate-from-sqlite
 ```
 
 #### Mac mini + ngrok
@@ -120,7 +110,7 @@ npx vite preview
 ## Prisma / schema notes
 
 - **Postgres:** `backend/prisma/schema.prisma` + `migrations/` → `prisma migrate deploy`
-- Local default is Postgres (`npm run start:dev`). A SQLite schema file remains for optional offline work (`npm run start:dev:sqlite`) but is not the source of truth.
+- Local default is Postgres (`npm run start:dev`).
 
 ## Game flow
 

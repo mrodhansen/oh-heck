@@ -197,8 +197,7 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 function normalizeUsername(raw: string): string {
-  // Lowercase so uniqueness is case-insensitive on both Postgres and SQLite.
-  // Prisma `mode: 'insensitive'` is Postgres-only and fails to typecheck on SQLite.
+  // Lowercase so uniqueness is case-insensitive.
   return raw.trim().toLowerCase();
 }
 
