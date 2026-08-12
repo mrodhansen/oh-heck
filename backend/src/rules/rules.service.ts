@@ -11,11 +11,14 @@ export type OhHeckRules = {
     deck: string;
   };
   hand_sizes: number[];
+  goal?: string;
+  you_need?: string;
   setup: Record<string, string>;
   bidding: Record<string, string>;
   play: Record<string, string>;
   scoring: Record<string, string>;
-  validation: Record<string, string>;
+  notes?: Record<string, string>;
+  validation?: Record<string, string>;
 };
 
 @Injectable()
@@ -23,7 +26,7 @@ export class RulesService implements OnModuleInit {
   private rules!: OhHeckRules;
 
   onModuleInit() {
-    // Prefer backend flat hand_sizes array format only (not root RULES.yaml object form).
+    // Flat hand_sizes array (13 numbers). Technical notes: docs/RULES.technical.yaml
     const candidates = [
       join(__dirname, 'rules', 'oh-heck.yaml'),
       join(__dirname, '..', 'rules', 'oh-heck.yaml'),

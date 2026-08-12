@@ -1,5 +1,6 @@
-# Oh Heck — official scorekeeper rules
-# Copied into the API image; also see repo-root RULES.yaml.
+# Oh Heck — How to Play
+# Copied into the API image. Same player-facing text as repo-root RULES.yaml.
+# Technical spec: docs/RULES.technical.yaml
 
 meta:
   name: Oh Heck
@@ -11,38 +12,70 @@ meta:
 
 hand_sizes: [7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7]
 
+goal: |
+  Bid how many tricks you think you will take — then take exactly that many.
+  No more, no fewer. Highest score after 13 rounds wins.
+
+you_need: |
+  2 to 7 players, a standard 52-card deck, and about 45 minutes.
+  Aces are high. Cards rank A K Q J 10 9 8 7 6 5 4 3 2.
+
 setup:
-  player_order: |
-    At game setup, players are listed in seat order.
-    The first name is seat 0 (first player).
-    The last name is the round-1 dealer.
-  dealer_rotation: |
-    Dealer rotates forward one seat each round.
-    Round r (1-based): dealerIndex = (playerCount - 1 + r - 1) % playerCount
+  seating: |
+    Sit in a circle. When you start a game, enter names around the table
+    and pick who deals first. After that, the deal passes left each round.
+  dealing: |
+    Shuffle, then deal the cards face down, one at a time, until everyone
+    has the number of cards for this round.
   trump: |
-    After dealing, the top card of the remaining deck is flipped.
-    That card's suit is trump for the round.
-    (Scorekeeper does not record trump; physical play only.)
+    Flip the next card face up. That card’s suit is trump for the round —
+    it beats every other suit. Set the rest of the deck aside.
 
 bidding:
-  order: |
-    Bidding starts left of the dealer and proceeds in seat order.
-    The dealer bids last.
-  range: Each player may bid an integer from 0 through hand_size (inclusive).
-  last_bidder_restriction: |
-    The dealer (last bidder) may NOT bid a value that makes
-    sum(all bids) == hand_size for that round.
+  how_to_bid: |
+    Starting with the player left of the dealer and going left around the
+    table, each player says how many tricks they will try to take.
+    Bid any number from 0 up to the cards in your hand. You have to bid —
+    you cannot pass. Bid 0 if you want to take nothing.
+  the_hook: |
+    The dealer bids last, and may not bid the number that would make
+    everyone’s bids add up to the number of tricks in the round.
+    Someone always has to miss.
+  example: |
+    It is a 7-card round and the bids so far add up to 6. The dealer
+    cannot bid 1 (because 6 + 1 = 7). They can bid 0, or anything from
+    2 through 7.
 
 play:
-  lead: First trick led by player left of dealer; then winner leads.
-  following_suit: Must follow lead suit if held; else any card.
-  winning_a_trick: Highest trump wins; else highest of lead suit.
+  leading: |
+    The player left of the dealer leads any card to start the first trick.
+    After that, whoever won the last trick leads the next one.
+  following_suit: |
+    Play goes left. If you have a card of the suit that was led, you must
+    play one. If you don’t, play any card — including trump.
+  winning_a_trick: |
+    The highest trump played wins the trick. If nobody played trump, the
+    highest card of the suit that was led wins. A card that is neither
+    trump nor the suit led can never win.
 
 scoring:
-  exact_bid: "points = 5 + tricks_taken when tricks_taken == bid"
-  missed_bid: "points = -abs(bid - tricks_taken) when missed"
-  placement: Highest total wins; equal totals share place (skip next).
+  if_you_make_it: |
+    Take exactly what you bid and you score 5 points plus 1 per trick.
+    A made bid of 0 is worth 5. A made bid of 2 is worth 7.
+  if_you_miss: |
+    Take too many or too few and you lose 1 point for each trick you
+    were off. Bid 1 and take 2: −1. Bid 0 and take 2: −2. Bid 3 and
+    take 1: −2.
+  who_wins: |
+    Add up your points from all 13 rounds. Highest total wins. Tied
+    scores share a place, and the next place is skipped
+    (1st, 2nd, 2nd, 4th).
 
-validation:
-  tricks_sum: sum(tricks_taken) MUST equal hand_size
-  bid_forbidden: sum(bids) must NOT equal hand_size
+notes:
+  tricks_add_up: |
+    There are exactly as many tricks as cards in each hand, so the
+    tricks people take always add up to the hand size.
+  force_burn: |
+    In the scorekeeper, FB (Force Burn) is an optional mark on the
+    dealer’s bid. It does not change the score — it just notes that
+    they were blocked from the even number.

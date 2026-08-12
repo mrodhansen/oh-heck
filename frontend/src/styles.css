@@ -2220,6 +2220,138 @@ button.playing-card:disabled {
   font-size: 0.95rem;
 }
 
+/* —— How to play —— */
+.howto {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--grey-700);
+}
+
+.howto p {
+  margin: 0;
+}
+
+.howto .section-title {
+  margin-bottom: 8px;
+}
+
+.howto-ol,
+.howto-ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.howto-ol li,
+.howto-ul li {
+  padding-left: 2px;
+}
+
+.howto-rank {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.howto-hands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.howto-hand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.7rem;
+  height: 1.7rem;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--sand-100);
+  border: 1px solid var(--line);
+  font-family: var(--font);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  color: var(--grey-800);
+}
+
+.howto-hand.valley {
+  background: var(--grey-800);
+  border-color: var(--grey-800);
+  color: var(--sand-50);
+}
+
+.howto-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border-left: 3px solid var(--sand-300);
+  background: var(--sand-100);
+}
+
+.howto-callout-label {
+  font-family: var(--font);
+  font-weight: 650;
+  font-size: 0.95rem;
+  color: var(--grey-900);
+}
+
+.howto-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 2px -2px 0;
+}
+
+.howto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.howto-table th,
+.howto-table td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.howto-table th {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom-color: var(--line-strong);
+}
+
+.howto-table tr:last-child td {
+  border-bottom: none;
+}
+
+.howto-table-why {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 
 /* Tablet / small laptop menus */
 @media (min-width: 600px) {

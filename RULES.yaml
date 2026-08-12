@@ -1,5 +1,7 @@
-# Oh Heck — official scorekeeper rules
-# Source of truth for hand sizes, bidding constraints, and scoring.
+# Oh Heck — How to Play
+# Player-facing rules. The scorekeeper reads backend/rules/oh-heck.yaml
+# (same content, with hand_sizes as a flat array).
+# Technical spec (formulas, seat indexes): docs/RULES.technical.yaml
 
 meta:
   name: Oh Heck
@@ -9,100 +11,72 @@ meta:
   rounds: 13
   deck: standard_52
 
-# Cards dealt per round (1-indexed round → hand size).
-# Pattern: 7 down to 1, then back up to 7.
-hand_sizes:
-  - round: 1
-    cards: 7
-  - round: 2
-    cards: 6
-  - round: 3
-    cards: 5
-  - round: 4
-    cards: 4
-  - round: 5
-    cards: 3
-  - round: 6
-    cards: 2
-  - round: 7
-    cards: 1
-  - round: 8
-    cards: 2
-  - round: 9
-    cards: 3
-  - round: 10
-    cards: 4
-  - round: 11
-    cards: 5
-  - round: 12
-    cards: 6
-  - round: 13
-    cards: 7
+hand_sizes: [7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7]
+
+goal: |
+  Bid how many tricks you think you will take — then take exactly that many.
+  No more, no fewer. Highest score after 13 rounds wins.
+
+you_need: |
+  2 to 7 players, a standard 52-card deck, and about 45 minutes.
+  Aces are high. Cards rank A K Q J 10 9 8 7 6 5 4 3 2.
 
 setup:
-  player_order: |
-    At game setup, players are listed in seat order.
-    The first name is seat 0 (first player).
-    The last name is the round-1 dealer.
-  dealer_rotation: |
-    Dealer rotates forward one seat each round.
-    Round r (1-based): dealerIndex = (playerCount - 1 + r - 1) % playerCount
-    Equivalently: round 1 dealer = last seat; then seat 0, 1, 2, …
+  seating: |
+    Sit in a circle. When you start a game, enter names around the table
+    and pick who deals first. After that, the deal passes left each round.
+  dealing: |
+    Shuffle, then deal the cards face down, one at a time, until everyone
+    has the number of cards for this round.
   trump: |
-    After dealing, the top card of the remaining deck is flipped.
-    That card's suit is trump for the round.
-    (Scorekeeper does not record trump; physical play only.)
+    Flip the next card face up. That card’s suit is trump for the round —
+    it beats every other suit. Set the rest of the deck aside.
 
 bidding:
-  order: |
-    Bidding starts with the player to the left of the dealer
-    (dealerIndex + 1) % n and proceeds in seat order.
-    The dealer bids last.
-  range: |
-    Each player may bid an integer from 0 through hand_size (inclusive).
-  last_bidder_restriction: |
-    The dealer (last bidder) may NOT bid a value that makes
-    sum(all bids) == hand_size for that round.
-    All other integers in [0, hand_size] remain legal.
-    Example: round 1 (7 cards), current total bid 6 → dealer may bid
-    0 or 2–7, but not 1.
-  force_burn: |
-    Optional flag on the final (dealer) bid only.
-    Toggled in the scorekeeper as "FB" (Force Burn).
-    Stored per round; does not change scoring math.
-  tricks_entry_order: |
-    Tricks taken are entered in the same order as bidding.
+  how_to_bid: |
+    Starting with the player left of the dealer and going left around the
+    table, each player says how many tricks they will try to take.
+    Bid any number from 0 up to the cards in your hand. You have to bid —
+    you cannot pass. Bid 0 if you want to take nothing.
+  the_hook: |
+    The dealer bids last, and may not bid the number that would make
+    everyone’s bids add up to the number of tricks in the round.
+    Someone always has to miss.
+  example: |
+    It is a 7-card round and the bids so far add up to 6. The dealer
+    cannot bid 1 (because 6 + 1 = 7). They can bid 0, or anything from
+    2 through 7.
 
 play:
-  lead: |
-    First trick of a round is led by the player left of the dealer.
-    Subsequent tricks are led by the winner of the previous trick.
+  leading: |
+    The player left of the dealer leads any card to start the first trick.
+    After that, whoever won the last trick leads the next one.
   following_suit: |
-    Players must follow the lead suit if they hold it.
-    Otherwise they may play any card (including trump).
+    Play goes left. If you have a card of the suit that was led, you must
+    play one. If you don’t, play any card — including trump.
   winning_a_trick: |
-    Highest trump played wins. If no trump, highest card of the lead suit wins.
-    Off-suit non-trump cards cannot win.
+    The highest trump played wins the trick. If nobody played trump, the
+    highest card of the suit that was led wins. A card that is neither
+    trump nor the suit led can never win.
 
 scoring:
-  exact_bid: |
-    If tricks_taken == bid:
-      points = 5 + tricks_taken
-    (Bid 0 made → +5. Bid 2 made → +7.)
-  missed_bid: |
-    If tricks_taken != bid:
-      points = -abs(bid - tricks_taken)
-    Examples: bid 1 got 2 → -1; bid 0 got 2 → -2; bid 3 got 1 → -2.
-  round_total: sum of each player's round points
-  game_total: sum of round points across all 13 rounds
-  placement: |
-    Highest game total is 1st, next 2nd, etc.
-    Equal totals share the same place; next place is skipped
-    (e.g. 1st, 2nd, 2nd, 4th).
+  if_you_make_it: |
+    Take exactly what you bid and you score 5 points plus 1 per trick.
+    A made bid of 0 is worth 5. A made bid of 2 is worth 7.
+  if_you_miss: |
+    Take too many or too few and you lose 1 point for each trick you
+    were off. Bid 1 and take 2: −1. Bid 0 and take 2: −2. Bid 3 and
+    take 1: −2.
+  who_wins: |
+    Add up your points from all 13 rounds. Highest total wins. Tied
+    scores share a place, and the next place is skipped
+    (1st, 2nd, 2nd, 4th).
 
-validation:
-  tricks_sum: |
-    When recording results, sum(tricks_taken) MUST equal hand_size.
-  bid_sum_forbidden_equality: |
-    After all bids are in, sum(bids) must NOT equal hand_size
-    (enforced via last-bidder restriction at entry time).
+notes:
+  tricks_add_up: |
+    There are exactly as many tricks as cards in each hand, so the
+    tricks people take always add up to the hand size.
+  force_burn: |
+    In the scorekeeper, FB (Force Burn) is an optional mark on the
+    dealer’s bid. It does not change the score — it just notes that
+    they were blocked from the even number.

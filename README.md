@@ -8,7 +8,8 @@ Mobile-friendly **PWA** scorekeeper + NestJS API + Postgres (or SQLite for light
 - **Offline:** IndexedDB outbox + local game engine; auto-sync when online
 - **Backend:** NestJS + **Prisma** + TypeScript
 - **DB:** PostgreSQL 16 (Docker / prod) **or** SQLite file (no Docker)
-- **Rules:** `RULES.yaml` / `backend/rules/oh-heck.yaml`
+- **Rules:** in-app How to Play · `RULES.yaml` / `backend/rules/oh-heck.yaml`
+- **Technical spec:** `docs/RULES.technical.yaml`
 
 ## Architecture (online / offline)
 
@@ -156,4 +157,5 @@ npx vite preview
 
 Last bidder may not make `sum(bids) === hand size`. Tricks must sum to hand size.
 
-See `RULES.yaml` for the full formatted rules.
+See the in-app **Rules** page (or `RULES.yaml`) for the how-to-play.
+The original machine-oriented spec is in `docs/RULES.technical.yaml`.
