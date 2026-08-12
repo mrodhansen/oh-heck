@@ -26,13 +26,15 @@ export function App() {
         <header className="topbar">
           <div className="brand">
             <h1>Oh Heck</h1>
+            <NavLink to="/rules" className="rules-help" title="Rules" aria-label="Rules">
+              ?
+            </NavLink>
           </div>
           <nav className="nav-links">
             <NavLink to="/" end>
               Play
             </NavLink>
             <NavLink to="/stats">Stats</NavLink>
-            <NavLink to="/rules">Rules</NavLink>
           </nav>
         </header>
       )}

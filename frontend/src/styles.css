@@ -149,6 +149,9 @@ h3,
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   margin-right: 8px;
 }
@@ -157,6 +160,29 @@ h3,
   margin: 0;
   font-size: 1.35rem;
   line-height: 1.1;
+}
+
+.rules-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--grey-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.rules-help:hover,
+.rules-help.active {
+  color: var(--grey-900);
+  border-color: var(--grey-800);
+  background: var(--sand-100);
 }
 
 .play-home-header {
