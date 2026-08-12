@@ -36,8 +36,8 @@ export class AuthService {
     const username = normalizeUsername(dto.username);
     if (!username) throw new UnauthorizedException('Invalid username or password');
 
-    const user = await this.prisma.user.findFirst({
-      where: { username: { equals: username, mode: 'insensitive' } },
+    const user = await this.prisma.user.findUnique({
+      where: { username },
     });
     if (!user) throw new UnauthorizedException('Invalid username or password');
 
@@ -173,7 +173,7 @@ export class AuthService {
   private async assertUsernameAvailable(username: string, exceptUserId?: string) {
     const existing = await this.prisma.user.findFirst({
       where: {
-        username: { equals: username, mode: 'insensitive' },
+        username,
         ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}),
       },
     });
@@ -182,7 +182,9 @@ export class AuthService {
 }
 
 function normalizeUsername(raw: string): string {
-  return raw.trim();
+  // Lowercase so uniqueness is case-insensitive on both Postgres and SQLite.
+  // Prisma `mode: 'insensitive'` is Postgres-only and fails to typecheck on SQLite.
+  return raw.trim().toLowerCase();
 }
 
 function toPublic(user: {
