@@ -59,6 +59,7 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
   }, [bids, bidOrder, handSize, round]);
 
   const trickSum = Object.values(tricks).reduce((a, b) => a + b, 0);
+  const tricksLeft = Math.max(0, handSize - trickSum);
   const lastId = bidOrder[bidOrder.length - 1];
 
   if (!round?.complete) {
@@ -177,7 +178,7 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
                     <NumberStepper
                       value={tricks[pid] ?? 0}
                       min={0}
-                      max={handSize}
+                      max={(tricks[pid] ?? 0) + tricksLeft}
                       onChange={(n) =>
                         setTricks((prev) => ({ ...prev, [pid]: n }))
                       }

@@ -28,7 +28,9 @@ import {
   persistDeal,
 } from './telemetry';
 
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_DIGITS = 4;
+const CODE_MIN = 1000;
+const CODE_SPAN = 9000;
 
 type SessionWithPlayers = Prisma.LiveSessionGetPayload<{
   include: { players: true };
@@ -48,24 +50,40 @@ export class LiveService {
     if (!trimmed) throw new BadRequestException('Name required');
 
     const token = newToken();
-    const code = await this.allocCode();
-
-    const session = await this.prisma.liveSession.create({
-      data: {
-        code,
-        status: LiveSessionStatus.LOBBY,
-        state: emptyLobbyState() as unknown as Prisma.InputJsonValue,
-        players: {
-          create: {
-            name: trimmed,
-            seatIndex: 0,
-            token,
-            isHost: true,
+    let session: SessionWithPlayers | null = null;
+    for (let attempt = 0; attempt < 3 && !session; attempt++) {
+      const code = await this.allocCode();
+      try {
+        session = await this.prisma.liveSession.create({
+          data: {
+            code,
+            status: LiveSessionStatus.LOBBY,
+            state: emptyLobbyState() as unknown as Prisma.InputJsonValue,
+            players: {
+              create: {
+                name: trimmed,
+                seatIndex: 0,
+                token,
+                isHost: true,
+              },
+            },
           },
-        },
-      },
-      include: { players: { orderBy: { createdAt: 'asc' } } },
-    });
+          include: { players: { orderBy: { createdAt: 'asc' } } },
+        });
+      } catch (e) {
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002' &&
+          attempt < 2
+        ) {
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (!session) {
+      throw new BadRequestException('Could not allocate game code');
+    }
 
     const host = session.players[0]!;
     await this.prisma.liveSession.update({
@@ -833,12 +851,22 @@ export class LiveService {
   }
 
   private async allocCode(): Promise<string> {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const code = randomCode(6);
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const code = randomDigitCode();
       const existing = await this.prisma.liveSession.findUnique({
         where: { code },
       });
       if (!existing) return code;
+      // Finished tables keep a unique code forever — free the 4-digit one.
+      if (existing.status === LiveSessionStatus.COMPLETED) {
+        await this.prisma.liveSession.update({
+          where: { id: existing.id },
+          data: {
+            code: `${code}-${existing.id.replace(/-/g, '').slice(0, 8)}`,
+          },
+        });
+        return code;
+      }
     }
     throw new BadRequestException('Could not allocate game code');
   }
@@ -974,17 +1002,13 @@ function newToken(): string {
   return randomBytes(24).toString('hex');
 }
 
-function randomCode(len: number): string {
-  const bytes = randomBytes(len);
-  let out = '';
-  for (let i = 0; i < len; i++) {
-    out += CODE_ALPHABET[bytes[i]! % CODE_ALPHABET.length];
-  }
-  return out;
+function randomDigitCode(): string {
+  const n = CODE_MIN + (randomBytes(2).readUInt16BE(0) % CODE_SPAN);
+  return n.toString().padStart(CODE_DIGITS, '0');
 }
 
 function normalizeCode(raw: string): string {
-  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return raw.trim().replace(/\D/g, '');
 }
 
 function readState(

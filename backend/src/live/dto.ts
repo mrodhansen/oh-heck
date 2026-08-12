@@ -19,7 +19,8 @@ export class CreateLiveDto {
 export class JoinLiveDto {
   @IsString()
   @MinLength(4)
-  @MaxLength(8)
+  @MaxLength(4)
+  @Matches(/^\d{4}$/)
   code!: string;
 
   @IsString()
@@ -31,7 +32,8 @@ export class JoinLiveDto {
 export class ClaimLiveDto {
   @IsString()
   @MinLength(4)
-  @MaxLength(8)
+  @MaxLength(4)
+  @Matches(/^\d{4}$/)
   code!: string;
 
   @IsUUID()

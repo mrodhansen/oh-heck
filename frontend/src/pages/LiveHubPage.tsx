@@ -21,7 +21,7 @@ export function LiveHubPage() {
     if (!online) return;
     const q = params.get('code');
     if (!q) return;
-    setCode(q.toUpperCase());
+    setCode(q.replace(/\D/g, '').slice(0, 4));
     let alive = true;
     liveApi
       .lookup(q)
@@ -197,7 +197,7 @@ export function LiveHubPage() {
         <div className="page-fit-header">
           <h2 className="page-title">Your name</h2>
           <p className="lede">
-            Joining game <strong>{code.trim().toUpperCase()}</strong>
+            Joining game <strong>{code.trim()}</strong>
           </p>
         </div>
         <form className="page-fit-body stack" onSubmit={onJoinWithName}>
@@ -244,19 +244,25 @@ export function LiveHubPage() {
           <label className="field">
             Game code
             <input
+              type="number"
+              className="code-input"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              maxLength={8}
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="e.g. AB12CD"
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+              }
+              onWheel={(e) => e.currentTarget.blur()}
+              min={1000}
+              max={9999}
+              step={1}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="4821"
             />
           </label>
           <button
             type="submit"
             className="btn primary"
-            disabled={busy || !code.trim()}
+            disabled={busy || code.trim().length < 4}
           >
             Join
           </button>

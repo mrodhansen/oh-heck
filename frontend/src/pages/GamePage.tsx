@@ -497,20 +497,16 @@ export function GamePage() {
 
                         {isActive && (
                           <div className="turn-card-body">
-                            {isLastTrickEntry && (
-                              <p
-                                className="hint"
-                                style={{ margin: 0, textAlign: 'center' }}
-                              >
-                                {remainingTricks} left in round
-                              </p>
-                            )}
+                            <p
+                              className="hint"
+                              style={{ margin: 0, textAlign: 'center' }}
+                            >
+                              {remainingTricks - currentTricks} left in round
+                            </p>
                             <NumberStepper
                               value={currentTricks}
                               min={0}
-                              max={
-                                isLastTrickEntry ? remainingTricks : handSize
-                              }
+                              max={remainingTricks}
                               ofTotal={e.bid ?? 0}
                               onChange={setCurrentTricks}
                             />
