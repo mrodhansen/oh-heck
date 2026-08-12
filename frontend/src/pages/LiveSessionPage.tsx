@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, GameDetail } from '../api';
+import { toUserMessage } from '../api/errors';
 import { NumberStepper } from '../components/NumberStepper';
 import { PlayingCard } from '../components/PlayingCard';
 import { Scoreboard } from '../components/Scoreboard';
@@ -40,7 +41,7 @@ export function LiveSessionPage() {
       setBoardError(null);
     } catch (e) {
       setBoard(null);
-      setBoardError(e instanceof Error ? e.message : 'Scoreboard unavailable');
+      setBoardError(toUserMessage(e, 'Scoreboard unavailable'));
     }
   }, []);
 
@@ -63,8 +64,8 @@ export function LiveSessionPage() {
     let alive = true;
     setLoading(true);
     load()
-      .catch((e: Error) => {
-        if (alive) setError(e.message);
+      .catch((e: unknown) => {
+        if (alive) setError(toUserMessage(e, 'Could not load session'));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -75,7 +76,9 @@ export function LiveSessionPage() {
   }, [id, auth?.token, load]);
 
   useSocketRoom(id ? `live:${id}` : null, 'live:update', () => {
-    void load().catch((e: Error) => setError(e.message));
+    void load().catch((e: unknown) =>
+      setError(toUserMessage(e, 'Could not refresh session')),
+    );
   });
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export function LiveSessionPage() {
       setTab('play');
       if (data.gameId) await loadBoard(data.gameId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start');
+      setError(toUserMessage(e, 'Could not start'));
     } finally {
       setBusy(false);
     }
@@ -142,7 +145,7 @@ export function LiveSessionPage() {
       setView(data);
       if (data.gameId) await loadBoard(data.gameId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Bid failed');
+      setError(toUserMessage(e, 'Bid failed'));
     } finally {
       setBusy(false);
     }
@@ -157,7 +160,7 @@ export function LiveSessionPage() {
       setView(data);
       if (data.gameId) await loadBoard(data.gameId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Play failed');
+      setError(toUserMessage(e, 'Play failed'));
     } finally {
       setBusy(false);
     }
@@ -172,7 +175,7 @@ export function LiveSessionPage() {
       clearLiveAuth(id);
       nav('/play/live');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not leave');
+      setError(toUserMessage(e, 'Could not leave'));
       setBusy(false);
     }
   }

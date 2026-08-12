@@ -72,7 +72,7 @@ export class SyncOperationDto {
   type!: 'createGame' | 'setBids' | 'setTricks' | 'updateRound' | 'updateNotes';
 
   @IsObject()
-  payload!: Record<string, unknown>;
+  payload!: object;
 }
 
 export class SyncDto {

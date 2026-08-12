@@ -44,11 +44,11 @@ export class RealtimeGateway implements OnGatewayConnection {
     return { ok: true, room };
   }
 
-  emitGame(gameId: string, payload: unknown) {
+  emitGame(gameId: string, payload: { id: string }) {
     this.server.to(`game:${gameId}`).emit('game:update', payload);
   }
 
-  emitTournament(tournamentId: string, payload: unknown) {
+  emitTournament(tournamentId: string, payload: { id: string }) {
     this.server
       .to(`tournament:${tournamentId}`)
       .emit('tournament:update', payload);
@@ -58,7 +58,7 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server.to('tournaments').emit('tournaments:list', { at: Date.now() });
   }
 
-  emitLive(sessionId: string, payload: unknown) {
+  emitLive(sessionId: string, payload: { at: number; sessionId: string }) {
     this.server.to(`live:${sessionId}`).emit('live:update', payload);
   }
 }

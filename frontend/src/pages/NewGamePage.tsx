@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { toUserMessage } from '../api/errors';
 import { useAuth } from '../useAuth';
 
 const MIN = 2;
@@ -91,7 +92,7 @@ export function NewGamePage() {
       );
       navigate(`/games/${game.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create game');
+      setError(toUserMessage(err, 'Failed to create game'));
       setSaving(false);
     }
   }

@@ -6,6 +6,7 @@ import {
   TournamentFinalStanding,
   TournamentTable,
 } from '../api';
+import { toUserMessage } from '../api/errors';
 import { SyncStatus } from '../components/SyncStatus';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
@@ -30,8 +31,8 @@ export function TournamentPage() {
     let alive = true;
     setLoading(true);
     load()
-      .catch((e: Error) => {
-        if (alive) setError(e.message);
+      .catch((e: unknown) => {
+        if (alive) setError(toUserMessage(e, 'Could not load tournament'));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -42,7 +43,9 @@ export function TournamentPage() {
   }, [load]);
 
   useSocketRoom(id ? `tournament:${id}` : null, 'tournament:update', () => {
-    void load().catch((e: Error) => setError(e.message));
+    void load().catch((e: unknown) =>
+      setError(toUserMessage(e, 'Could not refresh tournament')),
+    );
   });
 
   useEffect(() => onSyncChange(() => {
@@ -66,7 +69,7 @@ export function TournamentPage() {
       setT(next);
       setNameInput('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add');
+      setError(toUserMessage(err, 'Failed to add'));
     } finally {
       setBusy(false);
     }
@@ -79,7 +82,7 @@ export function TournamentPage() {
     try {
       setT(await api.removeTournamentPlayer(id, playerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove');
+      setError(toUserMessage(err, 'Failed to remove'));
     } finally {
       setBusy(false);
     }
@@ -92,7 +95,7 @@ export function TournamentPage() {
     try {
       setT(await api.seatTournament(id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to seat');
+      setError(toUserMessage(err, 'Failed to seat'));
     } finally {
       setBusy(false);
     }
@@ -107,7 +110,7 @@ export function TournamentPage() {
       setT(res.tournament);
       navigate(`/games/${res.game.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start');
+      setError(toUserMessage(err, 'Failed to start'));
       setBusy(false);
     }
   }

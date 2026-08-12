@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { api, GameDetail } from '../api';
+import { toUserMessage } from '../api/errors';
 import { hasGameNotes } from '../offline/notes';
 import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
@@ -15,6 +16,14 @@ import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 import { useAuth } from '../useAuth';
+
+function navFrom(state: unknown): 'stats' | 'account' | null {
+  if (typeof state !== 'object' || state === null || !('from' in state)) {
+    return null;
+  }
+  if (state.from === 'stats' || state.from === 'account') return state.from;
+  return null;
+}
 
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
@@ -44,8 +53,8 @@ export function GamePage() {
     let alive = true;
     setLoading(true);
     load()
-      .catch((e: Error) => {
-        if (alive) setError(e.message);
+      .catch((e: unknown) => {
+        if (alive) setError(toUserMessage(e, 'Could not load game'));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -56,7 +65,9 @@ export function GamePage() {
   }, [load]);
 
   useSocketRoom(id ? `game:${id}` : null, 'game:update', () => {
-    void load().catch((e: Error) => setError(e.message));
+    void load().catch((e: unknown) =>
+      setError(toUserMessage(e, 'Could not refresh game')),
+    );
   });
 
   useEffect(() => onSyncChange(() => {
@@ -172,7 +183,7 @@ export function GamePage() {
       setCurrentBid(0);
       setForceBurn(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save bids');
+      setError(toUserMessage(e, 'Failed to save bids'));
     } finally {
       setSaving(false);
     }
@@ -213,7 +224,7 @@ export function GamePage() {
       setTrickStep(0);
       setCurrentTricks(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save tricks');
+      setError(toUserMessage(e, 'Failed to save tricks'));
     } finally {
       setSaving(false);
     }
@@ -283,7 +294,7 @@ export function GamePage() {
             setPickingClaim(false);
             setPendingClaim(null);
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'Could not claim');
+            setError(toUserMessage(e, 'Could not claim'));
           } finally {
             setClaimBusy(false);
           }
@@ -297,14 +308,16 @@ export function GamePage() {
       <header className="game-topbar">
         <Link
           to={
-            (location.state as { from?: string } | null)?.from === 'stats'
+            navFrom(location.state) === 'stats'
               ? '/stats'
-              : game.tournamentId
-                ? `/play/tournaments/${game.tournamentId}`
-                : '/play/single'
+              : navFrom(location.state) === 'account'
+                ? '/account'
+                : game.tournamentId
+                  ? `/play/tournaments/${game.tournamentId}`
+                  : '/play/single'
           }
           state={
-            (location.state as { from?: string } | null)?.from === 'stats'
+            navFrom(location.state) === 'stats'
               ? { tab: 'games' }
               : undefined
           }

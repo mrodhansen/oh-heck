@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { GameDetail } from '../api';
+import { toUserMessage } from '../api/errors';
 import { NumberStepper } from './NumberStepper';
 import { forbiddenLastBid } from '../offline/rules';
 
@@ -108,7 +109,7 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
       });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      setError(toUserMessage(e, 'Save failed'));
       setSaving(false);
     }
   }

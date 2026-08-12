@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi } from '../auth';
+import { authApi, type ClaimableGame } from '../auth';
 import type { StatsPlayer } from '../api';
+import { toUserMessage } from '../api/errors';
 import { useAuth } from '../useAuth';
 
 type Mode = 'signin' | 'register';
@@ -16,13 +17,20 @@ export function AccountPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<StatsPlayer | null>(null);
+  const [claimable, setClaimable] = useState<ClaimableGame[]>([]);
+  const [claimableError, setClaimableError] = useState<string | null>(null);
+  const [claimableLoading, setClaimableLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
       setStats(null);
+      setClaimable([]);
+      setClaimableError(null);
+      setClaimableLoading(false);
       return;
     }
     let alive = true;
+    setClaimableLoading(true);
     authApi
       .myStats()
       .then((s) => {
@@ -32,6 +40,23 @@ export function AccountPage() {
       .catch(() => {
         if (!alive) return;
         setStats(null);
+      });
+    authApi
+      .claimable()
+      .then((games) => {
+        if (!alive) return;
+        setClaimable(games);
+        setClaimableError(null);
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setClaimable([]);
+        setClaimableError(
+          toUserMessage(err, 'Could not load games to claim'),
+        );
+      })
+      .finally(() => {
+        if (alive) setClaimableLoading(false);
       });
     return () => {
       alive = false;
@@ -52,7 +77,7 @@ export function AccountPage() {
       setPassword('');
       setMessage(mode === 'register' ? 'Account created.' : 'Signed in.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not sign in');
+      setError(toUserMessage(err, 'Could not sign in'));
     } finally {
       setBusy(false);
     }
@@ -67,7 +92,7 @@ export function AccountPage() {
       setUser(null);
       setMessage('Signed out.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not sign out');
+      setError(toUserMessage(err, 'Could not sign out'));
     } finally {
       setBusy(false);
     }
@@ -90,7 +115,7 @@ export function AccountPage() {
       setMessage('Password updated.');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update');
+      setError(toUserMessage(err, 'Could not update'));
     } finally {
       setBusy(false);
     }
@@ -103,33 +128,13 @@ export function AccountPage() {
   if (!user) {
     return (
       <div className="page-fit">
-        <div className="page-fit-header">
-          <h2 className="page-title">Account</h2>
-          <p className="lede">
-            Optional. Sign in to keep stats. Table names stay as entered;
-            your account is a separate link on the seat.
-          </p>
-        </div>
         <div className="page-fit-body stack">
           {error && <div className="banner">{error}</div>}
           {message && <div className="banner banner-ok">{message}</div>}
-          <div className="stats-tabs" role="tablist">
-            <button
-              type="button"
-              className={mode === 'signin' ? 'active' : ''}
-              onClick={() => setMode('signin')}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className={mode === 'register' ? 'active' : ''}
-              onClick={() => setMode('register')}
-            >
-              Create account
-            </button>
-          </div>
           <form className="card stack" onSubmit={onAuth}>
+            <h2 className="page-title">
+              {mode === 'register' ? 'Register' : 'Sign in'}
+            </h2>
             <label className="field">
               Username
               <input
@@ -154,20 +159,43 @@ export function AccountPage() {
                 minLength={1}
               />
             </label>
-            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Username is unique and cannot be changed later. Password can be
-              anything — even a single character.
-            </p>
+            {mode === 'signin' ? (
+              <p className="hint" style={{ margin: 0 }}>
+                Need an account?{' '}
+                <button
+                  type="button"
+                  className="text-link"
+                  onClick={() => {
+                    setMode('register');
+                    setError(null);
+                    setMessage(null);
+                  }}
+                >
+                  Register here
+                </button>
+              </p>
+            ) : (
+              <p className="hint" style={{ margin: 0 }}>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  className="text-link"
+                  onClick={() => {
+                    setMode('signin');
+                    setError(null);
+                    setMessage(null);
+                  }}
+                >
+                  Sign in
+                </button>
+              </p>
+            )}
             <button
               type="submit"
               className="btn primary"
               disabled={busy || !username.trim() || !password}
             >
-              {busy
-                ? '…'
-                : mode === 'register'
-                  ? 'Create account'
-                  : 'Sign in'}
+              {busy ? '…' : mode === 'register' ? 'Register' : 'Sign in'}
             </button>
           </form>
         </div>
@@ -177,15 +205,33 @@ export function AccountPage() {
 
   return (
     <div className="page-fit">
-      <div className="page-fit-header">
-        <h2 className="page-title">Account</h2>
-        <p className="lede">
-          Signed in as <strong>{user.username}</strong>
-        </p>
-      </div>
       <div className="page-fit-body stack">
         {error && <div className="banner">{error}</div>}
         {message && <div className="banner banner-ok">{message}</div>}
+
+        {(claimableLoading || claimableError || claimable.length > 0) && (
+          <section className="stack-sm">
+            <h3 className="section-title">Claim your games</h3>
+            <p className="hint" style={{ margin: 0 }}>
+              You might have played in these games. Don’t forget to claim them.
+            </p>
+            {claimableLoading && <div className="empty">Looking for games…</div>}
+            {claimableError && (
+              <div className="banner banner-inline">{claimableError}</div>
+            )}
+            {!claimableLoading && claimable.length > 0 && (
+              <div className="list">
+                {claimable.map((g) => (
+                  <ClaimableGameCard
+                    key={g.id}
+                    game={g}
+                    username={user.username}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="card stack">
           <h3 className="section-title">Your stats</h3>
@@ -253,6 +299,71 @@ export function AccountPage() {
       </div>
     </div>
   );
+}
+
+function ClaimableGameCard({
+  game,
+  username,
+}: {
+  game: ClaimableGame;
+  username: string;
+}) {
+  const needle = username.trim().toLowerCase();
+  const matchNames = game.players
+    .filter(
+      (p) => p.claimable && p.name.trim().toLowerCase() === needle,
+    )
+    .map((p) => p.name);
+  const status = formatGameStatus(game.status);
+  const when = formatDate(game.finishedAt ?? game.createdAt);
+
+  return (
+    <Link
+      to={`/games/${game.id}`}
+      state={{ from: 'account' }}
+      className="list-item"
+    >
+      <div className="min-w-0">
+        <p className="list-item-title truncate">{game.name ?? 'Game'}</p>
+        <p className="list-item-meta truncate">
+          {game.players.map((p) => p.name).join(', ')}
+        </p>
+        <p className="list-item-status">
+          {status}
+          {when ? ` · ${when}` : ''}
+          {matchNames.length > 0
+            ? ` · Unclaimed seat ${matchNames.join(', ')}`
+            : ''}
+        </p>
+      </div>
+      <span className="list-item-chevron" aria-hidden>
+        ›
+      </span>
+    </Link>
+  );
+}
+
+function formatGameStatus(status: ClaimableGame['status']): string {
+  switch (status) {
+    case 'COMPLETED':
+      return 'Completed';
+    case 'PLAYING':
+      return 'Playing';
+    case 'BIDDING':
+      return 'Bidding';
+    case 'SETUP':
+      return 'Setup';
+  }
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function Metric({

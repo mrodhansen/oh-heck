@@ -9,12 +9,14 @@ export type GameNote = {
 
 function isNote(value: unknown): value is GameNote {
   if (!value || typeof value !== 'object') return false;
-  const n = value as Record<string, unknown>;
+  if (!('id' in value) || !('text' in value) || !('createdAt' in value) || !('updatedAt' in value)) {
+    return false;
+  }
   return (
-    typeof n.id === 'string' &&
-    typeof n.text === 'string' &&
-    typeof n.createdAt === 'string' &&
-    typeof n.updatedAt === 'string'
+    typeof value.id === 'string' &&
+    typeof value.text === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.updatedAt === 'string'
   );
 }
 

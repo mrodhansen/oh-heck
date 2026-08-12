@@ -1,3 +1,4 @@
+import type { Rank } from '../types/cards';
 import type { LiveCard } from './types';
 
 const SUIT_GLYPH: Record<LiveCard['suit'], string> = {
@@ -7,7 +8,7 @@ const SUIT_GLYPH: Record<LiveCard['suit'], string> = {
   S: '♠',
 };
 
-const RANK_LABEL: Record<string, string> = {
+const RANK_LABEL: Partial<Record<Rank, string>> = {
   T: '10',
   J: 'J',
   Q: 'Q',
@@ -20,7 +21,11 @@ export function suitGlyph(suit: LiveCard['suit']): string {
 }
 
 export function rankLabel(rank: string): string {
-  return RANK_LABEL[rank] ?? rank;
+  return (isRankKey(rank) ? RANK_LABEL[rank] : undefined) ?? rank;
+}
+
+function isRankKey(rank: string): rank is Rank {
+  return rank in RANK_LABEL || /^[2-9]$/.test(rank);
 }
 
 export function isRed(suit: LiveCard['suit']): boolean {

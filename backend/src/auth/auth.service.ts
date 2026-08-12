@@ -1,13 +1,15 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { hashPassword, verifyPassword } from './password';
 import type { LoginDto, RegisterDto, UpdateAccountDto } from './dto';
+import {
+  ApiErrorCode,
+  badRequest,
+  conflict,
+  notFound,
+  unauthorized,
+} from '../common/api-error';
 
 export type PublicUser = {
   id: string;
@@ -21,7 +23,7 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<{ user: PublicUser; token: string }> {
     const username = normalizeUsername(dto.username);
-    if (!username) throw new BadRequestException('Username required');
+    if (!username) throw badRequest('Username required');
     await this.assertUsernameAvailable(username);
 
     const passwordHash = await hashPassword(dto.password);
@@ -32,7 +34,7 @@ export class AuthService {
       });
     } catch (e) {
       if (isUniqueViolation(e)) {
-        throw new ConflictException('Username already taken');
+        throw conflict('Username already taken', ApiErrorCode.USERNAME_TAKEN);
       }
       throw e;
     }
@@ -42,15 +44,21 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<{ user: PublicUser; token: string }> {
     const username = normalizeUsername(dto.username);
-    if (!username) throw new UnauthorizedException('Invalid username or password');
+    if (!username) {
+      throw notFound(ApiErrorCode.USER_NOT_FOUND, 'No account with that username');
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { username },
     });
-    if (!user) throw new UnauthorizedException('Invalid username or password');
+    if (!user) {
+      throw notFound(ApiErrorCode.USER_NOT_FOUND, 'No account with that username');
+    }
 
     const ok = await verifyPassword(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid username or password');
+    if (!ok) {
+      throw unauthorized('Incorrect password', ApiErrorCode.INVALID_CREDENTIALS);
+    }
 
     const token = await this.createSession(user.id);
     return { user: toPublic(user), token };
@@ -80,7 +88,7 @@ export class AuthService {
     dto: UpdateAccountDto,
   ): Promise<PublicUser> {
     if (!dto.password.length) {
-      throw new BadRequestException('Password required');
+      throw badRequest('Password required');
     }
     const user = await this.prisma.user.update({
       where: { id: userId },
@@ -94,22 +102,22 @@ export class AuthService {
       where: { id: gameId },
       include: { players: { orderBy: { seatIndex: 'asc' } } },
     });
-    if (!game) throw new BadRequestException('Game not found');
+    if (!game) throw notFound(ApiErrorCode.GAME_NOT_FOUND, 'Game not found');
 
     const target = game.players.find((p) => p.id === playerId);
-    if (!target) throw new BadRequestException('Player not found in game');
+    if (!target) {
+      throw notFound(ApiErrorCode.PLAYER_NOT_FOUND, 'Player not found in game');
+    }
     if (target.userId) {
       if (target.userId === userId) {
         return { ok: true as const, alreadyClaimed: true as const };
       }
-      throw new ConflictException('That seat is already claimed');
+      throw conflict('That seat is already claimed');
     }
 
     const already = game.players.find((p) => p.userId === userId);
     if (already) {
-      throw new ConflictException(
-        `You already claimed ${already.name} in this game`,
-      );
+      throw conflict(`You already claimed ${already.name} in this game`);
     }
 
     // Link the account only. Keep the originally entered table name.
@@ -121,11 +129,13 @@ export class AuthService {
     return { ok: true as const, alreadyClaimed: false as const };
   }
 
-  async listClaimableGames(userId: string) {
+  async listClaimableGames(userId: string, username: string) {
+    const needle = username.trim().toLowerCase();
     const games = await this.prisma.game.findMany({
       where: {
         players: {
           some: { userId: null },
+          none: { userId },
         },
       },
       include: {
@@ -136,7 +146,12 @@ export class AuthService {
     });
 
     return games
-      .filter((g) => !g.players.some((p) => p.userId === userId))
+      .filter((g) =>
+        g.players.some(
+          (p) =>
+            p.userId === null && p.name.trim().toLowerCase() === needle,
+        ),
+      )
       .map((g) => ({
         id: g.id,
         name: g.name,
@@ -166,7 +181,9 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({
       where: { username },
     });
-    if (existing) throw new ConflictException('Username already taken');
+    if (existing) {
+      throw conflict('Username already taken', ApiErrorCode.USERNAME_TAKEN);
+    }
   }
 }
 

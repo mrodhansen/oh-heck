@@ -10,8 +10,8 @@ export type AuthUser = {
 export type ClaimableGame = {
   id: string;
   name: string | null;
-  status: string;
-  playMode: string;
+  status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
+  playMode: 'IN_PERSON' | 'ONLINE';
   createdAt: string;
   finishedAt: string | null;
   players: {

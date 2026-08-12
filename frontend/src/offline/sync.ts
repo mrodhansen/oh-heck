@@ -24,7 +24,7 @@ import { toSummary } from './localEngine';
 import { toTournamentSummary } from './localTournament';
 import { newId } from './rules';
 
-let flushChain: Promise<unknown> = Promise.resolve();
+let flushChain: Promise<void> = Promise.resolve();
 let lastSyncError: string | null = null;
 const listeners = new Set<() => void>();
 
@@ -54,14 +54,16 @@ export async function gameIdsWithPendingOps(): Promise<Set<string>> {
   const ids = new Set<string>();
   for (const op of ops) {
     if (op.type === 'createGame') {
-      const id = op.payload.id;
-      if (typeof id === 'string') ids.add(id);
+      ids.add(op.payload.id);
     } else if (op.type === 'startTournamentTable') {
-      const id = op.payload.gameId;
-      if (typeof id === 'string') ids.add(id);
-    } else if (GAME_OUTBOX_TYPES.has(op.type)) {
-      const id = op.payload.gameId;
-      if (typeof id === 'string') ids.add(id);
+      ids.add(op.payload.gameId);
+    } else if (
+      op.type === 'setBids' ||
+      op.type === 'setTricks' ||
+      op.type === 'updateRound' ||
+      op.type === 'updateNotes'
+    ) {
+      ids.add(op.payload.gameId);
     }
   }
   return ids;
@@ -72,22 +74,22 @@ export async function tournamentIdsWithPendingOps(): Promise<Set<string>> {
   const ids = new Set<string>();
   for (const op of ops) {
     if (op.type === 'createTournament') {
-      const id = op.payload.id;
-      if (typeof id === 'string') ids.add(id);
-    } else if (TOURNAMENT_OUTBOX_TYPES.has(op.type)) {
-      const id = op.payload.tournamentId;
-      if (typeof id === 'string') ids.add(id);
+      ids.add(op.payload.id);
+    } else if (
+      op.type === 'addTournamentPlayer' ||
+      op.type === 'removeTournamentPlayer' ||
+      op.type === 'seatTournament' ||
+      op.type === 'startTournamentTable'
+    ) {
+      ids.add(op.payload.tournamentId);
     }
   }
   return ids;
 }
 
-type SyncResultRow = {
-  ok: boolean;
-  type: string;
-  error?: string;
-  data?: unknown;
-};
+type SyncResultRow =
+  | { ok: true; type: string; data?: object }
+  | { ok: false; type: string; error?: string };
 
 async function postSyncBatch(
   path: string,
@@ -125,37 +127,40 @@ async function postSyncBatch(
   return { doneIds, error };
 }
 
-async function cacheSyncResultData(data: unknown): Promise<void> {
-  if (!data || typeof data !== 'object') return;
-  const obj = data as Record<string, unknown>;
+function isGameDetail(value: object): value is GameDetail {
+  return 'id' in value && 'players' in value && 'rounds' in value;
+}
 
-  // startTournamentTable returns { tournament, game }
-  if (
-    'tournament' in obj &&
-    'game' in obj &&
-    obj.tournament &&
-    typeof obj.tournament === 'object' &&
-    obj.game &&
-    typeof obj.game === 'object'
-  ) {
-    const tournament = obj.tournament as TournamentDetail;
-    const game = obj.game as GameDetail;
-    if ('id' in tournament && 'players' in tournament && 'tables' in tournament) {
-      await cacheTournament(tournament);
+function isTournamentDetail(value: object): value is TournamentDetail {
+  return (
+    'id' in value &&
+    'players' in value &&
+    'tables' in value &&
+    'status' in value
+  );
+}
+
+async function cacheSyncResultData(data: object | undefined): Promise<void> {
+  if (!data) return;
+
+  if ('tournament' in data && 'game' in data) {
+    const pair = data as { tournament: object; game: object };
+    if (isTournamentDetail(pair.tournament)) {
+      await cacheTournament(pair.tournament);
     }
-    if ('id' in game && 'players' in game && 'rounds' in game) {
-      await cacheGame(game);
+    if (isGameDetail(pair.game)) {
+      await cacheGame(pair.game);
     }
     return;
   }
 
-  if ('id' in obj && 'players' in obj && 'rounds' in obj) {
-    await cacheGame(obj as GameDetail);
+  if (isGameDetail(data)) {
+    await cacheGame(data);
     return;
   }
 
-  if ('id' in obj && 'players' in obj && 'tables' in obj && 'status' in obj) {
-    await cacheTournament(obj as TournamentDetail);
+  if (isTournamentDetail(data)) {
+    await cacheTournament(data);
   }
 }
 
@@ -178,8 +183,8 @@ export async function flushOutbox(): Promise<{
 
       while (i < ops.length) {
         const head = ops[i]!;
-        const isTournament = TOURNAMENT_OUTBOX_TYPES.has(head.type);
-        const isGame = GAME_OUTBOX_TYPES.has(head.type);
+        const isTournament = isTournamentOpType(head.type);
+        const isGame = isGameOpType(head.type);
         if (!isTournament && !isGame) {
           error = `Unknown outbox op type: ${head.type}`;
           break;
@@ -188,8 +193,8 @@ export async function flushOutbox(): Promise<{
         const batch: OutboxOp[] = [];
         while (i < ops.length) {
           const op = ops[i]!;
-          if (isTournament && !TOURNAMENT_OUTBOX_TYPES.has(op.type)) break;
-          if (isGame && !GAME_OUTBOX_TYPES.has(op.type)) break;
+          if (isTournament && !isTournamentOpType(op.type)) break;
+          if (isGame && !isGameOpType(op.type)) break;
           batch.push(op);
           i += 1;
         }
@@ -292,7 +297,7 @@ export async function pullFromServer(): Promise<void> {
     }
 
     try {
-      const rules = await httpRequest<unknown>('/rules');
+      const rules = await httpRequest<import('../types/rules').OhHeckRules>('/rules');
       await kvSet('rules', rules);
     } catch {
       /* rules optional on pull */
@@ -371,11 +376,23 @@ export function startSyncListeners(): void {
 export async function enqueue(
   op: Omit<OutboxOp, 'id' | 'createdAt'>,
 ): Promise<void> {
-  const full: OutboxOp = {
+  const full = {
     ...op,
     id: newId(),
     createdAt: new Date().toISOString(),
-  };
+  } as OutboxOp;
   await outboxAdd(full);
   emit();
+}
+
+function isTournamentOpType(
+  type: OutboxOp['type'],
+): type is import('./db').TournamentOutboxType {
+  return TOURNAMENT_OUTBOX_TYPES.has(type as import('./db').TournamentOutboxType);
+}
+
+function isGameOpType(
+  type: OutboxOp['type'],
+): type is import('./db').GameOutboxType {
+  return GAME_OUTBOX_TYPES.has(type as import('./db').GameOutboxType);
 }

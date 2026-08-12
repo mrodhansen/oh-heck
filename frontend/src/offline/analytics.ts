@@ -254,7 +254,7 @@ export function emptyEntryAnalytics(
 export function appendEvent(
   game: GameDetail,
   type: GameEventType,
-  payload: unknown,
+  payload: GameEvent['payload'],
   roundNumber?: number | null,
 ): GameEvent[] {
   const ev: GameEvent = {
@@ -275,7 +275,7 @@ export function derivedBidAggregates(
   if (bids.some((b) => b === null)) {
     return { bidSum: null, bidDeficit: null };
   }
-  const present = bids as number[];
+  const present = bids.filter((b): b is number => b !== null);
   const bidSum = present.reduce((s, b) => s + b, 0);
   return { bidSum, bidDeficit: handSize - bidSum };
 }

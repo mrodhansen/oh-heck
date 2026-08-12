@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { GameNote } from '../api';
+import { toUserMessage } from '../api/errors';
 import {
   MAX_NOTE_LENGTH,
   MAX_NOTES_PER_GAME,
@@ -43,7 +44,7 @@ export function GameNotes({ notes, onSave }: Props) {
       await onSave(next);
     } catch (e) {
       setItems(notes);
-      setError(e instanceof Error ? e.message : 'Failed to save notes');
+      setError(toUserMessage(e, 'Failed to save notes'));
       throw e;
     } finally {
       setSaving(false);

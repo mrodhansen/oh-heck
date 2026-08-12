@@ -6,15 +6,7 @@ export function PlayModePage() {
 
   return (
     <div className="page-fit">
-      <div className="page-fit-header play-home-header">
-        <h2 className="page-title">Play</h2>
-        <p className="lede">
-          {online
-            ? 'Online cards or keep score at the table.'
-            : 'Keep score at the table (offline).'}
-        </p>
-      </div>
-      <div className="page-fit-body stack">
+      <div className="page-fit-body stack play-mode-actions">
         {online ? (
           <Link className="btn mode-card" to="/play/live">
             <span className="mode-card-title">Play</span>
@@ -24,7 +16,7 @@ export function PlayModePage() {
           </Link>
         ) : null}
         <Link className="btn mode-card" to="/play/score">
-          <span className="mode-card-title">Score</span>
+          <span className="mode-card-title">Score Game</span>
           <span className="mode-card-meta">
             Single table or tournament scorekeeper
           </span>

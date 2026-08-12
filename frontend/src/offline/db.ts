@@ -17,14 +17,103 @@ export type TournamentOutboxType =
 
 export type OutboxOpType = GameOutboxType | TournamentOutboxType;
 
-export type OutboxOp = {
+export type BidItem = { playerId: string; bid: number };
+export type TrickItem = { playerId: string; tricksTaken: number };
+
+export type CreateGamePayload = {
+  playerNames: string[];
+  name?: string;
   id: string;
-  type: OutboxOpType;
-  payload: Record<string, unknown>;
-  createdAt: string;
+  playerIds: string[];
+  playerUserIds?: (string | null)[];
 };
 
-export const TOURNAMENT_OUTBOX_TYPES: ReadonlySet<string> = new Set([
+export type SetBidsPayload = {
+  gameId: string;
+  roundNumber: number;
+  bids: BidItem[];
+  forceBurn: boolean;
+};
+
+export type SetTricksPayload = {
+  gameId: string;
+  roundNumber: number;
+  tricks: TrickItem[];
+};
+
+export type UpdateRoundPayload = {
+  gameId: string;
+  roundNumber: number;
+  bids: BidItem[];
+  tricks: TrickItem[];
+  forceBurn?: boolean;
+};
+
+export type UpdateNotesPayload = {
+  gameId: string;
+  notes: {
+    id: string;
+    text: string;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+};
+
+export type CreateTournamentPayload = {
+  id: string;
+  targetPlayerCount: number;
+  name?: string;
+};
+
+export type AddTournamentPlayerPayload = {
+  tournamentId: string;
+  name: string;
+  id: string;
+};
+
+export type RemoveTournamentPlayerPayload = {
+  tournamentId: string;
+  playerId: string;
+};
+
+export type SeatTournamentPayload = {
+  tournamentId: string;
+  tables: {
+    id: string;
+    tableNumber: number;
+    dealerSeat: number;
+    seats: {
+      id: string;
+      tournamentPlayerId: string;
+      seatIndex: number;
+    }[];
+  }[];
+};
+
+export type StartTournamentTablePayload = {
+  tournamentId: string;
+  tableId: string;
+  gameId: string;
+  playerIds: string[];
+};
+
+export type OutboxOp = {
+  id: string;
+  createdAt: string;
+} & (
+  | { type: 'createGame'; payload: CreateGamePayload }
+  | { type: 'setBids'; payload: SetBidsPayload }
+  | { type: 'setTricks'; payload: SetTricksPayload }
+  | { type: 'updateRound'; payload: UpdateRoundPayload }
+  | { type: 'updateNotes'; payload: UpdateNotesPayload }
+  | { type: 'createTournament'; payload: CreateTournamentPayload }
+  | { type: 'addTournamentPlayer'; payload: AddTournamentPlayerPayload }
+  | { type: 'removeTournamentPlayer'; payload: RemoveTournamentPlayerPayload }
+  | { type: 'seatTournament'; payload: SeatTournamentPayload }
+  | { type: 'startTournamentTable'; payload: StartTournamentTablePayload }
+);
+
+export const TOURNAMENT_OUTBOX_TYPES: ReadonlySet<TournamentOutboxType> = new Set([
   'createTournament',
   'addTournamentPlayer',
   'removeTournamentPlayer',
@@ -32,7 +121,7 @@ export const TOURNAMENT_OUTBOX_TYPES: ReadonlySet<string> = new Set([
   'startTournamentTable',
 ]);
 
-export const GAME_OUTBOX_TYPES: ReadonlySet<string> = new Set([
+export const GAME_OUTBOX_TYPES: ReadonlySet<GameOutboxType> = new Set([
   'createGame',
   'setBids',
   'setTricks',
@@ -99,7 +188,7 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
   });
 }
 
-export async function kvSet(key: string, value: unknown): Promise<void> {
+export async function kvSet<T>(key: string, value: T): Promise<void> {
   await withStore('kv', 'readwrite', (store) => store.put(value, key));
 }
 

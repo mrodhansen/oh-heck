@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { GameEventType, GameStatus, PlayMode, Prisma } from '@prisma/client';
@@ -32,6 +33,8 @@ import {
   roundSetupFields,
 } from './analytics';
 import { asNotes, hasNotes } from './notes';
+import { ApiErrorCode, exceptionMessage, notFound } from '../common/api-error';
+import { assertUsersExist } from '../common/users';
 
 const gameInclude = {
   players: { orderBy: { seatIndex: 'asc' as const } },
@@ -58,6 +61,8 @@ type FullGame = Prisma.GameGetPayload<{ include: typeof gameInclude }>;
 
 @Injectable()
 export class GamesService {
+  private readonly logger = new Logger(GamesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly rules: RulesService,
@@ -115,6 +120,7 @@ export class GamesService {
       if (new Set(claimed).size !== claimed.length) {
         throw new BadRequestException('playerUserIds must be unique when set');
       }
+      await assertUsersExist(this.prisma, claimed);
     }
 
     if (dto.id) {
@@ -265,24 +271,23 @@ export class GamesService {
         | 'setTricks'
         | 'updateRound'
         | 'updateNotes';
-      payload: Record<string, unknown>;
+      payload: object;
     }[],
   ) {
     const { plainToInstance } = await import('class-transformer');
     const { validateOrReject } = await import('class-validator');
-    const results: {
-      ok: boolean;
-      type: string;
-      error?: string;
-      data?: unknown;
-    }[] = [];
+    type SyncResult =
+      | { ok: true; type: string; data: object }
+      | { ok: false; type: string; error: string };
+    const results: SyncResult[] = [];
 
     for (const op of operations) {
       try {
-        let data: unknown;
+        let data: object;
+        const payload = op.payload;
         switch (op.type) {
           case 'createGame': {
-            const dto = plainToInstance(CreateGameDto, op.payload);
+            const dto = plainToInstance(CreateGameDto, payload);
             await validateOrReject(dto, {
               whitelist: true,
               forbidNonWhitelisted: true,
@@ -291,14 +296,14 @@ export class GamesService {
             break;
           }
           case 'setBids': {
-            const gameId = String(op.payload.gameId ?? '');
-            const roundNumber = Number(op.payload.roundNumber);
+            const gameId = fieldString(payload, 'gameId');
+            const roundNumber = fieldNumber(payload, 'roundNumber');
             if (!gameId || !Number.isInteger(roundNumber)) {
               throw new BadRequestException('Invalid setBids payload');
             }
             const dto = plainToInstance(SetBidsDto, {
-              bids: op.payload.bids,
-              forceBurn: op.payload.forceBurn,
+              bids: fieldValue(payload, 'bids'),
+              forceBurn: fieldValue(payload, 'forceBurn'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -308,13 +313,13 @@ export class GamesService {
             break;
           }
           case 'setTricks': {
-            const gameId = String(op.payload.gameId ?? '');
-            const roundNumber = Number(op.payload.roundNumber);
+            const gameId = fieldString(payload, 'gameId');
+            const roundNumber = fieldNumber(payload, 'roundNumber');
             if (!gameId || !Number.isInteger(roundNumber)) {
               throw new BadRequestException('Invalid setTricks payload');
             }
             const dto = plainToInstance(SetTricksDto, {
-              tricks: op.payload.tricks,
+              tricks: fieldValue(payload, 'tricks'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -324,15 +329,15 @@ export class GamesService {
             break;
           }
           case 'updateRound': {
-            const gameId = String(op.payload.gameId ?? '');
-            const roundNumber = Number(op.payload.roundNumber);
+            const gameId = fieldString(payload, 'gameId');
+            const roundNumber = fieldNumber(payload, 'roundNumber');
             if (!gameId || !Number.isInteger(roundNumber)) {
               throw new BadRequestException('Invalid updateRound payload');
             }
             const dto = plainToInstance(UpdateRoundDto, {
-              bids: op.payload.bids,
-              tricks: op.payload.tricks,
-              forceBurn: op.payload.forceBurn,
+              bids: fieldValue(payload, 'bids'),
+              tricks: fieldValue(payload, 'tricks'),
+              forceBurn: fieldValue(payload, 'forceBurn'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -342,12 +347,12 @@ export class GamesService {
             break;
           }
           case 'updateNotes': {
-            const gameId = String(op.payload.gameId ?? '');
+            const gameId = fieldString(payload, 'gameId');
             if (!gameId) {
               throw new BadRequestException('Invalid updateNotes payload');
             }
             const dto = plainToInstance(UpdateNotesDto, {
-              notes: op.payload.notes,
+              notes: fieldValue(payload, 'notes'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -678,7 +683,10 @@ export class GamesService {
         await this.tournaments.onGameCompleted(gameId);
       } catch (e) {
         // Score already committed; recovery via GET tryFinalize*
-        console.error('onGameCompleted after setTricks', gameId, e);
+        this.logger.error(
+          `onGameCompleted after setTricks ${gameId}: ${exceptionMessage(e)}`,
+          e instanceof Error ? e.stack : undefined,
+        );
       }
     }
     return this.emitGame(await this.getGame(gameId));
@@ -842,7 +850,10 @@ export class GamesService {
       try {
         await this.tournaments.onGameCompleted(gameId);
       } catch (e) {
-        console.error('onGameCompleted after updateRound', gameId, e);
+        this.logger.error(
+          `onGameCompleted after updateRound ${gameId}: ${exceptionMessage(e)}`,
+          e instanceof Error ? e.stack : undefined,
+        );
       }
       detail = await this.getGame(gameId);
     }
@@ -918,7 +929,7 @@ export class GamesService {
       include: gameInclude,
     });
     if (!game) {
-      throw new NotFoundException('Game not found');
+      throw notFound(ApiErrorCode.GAME_NOT_FOUND, 'Game not found');
     }
     return game;
   }
@@ -1306,15 +1317,13 @@ export class GamesService {
     });
 
     const events = game.events.map((ev) => {
-      let payload: unknown = ev.payload;
-      if (
+      const payload =
         redactPrivateCards &&
         (ev.type === GameEventType.ROUND_DEALT ||
           ev.type === GameEventType.CARD_PLAYED ||
           ev.type === GameEventType.TRICK_COMPLETED)
-      ) {
-        payload = { redacted: true, type: ev.type };
-      }
+          ? { redacted: true as const, type: ev.type }
+          : ev.payload;
       return {
         id: ev.id,
         type: ev.type,
@@ -1379,7 +1388,7 @@ export class GamesService {
       where: { id: gameId },
       include: { players: true },
     });
-    if (!game) throw new NotFoundException('Game not found');
+    if (!game) throw notFound(ApiErrorCode.GAME_NOT_FOUND, 'Game not found');
 
     const target = game.players.find((p) => p.id === playerId);
     if (!target) throw new BadRequestException('Player not found in game');
@@ -1469,6 +1478,20 @@ function sanitizePlayerUserIds(
   if (opts.fromLive) return raw;
   if (!opts.actorUserId) return undefined;
   return raw.map((id) => (id === opts.actorUserId ? id : null));
+}
+
+function fieldValue(obj: object, key: string): unknown {
+  return key in obj ? (obj as { [k: string]: unknown })[key] : undefined;
+}
+
+function fieldString(obj: object, key: string): string {
+  const v = fieldValue(obj, key);
+  return typeof v === 'string' ? v : '';
+}
+
+function fieldNumber(obj: object, key: string): number {
+  const v = fieldValue(obj, key);
+  return typeof v === 'number' ? v : Number.NaN;
 }
 
 function defaultGameName(names: string[]): string {

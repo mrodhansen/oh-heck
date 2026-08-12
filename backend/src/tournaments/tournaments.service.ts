@@ -3,8 +3,10 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { exceptionMessage } from '../common/api-error';
 import {
   GameStatus,
   Prisma,
@@ -55,6 +57,8 @@ type FullTournament = Prisma.TournamentGetPayload<{
 
 @Injectable()
 export class TournamentsService {
+  private readonly logger = new Logger(TournamentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
@@ -109,8 +113,10 @@ export class TournamentsService {
           ? e.message
           : 'Tournament finalization failed';
       if (!(e instanceof BadRequestException)) {
-        // Log non-domain failures server-side without leaking internals to clients
-        console.error('tryFinalize failed', id, e);
+        this.logger.error(
+          `tryFinalize failed ${id}: ${exceptionMessage(e)}`,
+          e instanceof Error ? e.stack : undefined,
+        );
       }
     }
     const t = await this.findFull(id);
@@ -626,24 +632,23 @@ export class TournamentsService {
         | 'removeTournamentPlayer'
         | 'seatTournament'
         | 'startTournamentTable';
-      payload: Record<string, unknown>;
+      payload: object;
     }[],
   ) {
     const { plainToInstance } = await import('class-transformer');
     const { validateOrReject } = await import('class-validator');
-    const results: {
-      ok: boolean;
-      type: string;
-      error?: string;
-      data?: unknown;
-    }[] = [];
+    type SyncResult =
+      | { ok: true; type: string; data: object }
+      | { ok: false; type: string; error: string };
+    const results: SyncResult[] = [];
 
     for (const op of operations) {
       try {
-        let data: unknown;
+        let data: object;
+        const payload = op.payload;
         switch (op.type) {
           case 'createTournament': {
-            const dto = plainToInstance(CreateTournamentDto, op.payload);
+            const dto = plainToInstance(CreateTournamentDto, payload);
             await validateOrReject(dto, {
               whitelist: true,
               forbidNonWhitelisted: true,
@@ -652,13 +657,13 @@ export class TournamentsService {
             break;
           }
           case 'addTournamentPlayer': {
-            const tournamentId = String(op.payload.tournamentId ?? '');
+            const tournamentId = fieldString(payload, 'tournamentId');
             if (!tournamentId) {
               throw new BadRequestException('Invalid addTournamentPlayer payload');
             }
             const dto = plainToInstance(AddTournamentPlayerDto, {
-              name: op.payload.name,
-              id: op.payload.id,
+              name: fieldValue(payload, 'name'),
+              id: fieldValue(payload, 'id'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -668,8 +673,8 @@ export class TournamentsService {
             break;
           }
           case 'removeTournamentPlayer': {
-            const tournamentId = String(op.payload.tournamentId ?? '');
-            const playerId = String(op.payload.playerId ?? '');
+            const tournamentId = fieldString(payload, 'tournamentId');
+            const playerId = fieldString(payload, 'playerId');
             if (!tournamentId || !playerId) {
               throw new BadRequestException(
                 'Invalid removeTournamentPlayer payload',
@@ -679,12 +684,12 @@ export class TournamentsService {
             break;
           }
           case 'seatTournament': {
-            const tournamentId = String(op.payload.tournamentId ?? '');
+            const tournamentId = fieldString(payload, 'tournamentId');
             if (!tournamentId) {
               throw new BadRequestException('Invalid seatTournament payload');
             }
             const dto = plainToInstance(SeatTournamentDto, {
-              tables: op.payload.tables,
+              tables: fieldValue(payload, 'tables'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -694,16 +699,16 @@ export class TournamentsService {
             break;
           }
           case 'startTournamentTable': {
-            const tournamentId = String(op.payload.tournamentId ?? '');
-            const tableId = String(op.payload.tableId ?? '');
+            const tournamentId = fieldString(payload, 'tournamentId');
+            const tableId = fieldString(payload, 'tableId');
             if (!tournamentId || !tableId) {
               throw new BadRequestException(
                 'Invalid startTournamentTable payload',
               );
             }
             const dto = plainToInstance(StartTournamentTableDto, {
-              gameId: op.payload.gameId,
-              playerIds: op.payload.playerIds,
+              gameId: fieldValue(payload, 'gameId'),
+              playerIds: fieldValue(payload, 'playerIds'),
             });
             await validateOrReject(dto, {
               whitelist: true,
@@ -1305,6 +1310,15 @@ function isHighTableRow(tb: {
   isHighTable: boolean;
 }): boolean {
   return tb.stage === TournamentStage.HIGH_TABLE || tb.isHighTable;
+}
+
+function fieldValue(obj: object, key: string): unknown {
+  return key in obj ? (obj as { [k: string]: unknown })[key] : undefined;
+}
+
+function fieldString(obj: object, key: string): string {
+  const v = fieldValue(obj, key);
+  return typeof v === 'string' ? v : '';
 }
 
 function isTableCompleted(tb: {

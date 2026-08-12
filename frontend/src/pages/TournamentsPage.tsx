@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, TournamentSummary } from '../api';
+import { toUserMessage } from '../api/errors';
 import { SyncStatus } from '../components/SyncStatus';
 import { newId } from '../offline/rules';
 import { onSyncChange } from '../offline/sync';
@@ -25,8 +26,8 @@ export function TournamentsPage() {
   useEffect(() => {
     let alive = true;
     load()
-      .catch((e: Error) => {
-        if (alive) setError(e.message);
+      .catch((e: unknown) => {
+        if (alive) setError(toUserMessage(e, 'Could not load tournaments'));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -37,7 +38,9 @@ export function TournamentsPage() {
   }, [load]);
 
   useSocketRoom('tournaments', 'tournaments:list', () => {
-    void load().catch((e: Error) => setError(e.message));
+    void load().catch((e: unknown) =>
+      setError(toUserMessage(e, 'Could not refresh tournaments')),
+    );
   });
 
   useEffect(() => onSyncChange(() => {
@@ -63,7 +66,7 @@ export function TournamentsPage() {
       createIdRef.current = null;
       navigate(`/play/tournaments/${t.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create');
+      setError(toUserMessage(err, 'Failed to create'));
       setSaving(false);
     }
   }

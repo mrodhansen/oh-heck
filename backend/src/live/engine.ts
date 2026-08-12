@@ -1,6 +1,11 @@
+import { BadRequestException } from '@nestjs/common';
+import type { JsonObject } from '../common/json';
 import {
   Card,
+  RANKS,
+  SUITS,
   Suit,
+  Rank,
   legalPlays,
   makeDeck,
   removeCard,
@@ -279,4 +284,251 @@ export function tablePlays(state: EngineState): {
     };
   }
   return { plays: [], leadSuit: null, winnerSeat: null, complete: false };
+}
+
+const PHASES: readonly LivePhase[] = [
+  'lobby',
+  'bidding',
+  'playing',
+  'trick_reveal',
+  'complete',
+];
+
+function isLivePhase(value: unknown): value is LivePhase {
+  return typeof value === 'string' && (PHASES as readonly string[]).includes(value);
+}
+
+function isSuit(value: unknown): value is Suit {
+  return typeof value === 'string' && (SUITS as readonly string[]).includes(value);
+}
+
+function isRank(value: unknown): value is Rank {
+  return typeof value === 'string' && (RANKS as readonly string[]).includes(value);
+}
+
+function parseCardValue(value: unknown): Card | null {
+  if (!value || typeof value !== 'object') return null;
+  if (!('s' in value) || !('r' in value)) return null;
+  if (!isSuit(value.s) || !isRank(value.r)) return null;
+  return { s: value.s, r: value.r };
+}
+
+function parseCardList(value: unknown): Card[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: Card[] = [];
+  for (const item of value) {
+    const card = parseCardValue(item);
+    if (!card) return null;
+    out.push(card);
+  }
+  return out;
+}
+
+function parseHands(value: unknown): Card[][] | null {
+  if (!Array.isArray(value)) return null;
+  const out: Card[][] = [];
+  for (const hand of value) {
+    const cards = parseCardList(hand);
+    if (!cards) return null;
+    out.push(cards);
+  }
+  return out;
+}
+
+function parseIntList(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: number[] = [];
+  for (const item of value) {
+    if (typeof item !== 'number' || !Number.isInteger(item)) return null;
+    out.push(item);
+  }
+  return out;
+}
+
+function parseNullableIntList(value: unknown): (number | null)[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: (number | null)[] = [];
+  for (const item of value) {
+    if (item === null) {
+      out.push(null);
+      continue;
+    }
+    if (typeof item !== 'number' || !Number.isInteger(item)) return null;
+    out.push(item);
+  }
+  return out;
+}
+
+function parseTrickPlays(
+  value: unknown,
+): { seat: number; card: Card }[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: { seat: number; card: Card }[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return null;
+    if (!('seat' in item) || !('card' in item)) return null;
+    if (typeof item.seat !== 'number' || !Number.isInteger(item.seat)) return null;
+    const card = parseCardValue(item.card);
+    if (!card) return null;
+    out.push({ seat: item.seat, card });
+  }
+  return out;
+}
+
+export function engineStateToJson(state: EngineState): JsonObject {
+  const card = (c: Card): JsonObject => ({ s: c.s, r: c.r });
+  const play = (p: { seat: number; card: Card }): JsonObject => ({
+    seat: p.seat,
+    card: card(p.card),
+  });
+  return {
+    phase: state.phase,
+    roundNumber: state.roundNumber,
+    handSize: state.handSize,
+    dealerSeat: state.dealerSeat,
+    trumpSuit: state.trumpSuit,
+    trumpCard: state.trumpCard ? card(state.trumpCard) : null,
+    hands: state.hands.map((hand) => hand.map(card)),
+    bids: state.bids,
+    bidOrder: state.bidOrder,
+    bidIndex: state.bidIndex,
+    forceBurn: state.forceBurn,
+    tricksTaken: state.tricksTaken,
+    currentTrick: state.currentTrick
+      ? {
+          leadSeat: state.currentTrick.leadSeat,
+          plays: state.currentTrick.plays.map(play),
+        }
+      : null,
+    turnSeat: state.turnSeat,
+    tricksPlayed: state.tricksPlayed,
+    lastTrick: state.lastTrick
+      ? {
+          plays: state.lastTrick.plays.map(play),
+          winnerSeat: state.lastTrick.winnerSeat,
+          leadSuit: state.lastTrick.leadSuit,
+        }
+      : null,
+    playerCount: state.playerCount,
+  };
+}
+
+export function parseEngineState(
+  raw: unknown,
+  status?: 'LOBBY' | 'PLAYING' | 'COMPLETED',
+): EngineState {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    if (status && status !== 'LOBBY') {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    return emptyLobbyState();
+  }
+
+  const rec = raw as { readonly [key: string]: unknown };
+  if (!isLivePhase(rec.phase)) {
+    if (status && status !== 'LOBBY') {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    return emptyLobbyState();
+  }
+  if (status === 'PLAYING' && (rec.phase === 'lobby' || !Array.isArray(rec.hands))) {
+    throw new BadRequestException('Corrupt live game state');
+  }
+
+  const parsedHands = parseHands(rec.hands);
+  const parsedBids = parseNullableIntList(rec.bids);
+  const parsedBidOrder = parseIntList(rec.bidOrder);
+  const parsedTricksTaken = parseIntList(rec.tricksTaken);
+  if (!parsedHands || !parsedBids || !parsedBidOrder || !parsedTricksTaken) {
+    if (rec.phase === 'lobby') return emptyLobbyState();
+    throw new BadRequestException('Corrupt live game state');
+  }
+
+  const trumpCard = rec.trumpCard == null ? null : parseCardValue(rec.trumpCard);
+  if (rec.trumpCard != null && !trumpCard) {
+    throw new BadRequestException('Corrupt live game state');
+  }
+
+  const trumpSuit =
+    rec.trumpSuit == null ? null : isSuit(rec.trumpSuit) ? rec.trumpSuit : null;
+  if (rec.trumpSuit != null && !trumpSuit) {
+    throw new BadRequestException('Corrupt live game state');
+  }
+
+  let currentTrick: EngineState['currentTrick'] = null;
+  if (rec.currentTrick != null) {
+    if (!rec.currentTrick || typeof rec.currentTrick !== 'object') {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    const trick = rec.currentTrick as { readonly [key: string]: unknown };
+    const leadSeat = trick.leadSeat;
+    const plays = parseTrickPlays(trick.plays);
+    if (typeof leadSeat !== 'number' || !Number.isInteger(leadSeat) || !plays) {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    currentTrick = { leadSeat, plays };
+  }
+
+  let lastTrick: EngineState['lastTrick'] = null;
+  if (rec.lastTrick != null) {
+    if (!rec.lastTrick || typeof rec.lastTrick !== 'object') {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    const trick = rec.lastTrick as { readonly [key: string]: unknown };
+    const plays = parseTrickPlays(trick.plays);
+    const winnerSeat = trick.winnerSeat;
+    const leadSuit = trick.leadSuit;
+    if (!plays || typeof winnerSeat !== 'number' || !isSuit(leadSuit)) {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    lastTrick = { plays, winnerSeat, leadSuit };
+  }
+
+  const roundNumber = rec.roundNumber;
+  const handSize = rec.handSize;
+  const dealerSeat = rec.dealerSeat;
+  const bidIndex = rec.bidIndex;
+  const forceBurn = rec.forceBurn;
+  const tricksPlayed = rec.tricksPlayed;
+  const playerCount = rec.playerCount;
+  if (
+    typeof roundNumber !== 'number' ||
+    typeof handSize !== 'number' ||
+    typeof dealerSeat !== 'number' ||
+    typeof bidIndex !== 'number' ||
+    typeof forceBurn !== 'boolean' ||
+    typeof tricksPlayed !== 'number' ||
+    typeof playerCount !== 'number'
+  ) {
+    if (rec.phase === 'lobby') return emptyLobbyState();
+    throw new BadRequestException('Corrupt live game state');
+  }
+
+  let turnSeat: number | null = null;
+  if (rec.turnSeat != null) {
+    if (typeof rec.turnSeat !== 'number' || !Number.isInteger(rec.turnSeat)) {
+      throw new BadRequestException('Corrupt live game state');
+    }
+    turnSeat = rec.turnSeat;
+  }
+
+  return {
+    phase: rec.phase,
+    roundNumber,
+    handSize,
+    dealerSeat,
+    trumpSuit,
+    trumpCard,
+    hands: parsedHands,
+    bids: parsedBids,
+    bidOrder: parsedBidOrder,
+    bidIndex,
+    forceBurn,
+    tricksTaken: parsedTricksTaken,
+    currentTrick,
+    turnSeat,
+    tricksPlayed,
+    lastTrick,
+    playerCount,
+  };
 }

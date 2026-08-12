@@ -1,4 +1,12 @@
-import { httpRequest, HttpError, isNetworkError } from './api/http';
+import { httpRequest, HttpError } from './api/http';
+import { isNetworkFailure } from './api/errors';
+import type {
+  CardJson,
+  CardPlayRecord,
+  DealtHandsJson,
+  TrickHistoryEntry,
+} from './types/cards';
+import type { OhHeckRules } from './types/rules';
 import {
   cacheGame,
   cacheTournament,
@@ -93,8 +101,8 @@ export type RoundEntry = {
   placeAfterRound: number | null;
   scoreBehindLeader: number | null;
   bidPlacedAt?: string | null;
-  dealtHand?: unknown;
-  cardsPlayed?: unknown;
+  dealtHand?: CardJson[] | null;
+  cardsPlayed?: CardPlayRecord[] | null;
 };
 
 export type TrickPlayDetail = {
@@ -139,10 +147,10 @@ export type RoundDetail = {
   completedAt: string | null;
   editCount: number;
   trumpSuit?: string | null;
-  trumpCard?: unknown;
-  dealtHands?: unknown;
+  trumpCard?: CardJson | null;
+  dealtHands?: DealtHandsJson | null;
   dealtAt?: string | null;
-  trickHistory?: unknown;
+  trickHistory?: TrickHistoryEntry[] | null;
   tricks?: TrickDetail[];
   entries: RoundEntry[];
   complete: boolean;
@@ -162,11 +170,21 @@ export type GameEventType =
   | 'PLAYER_JOINED'
   | 'GAME_STARTED_LIVE';
 
+export type GameEventJson =
+  | string
+  | number
+  | boolean
+  | null
+  | GameEventJson[]
+  | { [key: string]: GameEventJson | undefined };
+
+export type GameEventPayload = { [key: string]: GameEventJson | undefined };
+
 export type GameEvent = {
   id: string;
-  type: GameEventType | string;
+  type: GameEventType;
   roundNumber: number | null;
-  payload: unknown;
+  payload: GameEventPayload;
   createdAt: string;
 };
 
@@ -583,7 +601,7 @@ async function onlineWrite<T>(fn: () => Promise<T>): Promise<T> {
 function shouldGoOffline(err: unknown): boolean {
   if (!isOnline()) return true;
   if (err instanceof HttpError) return false;
-  return isNetworkError(err) || (err instanceof Error && err.message === 'Network error');
+  return isNetworkFailure(err);
 }
 
 export const api = {
@@ -857,17 +875,17 @@ export const api = {
     throw new Error('Stats not available offline');
   },
 
-  getRules: async (): Promise<unknown> => {
+  getRules: async (): Promise<OhHeckRules> => {
     if (isOnline()) {
       try {
-        const rules = await httpRequest<unknown>('/rules');
+        const rules = await httpRequest<OhHeckRules>('/rules');
         await kvSet('rules', rules);
         return rules;
       } catch (e) {
         if (!shouldGoOffline(e)) throw e;
       }
     }
-    const cached = await kvGet<unknown>('rules');
+    const cached = await kvGet<OhHeckRules>('rules');
     if (cached != null) return cached;
     throw new Error('Rules not available offline');
   },

@@ -1,8 +1,16 @@
-import { GameEventType, Prisma } from '@prisma/client';
+import { GameEventType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { cardKey, Card, Suit } from './cards';
 import { EngineState } from './engine';
 import { eventCreate } from '../games/analytics';
+import { toInputJson, type JsonArray, type JsonObject } from '../common/json';
+import { NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+
+function jsonArray(value: Prisma.JsonValue | null): JsonArray {
+  if (!Array.isArray(value)) return [];
+  return JSON.parse(JSON.stringify(value)) as JsonArray;
+}
 
 type SeatPlayer = { id: string; name: string; seatIndex: number };
 
@@ -14,7 +22,7 @@ export async function logLiveEvent(
     type: string;
     playerId?: string | null;
     roundNumber?: number | null;
-    payload?: Record<string, unknown>;
+    payload?: JsonObject;
   },
 ) {
   await prisma.liveEvent.create({
@@ -24,7 +32,7 @@ export async function logLiveEvent(
       type: args.type,
       playerId: args.playerId ?? null,
       roundNumber: args.roundNumber ?? null,
-      payload: (args.payload ?? {}) as Prisma.InputJsonValue,
+      payload: toInputJson(args.payload ?? {}),
     },
   });
 }
@@ -46,13 +54,13 @@ export async function persistDeal(
     include: { entries: true },
   });
   if (!round) {
-    throw new Error(`Round ${roundNumber} not found for deal persist`);
+    throw new NotFoundException(`Round ${roundNumber} not found`);
   }
 
   const bySeat = state.hands.map((hand) =>
     hand.map((c) => ({ s: c.s, r: c.r })),
   );
-  const byPlayerId: Record<string, { s: string; r: string }[]> = {};
+  const byPlayerId: { [playerId: string]: { s: Card['s']; r: Card['r'] }[] } = {};
   for (const p of players) {
     byPlayerId[p.id] = bySeat[p.seatIndex] ?? [];
   }
@@ -67,23 +75,23 @@ export async function persistDeal(
       where: { id: round.id },
       data: {
         trumpSuit: state.trumpSuit,
-        trumpCard: trumpCard as unknown as Prisma.InputJsonValue,
-        dealtHands: dealtHands as unknown as Prisma.InputJsonValue,
+        trumpCard: trumpCard ? toInputJson(trumpCard) : undefined,
+        dealtHands: toInputJson(dealtHands),
         dealtAt: now,
-        trickHistory: [] as unknown as Prisma.InputJsonValue,
+        trickHistory: toInputJson([]),
       },
     });
 
     for (const p of players) {
       const entry = round.entries.find((e) => e.playerId === p.id);
       if (!entry) {
-        throw new Error(`RoundEntry missing for player ${p.id} on deal`);
+        throw new NotFoundException(`Round entry missing for player ${p.id}`);
       }
       await tx.roundEntry.update({
         where: { id: entry.id },
         data: {
-          dealtHand: (byPlayerId[p.id] ?? []) as unknown as Prisma.InputJsonValue,
-          cardsPlayed: [] as unknown as Prisma.InputJsonValue,
+          dealtHand: toInputJson(byPlayerId[p.id] ?? []),
+          cardsPlayed: toInputJson([]),
           bidPlacedAt: null,
         },
       });
@@ -117,7 +125,7 @@ export async function persistDeal(
         gameId,
         type: 'ROUND_DEALT',
         roundNumber,
-        payload: {
+        payload: toInputJson({
           handSize: state.handSize,
           dealerSeat: state.dealerSeat,
           trumpSuit: state.trumpSuit,
@@ -127,7 +135,7 @@ export async function persistDeal(
             seatIndex: p.seatIndex,
             cards: (byPlayerId[p.id] ?? []).length,
           })),
-        } as Prisma.InputJsonValue,
+        }),
       },
     });
   });
@@ -182,7 +190,7 @@ export async function persistCardPlay(
         type: 'CARD_PLAYED',
         playerId: args.playerId,
         roundNumber: args.roundNumber,
-        payload: payload as Prisma.InputJsonValue,
+        payload: toInputJson(payload),
       },
     });
 
@@ -194,21 +202,17 @@ export async function persistCardPlay(
       include: { entries: true },
     });
     if (!round) {
-      throw new Error(
-        `Round ${args.roundNumber} not found for card play persist`,
-      );
+      throw new NotFoundException(`Round ${args.roundNumber} not found`);
     }
     const entry = round.entries.find((e) => e.playerId === args.playerId);
     if (!entry) {
-      throw new Error(`RoundEntry missing for player ${args.playerId}`);
+      throw new NotFoundException(`Round entry missing for player ${args.playerId}`);
     }
-    const prev = Array.isArray(entry.cardsPlayed)
-      ? (entry.cardsPlayed as unknown[])
-      : [];
+    const prev = jsonArray(entry.cardsPlayed);
     await tx.roundEntry.update({
       where: { id: entry.id },
       data: {
-        cardsPlayed: [
+        cardsPlayed: toInputJson([
           ...prev,
           {
             trickIndex: args.trickIndex,
@@ -217,7 +221,7 @@ export async function persistCardPlay(
             r: args.card.r,
             key,
           },
-        ] as unknown as Prisma.InputJsonValue,
+        ]),
       },
     });
   });
@@ -256,7 +260,9 @@ export async function persistCompletedTrick(
   const winner = seatToPlayer.get(winnerSeat);
   const playRows = plays.map((p, playOrder) => {
     const player = seatToPlayer.get(p.seat);
-    if (!player) throw new Error(`No player at seat ${p.seat}`);
+    if (!player) {
+      throw new NotFoundException(`No player at seat ${p.seat}`);
+    }
     const followedSuit = playOrder === 0 || p.card.s === leadSuit;
     return {
       playOrder,
@@ -304,13 +310,11 @@ export async function persistCompletedTrick(
       },
     });
 
-    const prevHist = Array.isArray(round.trickHistory)
-      ? (round.trickHistory as unknown[])
-      : [];
+    const prevHist = jsonArray(round.trickHistory);
     await tx.round.update({
       where: { id: round.id },
       data: {
-        trickHistory: [...prevHist, historyEntry] as unknown as Prisma.InputJsonValue,
+        trickHistory: toInputJson([...prevHist, historyEntry]),
       },
     });
 
@@ -330,7 +334,7 @@ export async function persistCompletedTrick(
         type: 'TRICK_COMPLETED',
         playerId: winner?.id ?? null,
         roundNumber,
-        payload: historyEntry as Prisma.InputJsonValue,
+        payload: toInputJson(historyEntry),
       },
     });
   });
@@ -373,11 +377,11 @@ export async function persistBidPlaced(
       include: { entries: true },
     });
     if (!round) {
-      throw new Error(`Round ${args.roundNumber} not found for bid persist`);
+      throw new NotFoundException(`Round ${args.roundNumber} not found`);
     }
     const entry = round.entries.find((e) => e.playerId === args.playerId);
     if (!entry) {
-      throw new Error(`RoundEntry missing for player ${args.playerId}`);
+      throw new NotFoundException(`Round entry missing for player ${args.playerId}`);
     }
     await tx.roundEntry.update({
       where: { id: entry.id },
@@ -399,7 +403,7 @@ export async function persistBidPlaced(
         type: 'BID_PLACED',
         playerId: args.playerId,
         roundNumber: args.roundNumber,
-        payload: payload as Prisma.InputJsonValue,
+        payload: toInputJson(payload),
       },
     });
   });

@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 let socket: Socket | null = null;
 
@@ -44,7 +44,7 @@ export function leaveRoom(room: string) {
 
 export function onEvent(
   event: string,
-  handler: (...args: unknown[]) => void,
+  handler: () => void,
 ): () => void {
   const s = getSocket();
   s.on(event, handler);

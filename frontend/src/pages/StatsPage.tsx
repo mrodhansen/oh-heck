@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, StatsGame, StatsPlayer, StatsResponse, StatsLeader } from '../api';
+import { toUserMessage } from '../api/errors';
 import { filterStatsGames } from './statsGamesFilter';
 
 type Tab = 'overview' | 'games' | 'players';
+
+function tabFromState(state: unknown): Tab | undefined {
+  if (!state || typeof state !== 'object' || !('tab' in state)) return undefined;
+  const tab = state.tab;
+  return tab === 'games' || tab === 'players' || tab === 'overview' ? tab : undefined;
+}
 
 export function StatsPage() {
   const location = useLocation();
@@ -11,7 +18,7 @@ export function StatsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>(() => {
-    const from = (location.state as { tab?: Tab } | null)?.tab;
+    const from = tabFromState(location.state);
     return from === 'games' || from === 'players' ? from : 'overview';
   });
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
@@ -28,10 +35,10 @@ export function StatsPage() {
           setError(null);
         }
       })
-      .catch((e: Error) => {
+      .catch((e: unknown) => {
         if (alive) {
           setStats(null);
-          setError(e.message);
+          setError(toUserMessage(e, 'Could not load stats'));
         }
       })
       .finally(() => {

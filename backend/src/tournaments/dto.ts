@@ -123,7 +123,7 @@ export class TournamentSyncOperationDto {
     | 'startTournamentTable';
 
   @IsObject()
-  payload!: Record<string, unknown>;
+  payload!: object;
 }
 
 export class TournamentSyncDto {

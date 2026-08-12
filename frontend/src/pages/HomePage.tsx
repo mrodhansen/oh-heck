@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, GameSummary } from '../api';
+import { toUserMessage } from '../api/errors';
 
 const RESUME_LIMIT = 5;
 
@@ -16,8 +17,8 @@ export function HomePage() {
       .then((data) => {
         if (alive) setGames(data);
       })
-      .catch((e: Error) => {
-        if (alive) setError(e.message);
+      .catch((e: unknown) => {
+        if (alive) setError(toUserMessage(e, 'Could not load games'));
       })
       .finally(() => {
         if (alive) setLoading(false);

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { toUserMessage } from '../api/errors';
 import { liveApi } from '../live/api';
 import { saveLiveAuth } from '../live/session';
 import type { LiveGoneSeat, LiveLookup } from '../live/types';
@@ -37,8 +38,8 @@ export function LiveHubPage() {
         if (!alive) return;
         applyLookup(res);
       })
-      .catch((err: Error) => {
-        if (alive) setError(err.message);
+      .catch((err: unknown) => {
+        if (alive) setError(toUserMessage(err, 'Could not find that game'));
       });
     return () => {
       alive = false;
@@ -72,7 +73,7 @@ export function LiveHubPage() {
       const res = await liveApi.lookup(trimmed);
       applyLookup(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid code');
+      setError(toUserMessage(err, 'Invalid code'));
     } finally {
       setBusy(false);
     }
@@ -93,7 +94,7 @@ export function LiveHubPage() {
       });
       nav(`/live/${res.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not join');
+      setError(toUserMessage(err, 'Could not join'));
     } finally {
       setBusy(false);
     }
@@ -113,7 +114,7 @@ export function LiveHubPage() {
       });
       nav(`/live/${res.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not claim seat');
+      setError(toUserMessage(err, 'Could not claim seat'));
       try {
         const res = await liveApi.lookup(code.trim());
         applyLookup(res);
@@ -145,7 +146,7 @@ export function LiveHubPage() {
       });
       nav(`/live/${res.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create game');
+      setError(toUserMessage(err, 'Could not create game'));
     } finally {
       setBusy(false);
     }
@@ -243,13 +244,8 @@ export function LiveHubPage() {
 
   return (
     <div className="page-fit">
-      <div className="page-fit-header play-home-header">
+      <div className="page-fit-header">
         <h2 className="page-title">Live game</h2>
-        <p className="lede">
-          {user
-            ? `Signed in as ${user.username}. Your table name is pre-filled and can be changed.`
-            : 'Enter a code or create a new table.'}
-        </p>
       </div>
       <div className="page-fit-body stack">
         {error && <div className="banner">{error}</div>}
@@ -309,8 +305,9 @@ export function LiveHubPage() {
             {busy ? 'Creating…' : 'Create new game'}
           </button>
         </form>
-
-        <Link to="/" className="btn ghost">
+      </div>
+      <div className="action-bar">
+        <Link to="/" className="btn ghost block">
           Back
         </Link>
       </div>

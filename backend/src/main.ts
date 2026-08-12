@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ApiExceptionFilter } from './common/http-exception.filter';
 
 loadEnv();
 
@@ -35,6 +36,7 @@ async function bootstrap() {
     });
   }
 
+  app.useGlobalFilters(new ApiExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

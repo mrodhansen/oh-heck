@@ -81,17 +81,14 @@ export class AuthController {
   @UseGuards(AuthGuard)
   async myStats(@CurrentUser() user: PublicUser) {
     const all = await this.stats.getStats();
-    const mine =
-      all.players.find(
-        (p) => 'userId' in p && (p as { userId?: string | null }).userId === user.id,
-      ) ?? null;
+    const mine = all.players.find((p) => p.userId === user.id) ?? null;
     return { user, stats: mine };
   }
 
   @Get('me/claimable')
   @UseGuards(AuthGuard)
   claimable(@CurrentUser() user: PublicUser) {
-    return this.auth.listClaimableGames(user.id);
+    return this.auth.listClaimableGames(user.id, user.username);
   }
 
   @Post('games/:gameId/claim')

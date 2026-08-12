@@ -40,7 +40,9 @@ export class AuthGuard implements CanActivate {
     const user = await this.auth.userFromToken(token);
     req.user = user;
     if (optional) return true;
-    if (!user) throw new UnauthorizedException('Sign in required');
+    if (!user) {
+      throw new UnauthorizedException('Sign in required');
+    }
     return true;
   }
 }

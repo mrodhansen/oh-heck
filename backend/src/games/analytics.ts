@@ -1,4 +1,5 @@
 import { GameEventType, Prisma } from '@prisma/client';
+import { toInputJson, type JsonValue } from '../common/json';
 
 /** Parse Json bid-order column (PG JSONB / SQLite Json) into seat indices. */
 export function asIntArray(value: Prisma.JsonValue | null | undefined): number[] {
@@ -312,7 +313,7 @@ export function derivedBidAggregates(
   if (bids.some((b) => b === null)) {
     return { bidSum: null, bidDeficit: null };
   }
-  const present = bids as number[];
+  const present = bids.filter((b): b is number => b !== null);
   const bidSum = present.reduce((s, b) => s + b, 0);
   return { bidSum, bidDeficit: handSize - bidSum };
 }
@@ -360,13 +361,13 @@ export function derivedEntryOutcome(
 export function eventCreate(
   gameId: string,
   type: GameEventType,
-  payload: Prisma.InputJsonValue,
+  payload: JsonValue,
   roundNumber?: number | null,
 ): Prisma.GameEventCreateManyInput {
   return {
     gameId,
     type,
     roundNumber: roundNumber ?? null,
-    payload,
+    payload: toInputJson(payload),
   };
 }

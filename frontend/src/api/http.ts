@@ -1,6 +1,15 @@
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+import {
+  HttpError,
+  NetworkError,
+  parseApiErrorBody,
+} from './errors';
+
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const TOKEN_KEY = 'oh_heck_session';
+
+export { HttpError, NetworkError } from './errors';
+export { toUserMessage, isNetworkFailure as isNetworkError } from './errors';
 
 export function getAuthToken(): string | null {
   try {
@@ -19,28 +28,16 @@ export function setAuthToken(token: string | null) {
   }
 }
 
-export class HttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
-
-export function isNetworkError(err: unknown): boolean {
+function looksLikeFetchFailure(err: unknown): boolean {
   if (err instanceof TypeError) return true;
-  if (err instanceof Error) {
-    const m = err.message.toLowerCase();
-    return (
-      m.includes('failed to fetch') ||
-      m.includes('network') ||
-      m.includes('load failed') ||
-      m.includes('offline')
-    );
-  }
-  return false;
+  if (!(err instanceof Error)) return false;
+  const m = err.message.toLowerCase();
+  return (
+    m.includes('failed to fetch') ||
+    m.includes('networkerror') ||
+    m.includes('load failed') ||
+    m === 'network request failed'
+  );
 }
 
 export async function httpRequest<T>(
@@ -49,17 +46,17 @@ export async function httpRequest<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(init?.headers as Record<string, string> | undefined),
-    };
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Content-Type') && init?.body != null) {
+      headers.set('Content-Type', 'application/json');
+    }
     const token = getAuthToken();
-    if (token && !headers.Authorization) {
-      headers.Authorization = `Bearer ${token}`;
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
     }
     // Free ngrok interstitial breaks SPA fetch without this header
     if (API_URL.includes('ngrok')) {
-      headers['ngrok-skip-browser-warning'] = 'true';
+      headers.set('ngrok-skip-browser-warning', 'true');
     }
     res = await fetch(`${API_URL}${path}`, {
       ...init,
@@ -67,23 +64,32 @@ export async function httpRequest<T>(
       headers,
     });
   } catch (e) {
-    throw new Error(
-      isNetworkError(e) ? 'Network error' : e instanceof Error ? e.message : 'Request failed',
-    );
-  }
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      const body = (await res.json()) as {
-        message?: string | string[];
-      };
-      if (Array.isArray(body.message)) message = body.message.join(', ');
-      else if (body.message) message = body.message;
-    } catch {
-      /* ignore body parse */
+    if (looksLikeFetchFailure(e)) {
+      throw new NetworkError();
     }
-    throw new HttpError(message || `Request failed (${res.status})`, res.status);
+    throw e instanceof Error ? e : new NetworkError();
   }
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+
+  if (!res.ok) {
+    let parsedBody: unknown = null;
+    const text = await res.text();
+    if (text) {
+      try {
+        parsedBody = JSON.parse(text) as unknown;
+      } catch {
+        parsedBody = text;
+      }
+    }
+    const parsed = parseApiErrorBody(parsedBody, res.status);
+    throw new HttpError(parsed.message, res.status, parsed.code, parsed.details);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
