@@ -693,6 +693,35 @@ a.list-item:active {
   color: var(--grey-700);
 }
 
+.banner-ok {
+  background: #e8f0ea;
+  border-color: #c3d6c8;
+  color: #2f6b4f;
+}
+
+.claim-panel {
+  margin-bottom: 12px;
+}
+
+.claim-game {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.claim-game:last-child {
+  border-bottom: none;
+}
+
+.claim-game-head {
+  margin-bottom: 8px;
+}
+
+.claim-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .empty {
   text-align: center;
   padding: 28px 14px;

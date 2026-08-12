@@ -14,15 +14,18 @@ import {
 import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
+import { useAuth } from '../useAuth';
 
 export function GamePage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'play' | 'board' | 'notes'>('play');
   const [editRound, setEditRound] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [claimBusy, setClaimBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -296,6 +299,42 @@ export function GamePage() {
 
       {(isFinished || tab === 'board') && tab !== 'notes' && (
         <div className="panel-scroll">
+          {user &&
+            !game.players.some((p) => p.userId === user.id) &&
+            game.players.some((p) => !p.userId) && (
+              <div className="card claim-panel stack-sm">
+                <p className="section-title" style={{ margin: 0 }}>
+                  Claim your seat
+                </p>
+                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  Link the seat you played so stats count for {user.username}.
+                  Name alone is not enough.
+                </p>
+                <div className="claim-seats">
+                  {game.players
+                    .filter((p) => !p.userId)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="btn ghost sm"
+                        disabled={claimBusy != null}
+                        onClick={() => {
+                          setClaimBusy(p.id);
+                          setError(null);
+                          void api
+                            .claimSeat(game.id, p.id)
+                            .then((g) => setGame(g))
+                            .catch((e: Error) => setError(e.message))
+                            .finally(() => setClaimBusy(null));
+                        }}
+                      >
+                        {claimBusy === p.id ? '…' : `Claim ${p.name}`}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
           <Scoreboard
             game={game}
             onEditRound={

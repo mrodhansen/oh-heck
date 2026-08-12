@@ -70,6 +70,36 @@ enum LiveSessionStatus {
   COMPLETED
 }
 
+/// Optional durable account. Guests still play by display name only.
+model User {
+  id           String   @id @default(uuid())
+  /// Unique login handle (stored trimmed; uniqueness is case-insensitive in app)
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions    AuthSession[]
+  players     Player[]
+  livePlayers LivePlayer[]
+
+  @@index([createdAt])
+}
+
+/// Long-lived browser session (cookie token).
+model AuthSession {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  /// null = no expiry (cookie set far in the future)
+  expiresAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model Game {
   id         String     @id @default(uuid())
   name       String?
@@ -131,16 +161,21 @@ model Player {
   seatIndex Int
   createdAt DateTime @default(now())
 
+  /// Optional account claim — stats attribute here, not by display name alone
+  userId String?
+
   /// Link back to tournament roster player when applicable
   tournamentPlayerId String?
 
   game             Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   roundEntries     RoundEntry[]
   tournamentPlayer TournamentPlayer?  @relation(fields: [tournamentPlayerId], references: [id], onDelete: SetNull)
 
   @@unique([gameId, seatIndex])
   @@unique([gameId, name])
   @@index([gameId])
+  @@index([userId])
   @@index([tournamentPlayerId])
 }
 
@@ -434,13 +469,17 @@ model LivePlayer {
   isHost    Boolean  @default(false)
   /// Left the table; seat held for reclaim while game is active
   gone      Boolean  @default(false)
+  /// Optional account linked at create/join/claim
+  userId    String?
   createdAt DateTime @default(now())
 
   session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([sessionId, name])
   @@unique([sessionId, seatIndex])
   @@unique([sessionId, token])
   @@index([sessionId])
   @@index([sessionId, gone])
+  @@index([userId])
 }

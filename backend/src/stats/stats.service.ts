@@ -4,6 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assignPlacesByTotal } from '../games/analytics';
 
 type PlayerAgg = {
+  /** Stable key: user:<id> or guest:<name> */
+  key: string;
+  userId: string | null;
   name: string;
   gamesPlayed: number;
   gamesCompleted: number;
@@ -31,6 +34,13 @@ type PlayerAgg = {
 
 type Leader = { name: string; value: number | string } | null;
 
+type SeatRef = {
+  id: string;
+  name: string;
+  userId: string | null;
+  key: string;
+};
+
 @Injectable()
 export class StatsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -40,20 +50,24 @@ export class StatsService {
     const games = await this.prisma.game.findMany({
       where: { status: GameStatus.COMPLETED },
       include: {
-        players: { orderBy: { seatIndex: 'asc' } },
+        players: {
+          orderBy: { seatIndex: 'asc' },
+          include: { user: { select: { id: true, username: true } } },
+        },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const byName = new Map<string, PlayerAgg>();
+    const byKey = new Map<string, PlayerAgg>();
 
-    const ensure = (name: string): PlayerAgg => {
-      const key = name.trim();
-      let row = byName.get(key);
+    const ensure = (seat: SeatRef): PlayerAgg => {
+      let row = byKey.get(seat.key);
       if (!row) {
         row = {
-          name: key,
+          key: seat.key,
+          userId: seat.userId,
+          name: seat.name,
           gamesPlayed: 0,
           gamesCompleted: 0,
           wins: 0,
@@ -77,16 +91,25 @@ export class StatsService {
           smallestRound: null,
           perfectGames: 0,
         };
-        byName.set(key, row);
+        byKey.set(seat.key, row);
+      } else if (seat.userId && seat.name) {
+        // Prefer account username for display when claimed
+        row.name = seat.name;
       }
       return row;
     };
 
     let totalForceBurns = 0;
-    let highestGameScore: { name: string; value: number; gameId: string } | null =
-      null;
-    let lowestGameScore: { name: string; value: number; gameId: string } | null =
-      null;
+    let highestGameScore: {
+      name: string;
+      value: number;
+      gameId: string;
+    } | null = null;
+    let lowestGameScore: {
+      name: string;
+      value: number;
+      gameId: string;
+    } | null = null;
     let biggestMargin: {
       winner: string;
       margin: number;
@@ -129,12 +152,15 @@ export class StatsService {
         }
       }
 
-      const playerTotals = game.players.map((p) => {
+      const seats: SeatRef[] = game.players.map((p) => seatRef(p));
+
+      const playerTotals = game.players.map((p, idx) => {
+        const seat = seats[idx]!;
         let total = 0;
         let roundsPlayed = 0;
         let bidsMade = 0;
         let madeAll = true;
-        const agg = ensure(p.name);
+        const agg = ensure(seat);
         agg.gamesPlayed += 1;
         agg.gamesCompleted += 1;
 
@@ -186,7 +212,8 @@ export class StatsService {
         }
 
         return {
-          name: p.name,
+          name: seat.name,
+          key: seat.key,
           total,
           roundsPlayed,
           bidsMade,
@@ -214,7 +241,7 @@ export class StatsService {
           const margin = winnerScore - secondBest.total;
           if (!biggestMargin || margin > biggestMargin.margin) {
             biggestMargin = {
-              winner: top[0].name,
+              winner: top[0]!.name,
               margin,
               gameId: game.id,
             };
@@ -223,21 +250,38 @@ export class StatsService {
       }
 
       for (const row of places) {
-        const agg = ensure(row.name);
-        agg.totalScore += row.total;
+        const keyed = row as {
+          key: string;
+          name: string;
+          total: number;
+          place: number;
+          madeAll?: boolean;
+        };
+        const seat =
+          seats.find((s) => s.key === keyed.key) ??
+          seats.find((s) => s.name === keyed.name);
+        const agg = seat
+          ? ensure(seat)
+          : ensure({
+              id: keyed.name,
+              name: keyed.name,
+              userId: null,
+              key: guestKey(keyed.name),
+            });
+        agg.totalScore += keyed.total;
         agg.bestScore =
           agg.bestScore === null
-            ? row.total
-            : Math.max(agg.bestScore, row.total);
+            ? keyed.total
+            : Math.max(agg.bestScore, keyed.total);
         agg.worstScore =
           agg.worstScore === null
-            ? row.total
-            : Math.min(agg.worstScore, row.total);
-        if (row.place === 1) agg.wins += 1;
-        if (row.place === 2) agg.seconds += 1;
-        if (row.place === 3) agg.thirds += 1;
-        if (row.place <= 3) agg.podium += 1;
-        if (row.madeAll) agg.perfectGames += 1;
+            ? keyed.total
+            : Math.min(agg.worstScore, keyed.total);
+        if (keyed.place === 1) agg.wins += 1;
+        if (keyed.place === 2) agg.seconds += 1;
+        if (keyed.place === 3) agg.thirds += 1;
+        if (keyed.place <= 3) agg.podium += 1;
+        if (keyed.madeAll) agg.perfectGames += 1;
 
         if (!highestGameScore || row.total > highestGameScore.value) {
           highestGameScore = {
@@ -262,7 +306,7 @@ export class StatsService {
         createdAt: game.createdAt,
         finishedAt: game.finishedAt,
         playerCount: game.players.length,
-        players: game.players.map((p) => p.name),
+        players: seats.map((s) => s.name),
         winner,
         winnerScore,
         highScore,
@@ -278,7 +322,7 @@ export class StatsService {
       });
     }
 
-    const players = [...byName.values()]
+    const players = [...byKey.values()]
       .map((p) => ({
         ...p,
         avgScore:
@@ -370,6 +414,37 @@ export class StatsService {
       players,
     };
   }
+}
+
+function seatRef(p: {
+  id: string;
+  name: string;
+  userId: string | null;
+  user?: { id: string; username: string } | null;
+}): SeatRef {
+  if (p.userId) {
+    return {
+      id: p.id,
+      userId: p.userId,
+      name: p.user?.username ?? p.name,
+      key: userKey(p.userId),
+    };
+  }
+  const name = p.name.trim();
+  return {
+    id: p.id,
+    userId: null,
+    name,
+    key: guestKey(name),
+  };
+}
+
+function userKey(userId: string): string {
+  return `user:${userId}`;
+}
+
+function guestKey(name: string): string {
+  return `guest:${name.trim()}`;
 }
 
 function pickLeader<T extends { name: string }>(

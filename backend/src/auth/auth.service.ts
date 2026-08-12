@@ -1,0 +1,198 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { hashPassword, verifyPassword } from './password';
+import type { LoginDto, RegisterDto, UpdateAccountDto } from './dto';
+
+export type PublicUser = {
+  id: string;
+  username: string;
+  createdAt: Date;
+};
+
+@Injectable()
+export class AuthService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async register(dto: RegisterDto): Promise<{ user: PublicUser; token: string }> {
+    const username = normalizeUsername(dto.username);
+    if (!username) throw new BadRequestException('Username required');
+    await this.assertUsernameAvailable(username);
+
+    const passwordHash = await hashPassword(dto.password);
+    const user = await this.prisma.user.create({
+      data: { username, passwordHash },
+    });
+    const token = await this.createSession(user.id);
+    return { user: toPublic(user), token };
+  }
+
+  async login(dto: LoginDto): Promise<{ user: PublicUser; token: string }> {
+    const username = normalizeUsername(dto.username);
+    if (!username) throw new UnauthorizedException('Invalid username or password');
+
+    const user = await this.prisma.user.findFirst({
+      where: { username: { equals: username, mode: 'insensitive' } },
+    });
+    if (!user) throw new UnauthorizedException('Invalid username or password');
+
+    const ok = await verifyPassword(dto.password, user.passwordHash);
+    if (!ok) throw new UnauthorizedException('Invalid username or password');
+
+    const token = await this.createSession(user.id);
+    return { user: toPublic(user), token };
+  }
+
+  async logout(token: string | null) {
+    if (!token) return;
+    await this.prisma.authSession.deleteMany({ where: { token } });
+  }
+
+  async userFromToken(token: string | null): Promise<PublicUser | null> {
+    if (!token) return null;
+    const session = await this.prisma.authSession.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+    if (!session) return null;
+    if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
+      await this.prisma.authSession.delete({ where: { id: session.id } });
+      return null;
+    }
+    return toPublic(session.user);
+  }
+
+  async updateAccount(
+    userId: string,
+    dto: UpdateAccountDto,
+  ): Promise<PublicUser> {
+    const data: { username?: string; passwordHash?: string } = {};
+
+    if (dto.username !== undefined) {
+      const username = normalizeUsername(dto.username);
+      if (!username) throw new BadRequestException('Username required');
+      await this.assertUsernameAvailable(username, userId);
+      data.username = username;
+    }
+
+    if (dto.password !== undefined) {
+      if (!dto.password.length) {
+        throw new BadRequestException('Password required');
+      }
+      data.passwordHash = await hashPassword(dto.password);
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('No changes');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+    return toPublic(user);
+  }
+
+  async claimGamePlayer(userId: string, gameId: string, playerId: string) {
+    const game = await this.prisma.game.findUnique({
+      where: { id: gameId },
+      include: { players: { orderBy: { seatIndex: 'asc' } } },
+    });
+    if (!game) throw new BadRequestException('Game not found');
+
+    const target = game.players.find((p) => p.id === playerId);
+    if (!target) throw new BadRequestException('Player not found in game');
+    if (target.userId) {
+      if (target.userId === userId) {
+        return { ok: true as const, alreadyClaimed: true as const };
+      }
+      throw new ConflictException('That seat is already claimed');
+    }
+
+    const already = game.players.find((p) => p.userId === userId);
+    if (already) {
+      throw new ConflictException(
+        `You already claimed ${already.name} in this game`,
+      );
+    }
+
+    await this.prisma.player.update({
+      where: { id: playerId },
+      data: { userId },
+    });
+
+    return { ok: true as const, alreadyClaimed: false as const };
+  }
+
+  async listClaimableGames(userId: string) {
+    const games = await this.prisma.game.findMany({
+      where: {
+        players: {
+          some: { userId: null },
+        },
+      },
+      include: {
+        players: { orderBy: { seatIndex: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return games
+      .filter((g) => !g.players.some((p) => p.userId === userId))
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        status: g.status,
+        playMode: g.playMode,
+        createdAt: g.createdAt,
+        finishedAt: g.finishedAt,
+        players: g.players.map((p) => ({
+          id: p.id,
+          name: p.name,
+          seatIndex: p.seatIndex,
+          userId: p.userId,
+          claimable: p.userId === null,
+        })),
+      }));
+  }
+
+  private async createSession(userId: string): Promise<string> {
+    const token = randomBytes(32).toString('hex');
+    await this.prisma.authSession.create({
+      data: { userId, token, expiresAt: null },
+    });
+    return token;
+  }
+
+  private async assertUsernameAvailable(username: string, exceptUserId?: string) {
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        username: { equals: username, mode: 'insensitive' },
+        ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}),
+      },
+    });
+    if (existing) throw new ConflictException('Username already taken');
+  }
+}
+
+function normalizeUsername(raw: string): string {
+  return raw.trim();
+}
+
+function toPublic(user: {
+  id: string;
+  username: string;
+  createdAt: Date;
+}): PublicUser {
+  return {
+    id: user.id,
+    username: user.username,
+    createdAt: user.createdAt,
+  };
+}

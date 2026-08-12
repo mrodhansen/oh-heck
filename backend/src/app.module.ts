@@ -6,12 +6,14 @@ import { StatsModule } from './stats/stats.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
 import { LiveModule } from './live/live.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
     PrismaModule,
     RulesModule,
     RealtimeModule,
+    AuthModule,
     GamesModule,
     StatsModule,
     TournamentsModule,

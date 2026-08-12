@@ -3,11 +3,13 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { liveApi } from '../live/api';
 import { saveLiveAuth } from '../live/session';
 import type { LiveGoneSeat, LiveLookup } from '../live/types';
+import { useAuth } from '../useAuth';
 import { useOnline } from '../useOnline';
 
 export function LiveHubPage() {
   const nav = useNavigate();
   const online = useOnline();
+  const { user, loading: authLoading } = useAuth();
   const [params] = useSearchParams();
   const [code, setCode] = useState('');
   const [createName, setCreateName] = useState('');
@@ -16,6 +18,14 @@ export function LiveHubPage() {
   const [step, setStep] = useState<'hub' | 'name' | 'claim'>('hub');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autoJoinTried, setAutoJoinTried] = useState(false);
+
+  useEffect(() => {
+    if (user?.username) {
+      setCreateName(user.username);
+      setJoinName(user.username);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!online) return;
@@ -37,6 +47,35 @@ export function LiveHubPage() {
     };
   }, [params, online]);
 
+  // Signed-in: after code lookup in lobby, join with account name automatically
+  useEffect(() => {
+    if (authLoading || !user || step !== 'name' || !lookup || autoJoinTried) {
+      return;
+    }
+    if (lookup.status !== 'LOBBY') return;
+    setAutoJoinTried(true);
+    void (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await liveApi.join(lookup.code, user.username);
+        saveLiveAuth({
+          sessionId: res.id,
+          playerId: res.playerId,
+          token: res.token,
+          name: res.me.name,
+          code: res.code,
+        });
+        nav(`/live/${res.id}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not join');
+        setJoinName(user.username);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [authLoading, user, step, lookup, autoJoinTried, nav]);
+
   if (!online) {
     return <Navigate to="/" replace />;
   }
@@ -44,6 +83,7 @@ export function LiveHubPage() {
   function applyLookup(res: LiveLookup) {
     setLookup(res);
     setCode(res.code);
+    setAutoJoinTried(false);
     if (res.status === 'PLAYING') {
       setStep('claim');
     } else {
@@ -106,7 +146,6 @@ export function LiveHubPage() {
       nav(`/live/${res.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not claim seat');
-      // Refresh gone list
       try {
         const res = await liveApi.lookup(code.trim());
         applyLookup(res);
@@ -121,7 +160,7 @@ export function LiveHubPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const name = createName.trim();
+    const name = (user?.username ?? createName).trim();
     if (!name) {
       setError('Enter your name');
       return;
@@ -148,6 +187,7 @@ export function LiveHubPage() {
     setStep('hub');
     setLookup(null);
     setError(null);
+    setAutoJoinTried(false);
   }
 
   if (step === 'claim' && lookup) {
@@ -192,6 +232,15 @@ export function LiveHubPage() {
   }
 
   if (step === 'name') {
+    if (user && busy) {
+      return (
+        <div className="page-fit">
+          <div className="empty fill-center">
+            Joining as {user.username}…
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="page-fit">
         <div className="page-fit-header">
@@ -235,7 +284,11 @@ export function LiveHubPage() {
     <div className="page-fit">
       <div className="page-fit-header play-home-header">
         <h2 className="page-title">Live game</h2>
-        <p className="lede">Enter a code or create a new table.</p>
+        <p className="lede">
+          {user
+            ? `Signed in as ${user.username} — create joins you automatically.`
+            : 'Enter a code or create a new table.'}
+        </p>
       </div>
       <div className="page-fit-body stack">
         {error && <div className="banner">{error}</div>}
@@ -271,20 +324,26 @@ export function LiveHubPage() {
         <div className="divider-or">or</div>
 
         <form className="card stack" onSubmit={onCreate}>
-          <label className="field">
-            Your name
-            <input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              maxLength={24}
-              autoComplete="nickname"
-              placeholder="Host name"
-            />
-          </label>
+          {user ? (
+            <p className="muted" style={{ margin: 0 }}>
+              You will join as <strong>{user.username}</strong>
+            </p>
+          ) : (
+            <label className="field">
+              Your name
+              <input
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                maxLength={24}
+                autoComplete="nickname"
+                placeholder="Host name"
+              />
+            </label>
+          )}
           <button
             type="submit"
             className="btn primary"
-            disabled={busy || !createName.trim()}
+            disabled={busy || !(user?.username || createName.trim())}
           >
             {busy ? 'Creating…' : 'Create new game'}
           </button>

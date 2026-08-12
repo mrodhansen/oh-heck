@@ -22,12 +22,14 @@ async function bootstrap() {
   if (!raw || raw === '*') {
     app.enableCors({
       origin: true,
+      credentials: true,
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders,
     });
   } else {
     app.enableCors({
       origin: raw.split(',').map((s) => s.trim()),
+      credentials: true,
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders,
     });

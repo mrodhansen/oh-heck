@@ -6,13 +6,16 @@ import { NewGamePage } from './pages/NewGamePage';
 import { GamePage } from './pages/GamePage';
 import { StatsPage } from './pages/StatsPage';
 import { RulesPage } from './pages/RulesPage';
+import { AccountPage } from './pages/AccountPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { TournamentPage } from './pages/TournamentPage';
 import { LiveHubPage } from './pages/LiveHubPage';
 import { LiveSessionPage } from './pages/LiveSessionPage';
+import { useAuth } from './useAuth';
 
 export function App() {
   const { pathname } = useLocation();
+  const { user } = useAuth();
   const inGame = pathname.startsWith('/games/');
   const inLive = pathname.startsWith('/live/');
   const inTournamentDeep =
@@ -35,6 +38,7 @@ export function App() {
               Play
             </NavLink>
             <NavLink to="/stats">Stats</NavLink>
+            <NavLink to="/account">{user ? user.username : 'Account'}</NavLink>
           </nav>
         </header>
       )}
@@ -50,6 +54,7 @@ export function App() {
           <Route path="/play/tournaments/:id" element={<TournamentPage />} />
           <Route path="/games/:id" element={<GamePage />} />
           <Route path="/stats" element={<StatsPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/rules" element={<RulesPage />} />
         </Routes>
       </main>

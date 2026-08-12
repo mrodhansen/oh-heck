@@ -191,7 +191,12 @@ export type GameDetail = {
   tableNumber?: number | null;
   /** True when BE will reject prelim score edits (high table formed). */
   prelimEditsLocked?: boolean;
-  players: { id: string; name: string; seatIndex: number }[];
+  players: {
+    id: string;
+    name: string;
+    seatIndex: number;
+    userId?: string | null;
+  }[];
   rounds: RoundDetail[];
   standings: Standing[];
   events: GameEvent[];
@@ -294,6 +299,9 @@ export type TournamentDetail = {
 export type StatsLeader = { name: string; value: number | string } | null;
 
 export type StatsPlayer = {
+  /** Stable identity: user:<id> or guest:<name> */
+  key?: string;
+  userId?: string | null;
   name: string;
   gamesPlayed: number;
   gamesCompleted: number;
@@ -710,6 +718,17 @@ export const api = {
       payload: { gameId, roundNumber, ...body },
     });
     return next;
+  },
+
+  claimSeat: async (gameId: string, playerId: string): Promise<GameDetail> => {
+    if (!isOnline()) {
+      throw new Error('Sign in and go online to claim a seat');
+    }
+    const game = await httpRequest<GameDetail>(`/games/${gameId}/claim`, {
+      method: 'POST',
+      body: JSON.stringify({ playerId }),
+    });
+    return rememberGame(game);
   },
 
   updateNotes: async (

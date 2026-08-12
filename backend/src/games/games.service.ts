@@ -101,6 +101,17 @@ export class GamesService {
     if (dto.playerIds && new Set(dto.playerIds).size !== dto.playerIds.length) {
       throw new BadRequestException('playerIds must be unique');
     }
+    if (dto.playerUserIds && dto.playerUserIds.length !== names.length) {
+      throw new BadRequestException(
+        'playerUserIds must match playerNames length',
+      );
+    }
+    if (dto.playerUserIds) {
+      const claimed = dto.playerUserIds.filter((id): id is string => !!id);
+      if (new Set(claimed).size !== claimed.length) {
+        throw new BadRequestException('playerUserIds must be unique when set');
+      }
+    }
 
     if (dto.id) {
       const existing = await this.prisma.game.findUnique({
@@ -165,6 +176,9 @@ export class GamesService {
               ...(dto.playerIds ? { id: dto.playerIds[seatIndex] } : {}),
               name,
               seatIndex,
+              ...(dto.playerUserIds?.[seatIndex]
+                ? { userId: dto.playerUserIds[seatIndex]! }
+                : {}),
             })),
           },
         },
@@ -1408,11 +1422,41 @@ export class GamesService {
         id: p.id,
         name: p.name,
         seatIndex: p.seatIndex,
+        userId: p.userId ?? null,
       })),
       rounds,
       standings,
       events,
     };
+  }
+
+  async claimPlayer(gameId: string, playerId: string, userId: string) {
+    const game = await this.prisma.game.findUnique({
+      where: { id: gameId },
+      include: { players: true },
+    });
+    if (!game) throw new NotFoundException('Game not found');
+
+    const target = game.players.find((p) => p.id === playerId);
+    if (!target) throw new BadRequestException('Player not found in game');
+    if (target.userId) {
+      if (target.userId === userId) {
+        return this.getGame(gameId);
+      }
+      throw new BadRequestException('That seat is already claimed');
+    }
+    const mine = game.players.find((p) => p.userId === userId);
+    if (mine) {
+      throw new BadRequestException(
+        `You already claimed ${mine.name} in this game`,
+      );
+    }
+
+    await this.prisma.player.update({
+      where: { id: playerId },
+      data: { userId },
+    });
+    return this.getGame(gameId);
   }
 
   private roundPhase(

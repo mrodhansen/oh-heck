@@ -14,6 +14,11 @@ export class CreateLiveDto {
   @MinLength(1)
   @MaxLength(24)
   name!: string;
+
+  /** When set with a valid session, links the host seat to this account */
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
 }
 
 export class JoinLiveDto {
@@ -27,6 +32,10 @@ export class JoinLiveDto {
   @MinLength(1)
   @MaxLength(24)
   name!: string;
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
 }
 
 export class ClaimLiveDto {

@@ -7,9 +7,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { GamesService } from './games.service';
 import {
+  ClaimSeatDto,
   CreateGameDto,
   SetBidsDto,
   SetTricksDto,
@@ -17,6 +19,8 @@ import {
   UpdateNotesDto,
   UpdateRoundDto,
 } from './dto';
+import { AuthGuard, CurrentUser } from '../auth/auth.decorators';
+import type { PublicUser } from '../auth/auth.service';
 
 @Controller('games')
 export class GamesController {
@@ -35,6 +39,16 @@ export class GamesController {
   @Post()
   create(@Body() dto: CreateGameDto) {
     return this.games.createGame(dto);
+  }
+
+  @Post(':id/claim')
+  @UseGuards(AuthGuard)
+  claim(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ClaimSeatDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.games.claimPlayer(id, dto.playerId, user.id);
   }
 
   @Get(':id')

@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { LiveService } from './live.service';
 import {
@@ -15,24 +16,32 @@ import {
   LivePlayDto,
   LiveTokenDto,
 } from './dto';
+import { AuthGuard, CurrentUser, OptionalAuth } from '../auth/auth.decorators';
+import type { PublicUser } from '../auth/auth.service';
 
 @Controller('live')
 export class LiveController {
   constructor(private readonly live: LiveService) {}
 
   @Post()
-  create(@Body() dto: CreateLiveDto) {
-    return this.live.create(dto.name);
+  @UseGuards(AuthGuard)
+  @OptionalAuth()
+  create(@Body() dto: CreateLiveDto, @CurrentUser() user: PublicUser | null) {
+    return this.live.create(dto.name, user?.id ?? dto.userId);
   }
 
   @Post('join')
-  join(@Body() dto: JoinLiveDto) {
-    return this.live.join(dto.code, dto.name);
+  @UseGuards(AuthGuard)
+  @OptionalAuth()
+  join(@Body() dto: JoinLiveDto, @CurrentUser() user: PublicUser | null) {
+    return this.live.join(dto.code, dto.name, user?.id ?? dto.userId);
   }
 
   @Post('claim')
-  claim(@Body() dto: ClaimLiveDto) {
-    return this.live.claim(dto.code, dto.playerId);
+  @UseGuards(AuthGuard)
+  @OptionalAuth()
+  claim(@Body() dto: ClaimLiveDto, @CurrentUser() user: PublicUser | null) {
+    return this.live.claim(dto.code, dto.playerId, user?.id);
   }
 
   @Get('code/:code')

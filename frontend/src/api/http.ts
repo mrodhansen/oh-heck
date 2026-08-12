@@ -40,6 +40,7 @@ export async function httpRequest<T>(
     }
     res = await fetch(`${API_URL}${path}`, {
       ...init,
+      credentials: 'include',
       headers,
     });
   } catch (e) {

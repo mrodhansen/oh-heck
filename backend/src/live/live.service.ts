@@ -45,9 +45,10 @@ export class LiveService {
     private readonly games: GamesService,
   ) {}
 
-  async create(name: string) {
+  async create(name: string, userId?: string | null) {
     const trimmed = name.trim();
     if (!trimmed) throw new BadRequestException('Name required');
+    const linkedUserId = await this.resolveUserId(userId);
 
     const token = newToken();
     let session: SessionWithPlayers | null = null;
@@ -65,6 +66,7 @@ export class LiveService {
                 seatIndex: 0,
                 token,
                 isHost: true,
+                ...(linkedUserId ? { userId: linkedUserId } : {}),
               },
             },
           },
@@ -104,10 +106,11 @@ export class LiveService {
     return { ...view, token, playerId: host.id };
   }
 
-  async join(codeRaw: string, name: string) {
+  async join(codeRaw: string, name: string, userId?: string | null) {
     const code = normalizeCode(codeRaw);
     const trimmed = name.trim();
     if (!trimmed) throw new BadRequestException('Name required');
+    const linkedUserId = await this.resolveUserId(userId);
 
     const token = newToken();
     const limits = this.rules.getPlayerLimits();
@@ -137,6 +140,13 @@ export class LiveService {
       );
       if (taken) throw new BadRequestException('Name already taken');
 
+      if (linkedUserId) {
+        const already = session.players.some((p) => p.userId === linkedUserId);
+        if (already) {
+          throw new BadRequestException('You already joined this table');
+        }
+      }
+
       // Lowest free seat (leave deletes rows without compacting)
       const used = new Set(session.players.map((p) => p.seatIndex));
       let seatIndex = 0;
@@ -150,6 +160,7 @@ export class LiveService {
           token,
           isHost: false,
           gone: false,
+          ...(linkedUserId ? { userId: linkedUserId } : {}),
         },
       });
     });
@@ -173,7 +184,7 @@ export class LiveService {
   /**
    * Take over a seat marked gone (active game). Issues a new device token.
    */
-  async claim(codeRaw: string, playerId: string) {
+  async claim(codeRaw: string, playerId: string, userId?: string | null) {
     const code = normalizeCode(codeRaw);
     const session = await this.prisma.liveSession.findUnique({
       where: { code },
@@ -193,13 +204,34 @@ export class LiveService {
       throw new BadRequestException('That seat is still occupied');
     }
 
+    const linkedUserId = await this.resolveUserId(userId);
+    if (linkedUserId) {
+      const already = session.players.some(
+        (p) => p.userId === linkedUserId && p.id !== playerId && !p.gone,
+      );
+      if (already) {
+        throw new BadRequestException('You already have a seat at this table');
+      }
+    }
+
     const token = newToken();
     const claimed = await this.prisma.livePlayer.updateMany({
       where: { id: playerId, sessionId: session.id, gone: true },
-      data: { gone: false, token },
+      data: {
+        gone: false,
+        token,
+        ...(linkedUserId && !target.userId ? { userId: linkedUserId } : {}),
+      },
     });
     if (claimed.count !== 1) {
       throw new BadRequestException('Seat was already claimed');
+    }
+
+    if (session.gameId && linkedUserId && !target.userId) {
+      await this.prisma.player.updateMany({
+        where: { id: playerId, gameId: session.gameId, userId: null },
+        data: { userId: linkedUserId },
+      });
     }
 
     await logLiveEvent(this.prisma, {
@@ -444,6 +476,7 @@ export class LiveService {
 
     const names = ordered.map((p) => p.name);
     const playerIds = ordered.map((p) => p.id);
+    const playerUserIds = ordered.map((p) => p.userId ?? null);
     let gameDetail;
     try {
       gameDetail = await this.games.createGame(
@@ -451,6 +484,7 @@ export class LiveService {
           name: `Live ${session.code}`,
           playerNames: names,
           playerIds,
+          playerUserIds,
           playMode: 'ONLINE',
           liveCode: session.code,
         },
@@ -995,6 +1029,18 @@ export class LiveService {
           this.rules.getPlayerLimits().min,
       goneCount: players.filter((p) => p.gone).length,
     };
+  }
+
+  /** Only link a seat when the user id exists (ignore stale client values). */
+  private async resolveUserId(
+    userId?: string | null,
+  ): Promise<string | null> {
+    if (!userId) return null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    return user?.id ?? null;
   }
 }
 

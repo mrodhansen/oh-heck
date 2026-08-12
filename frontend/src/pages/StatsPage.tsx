@@ -11,6 +11,8 @@ export function StatsPage() {
   const [tab, setTab] = useState<Tab>('overview');
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
 
+  const playerKey = (p: StatsPlayer) => p.key ?? p.name;
+
   useEffect(() => {
     let alive = true;
     api
@@ -41,7 +43,7 @@ export function StatsPage() {
 
   const player =
     selectedPlayer != null
-      ? stats.players.find((p) => p.name === selectedPlayer) ?? null
+      ? stats.players.find((p) => playerKey(p) === selectedPlayer) ?? null
       : null;
 
   return (
@@ -85,7 +87,7 @@ export function StatsPage() {
         {tab === 'players' && !player && (
           <PlayersList
             players={stats.players}
-            onSelect={(name) => setSelectedPlayer(name)}
+            onSelect={(key) => setSelectedPlayer(key)}
           />
         )}
         {tab === 'players' && player && (
@@ -204,7 +206,7 @@ function PlayersList({
   onSelect,
 }: {
   players: StatsPlayer[];
-  onSelect: (name: string) => void;
+  onSelect: (key: string) => void;
 }) {
   if (players.length === 0) {
     return <div className="card empty">No players yet.</div>;
@@ -214,13 +216,21 @@ function PlayersList({
     <div className="list">
       {players.map((p) => (
         <button
-          key={p.name}
+          key={p.key ?? p.name}
           type="button"
           className="list-item list-item-btn"
-          onClick={() => onSelect(p.name)}
+          onClick={() => onSelect(p.key ?? p.name)}
         >
           <div className="min-w-0">
-            <p className="list-item-title truncate">{p.name}</p>
+            <p className="list-item-title truncate">
+              {p.name}
+              {p.userId ? (
+                <span className="muted" style={{ fontWeight: 400 }}>
+                  {' '}
+                  · account
+                </span>
+              ) : null}
+            </p>
             <p className="list-item-meta">
               {p.wins} win{p.wins === 1 ? '' : 's'}
               {p.avgScore != null ? ` · avg ${p.avgScore}` : ''}

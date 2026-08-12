@@ -44,6 +44,16 @@ export class CreateGameDto {
   @IsUUID('4', { each: true })
   playerIds?: string[];
 
+  /**
+   * Optional account ids aligned with playerNames (null = guest).
+   * Only set from live start / explicit claim — never inferred from name.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(7)
+  playerUserIds?: (string | null)[];
+
   /** IN_PERSON (default) scorekeeper vs ONLINE digital table */
   @IsOptional()
   @IsIn(['IN_PERSON', 'ONLINE'])
@@ -163,4 +173,9 @@ export class UpdateRoundDto {
   @IsOptional()
   @IsBoolean()
   forceBurn?: boolean;
+}
+
+export class ClaimSeatDto {
+  @IsUUID()
+  playerId!: string;
 }
