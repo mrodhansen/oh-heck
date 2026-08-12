@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Game" ADD COLUMN "notes" TEXT NOT NULL DEFAULT '';

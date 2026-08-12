@@ -13,7 +13,9 @@ import {
   createLocalGame,
   localSetBids,
   localSetTricks,
+  localUpdateNotes,
   localUpdateRound,
+  toSummary,
 } from './localEngine';
 
 const players = [
@@ -371,5 +373,35 @@ describe('localEngine enrichment', () => {
     expect(() =>
       localSetTricks(g, 1, g.players.map((p) => ({ playerId: p.id, tricksTaken: 0 }))),
     ).toThrow(/completed/i);
+  });
+
+  it('localUpdateNotes stores a list of scorekeeper notes and rejects live games', () => {
+    const game = createLocalGame(['A', 'B']);
+    expect(game.notes).toEqual([]);
+    const note = {
+      id: '11111111-1111-4111-8111-111111111111',
+      text: 'Dealer forgot trump',
+      createdAt: '2026-08-12T00:00:00.000Z',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+    };
+    const withNotes = localUpdateNotes(game, [note]);
+    expect(withNotes.notes).toEqual([note]);
+    expect(toSummary(withNotes).hasNotes).toBe(true);
+
+    const edited = {
+      ...note,
+      text: 'Dealer forgot trump — round 3',
+      updatedAt: '2026-08-12T00:01:00.000Z',
+    };
+    expect(localUpdateNotes(withNotes, [edited]).notes[0]?.text).toBe(
+      'Dealer forgot trump — round 3',
+    );
+
+    expect(() =>
+      localUpdateNotes({ ...game, playMode: 'ONLINE' }, [note]),
+    ).toThrow(/scorekeeper/i);
+    expect(() =>
+      localUpdateNotes(game, [{ ...note, text: '' }]),
+    ).toThrow(/empty/i);
   });
 });

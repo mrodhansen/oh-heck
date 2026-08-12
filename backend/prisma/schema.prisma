@@ -71,6 +71,8 @@ enum LiveSessionStatus {
 model Game {
   id         String     @id @default(uuid())
   name       String?
+  /// Scorekeeper notes list: [{ id, text, createdAt, updatedAt }]
+  notes      Json       @default("[]")
   status     GameStatus @default(BIDDING)
   /// IN_PERSON = scorekeeper; ONLINE = digital card table
   playMode   PlayMode   @default(IN_PERSON)

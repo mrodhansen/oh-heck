@@ -57,8 +57,8 @@ export class CreateGameDto {
 }
 
 export class SyncOperationDto {
-  @IsIn(['createGame', 'setBids', 'setTricks', 'updateRound'])
-  type!: 'createGame' | 'setBids' | 'setTricks' | 'updateRound';
+  @IsIn(['createGame', 'setBids', 'setTricks', 'updateRound', 'updateNotes'])
+  type!: 'createGame' | 'setBids' | 'setTricks' | 'updateRound' | 'updateNotes';
 
   @IsObject()
   payload!: Record<string, unknown>;
@@ -112,6 +112,37 @@ export class SetTricksDto {
   @ValidateNested({ each: true })
   @Type(() => TrickItemDto)
   tricks!: TrickItemDto[];
+}
+
+export const MAX_NOTE_LENGTH = 2000;
+export const MAX_NOTES_PER_GAME = 100;
+
+export class GameNoteDto {
+  @IsUUID()
+  id!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(MAX_NOTE_LENGTH)
+  text!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  createdAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  updatedAt?: string;
+}
+
+export class UpdateNotesDto {
+  @IsArray()
+  @ArrayMaxSize(MAX_NOTES_PER_GAME)
+  @ValidateNested({ each: true })
+  @Type(() => GameNoteDto)
+  notes!: GameNoteDto[];
 }
 
 export class UpdateRoundDto {

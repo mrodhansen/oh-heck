@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, GameDetail } from '../api';
+import { hasGameNotes } from '../offline/notes';
 import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
 import { EditRoundModal } from '../components/EditRoundModal';
+import { GameNotes } from '../components/GameNotes';
 import { SyncStatus } from '../components/SyncStatus';
 import {
   forbiddenLastBid as computeForbiddenLast,
@@ -18,7 +20,7 @@ export function GamePage() {
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'play' | 'board'>('play');
+  const [tab, setTab] = useState<'play' | 'board' | 'notes'>('play');
   const [editRound, setEditRound] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -77,7 +79,7 @@ export function GamePage() {
 
   useEffect(() => {
     if (game?.phase === 'completed' || game?.status === 'COMPLETED') {
-      setTab('board');
+      setTab((t) => (t === 'play' ? 'board' : t));
     }
   }, [game?.phase, game?.status]);
 
@@ -118,6 +120,7 @@ export function GamePage() {
 
   const phase = game.phase;
   const isFinished = phase === 'completed' || game.status === 'COMPLETED';
+  const canTakeNotes = game.playMode !== 'ONLINE';
 
   async function confirmBid() {
     if (!game || !current || !currentBidderId) return;
@@ -252,10 +255,8 @@ export function GamePage() {
         >
           ←
         </Link>
-        {isFinished ? (
-          <div className="game-topbar-title">Board</div>
-        ) : (
-          <div className="game-tabs">
+        <div className="game-tabs">
+          {!isFinished && (
             <button
               type="button"
               className={tab === 'play' ? 'active' : ''}
@@ -263,22 +264,37 @@ export function GamePage() {
             >
               Play
             </button>
+          )}
+          <button
+            type="button"
+            className={tab === 'board' ? 'active' : ''}
+            onClick={() => setTab('board')}
+          >
+            Board
+          </button>
+          {canTakeNotes && (
             <button
               type="button"
-              className={tab === 'board' ? 'active' : ''}
-              onClick={() => setTab('board')}
+              className={tab === 'notes' ? 'active' : ''}
+              onClick={() => setTab('notes')}
+              aria-label={
+                hasGameNotes(game.notes) ? 'Notes, has notes' : 'Notes'
+              }
             >
-              Board
+              Notes
+              {hasGameNotes(game.notes) ? (
+                <span className="tab-dot" aria-hidden />
+              ) : null}
             </button>
-          </div>
-        )}
+          )}
+        </div>
         <div className="icon-btn spacer" aria-hidden />
       </header>
 
       <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
 
-      {(isFinished || tab === 'board') && (
+      {(isFinished || tab === 'board') && tab !== 'notes' && (
         <div className="panel-scroll">
           <Scoreboard
             game={game}
@@ -289,6 +305,16 @@ export function GamePage() {
             }
           />
         </div>
+      )}
+
+      {tab === 'notes' && canTakeNotes && (
+        <GameNotes
+          notes={game.notes ?? []}
+          onSave={async (notes) => {
+            const updated = await api.updateNotes(game.id, notes);
+            setGame(updated);
+          }}
+        />
       )}
 
       {!isFinished && tab === 'play' && current && (

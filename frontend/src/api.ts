@@ -13,6 +13,7 @@ import {
   createLocalGame,
   localSetBids,
   localSetTricks,
+  localUpdateNotes,
   localUpdateRound,
   toSummary,
 } from './offline/localEngine';
@@ -34,12 +35,16 @@ import {
 } from './offline/sync';
 import { newId } from './offline/rules';
 import { hydrateRoundOrder } from './offline/analytics';
+import { parseGameNotes, type GameNote } from './offline/notes';
+
+export type { GameNote };
 
 export type PlayMode = 'IN_PERSON' | 'ONLINE';
 
 export type GameSummary = {
   id: string;
   name: string | null;
+  hasNotes?: boolean;
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
   liveCode?: string | null;
@@ -162,6 +167,7 @@ export type GameEvent = {
 export type GameDetail = {
   id: string;
   name: string | null;
+  notes: GameNote[];
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
   liveCode?: string | null;
@@ -364,6 +370,7 @@ function normalizeGame(raw: GameDetail): GameDetail {
 
   return {
     ...raw,
+    notes: parseGameNotes(raw.notes),
     startedAt: raw.startedAt ?? null,
     durationMs: raw.durationMs ?? null,
     playerCount,
@@ -701,6 +708,35 @@ export const api = {
     await enqueue({
       type: 'updateRound',
       payload: { gameId, roundNumber, ...body },
+    });
+    return next;
+  },
+
+  updateNotes: async (
+    gameId: string,
+    notes: GameNote[],
+  ): Promise<GameDetail> => {
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const game = await httpRequest<GameDetail>(`/games/${gameId}/notes`, {
+            method: 'PATCH',
+            body: JSON.stringify({ notes }),
+          });
+          return rememberGame(game);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedGame<GameDetail>(gameId);
+    if (!current) throw new Error('Game not available offline');
+    const next = localUpdateNotes(normalizeGame(current), notes);
+    await rememberGame(next);
+    await enqueue({
+      type: 'updateNotes',
+      payload: { gameId, notes },
     });
     return next;
   },

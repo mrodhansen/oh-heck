@@ -14,6 +14,7 @@ import {
   SetBidsDto,
   SetTricksDto,
   SyncDto,
+  UpdateNotesDto,
   UpdateRoundDto,
 } from './dto';
 
@@ -57,6 +58,14 @@ export class GamesController {
     @Body() dto: SetTricksDto,
   ) {
     return this.games.setTricks(id, roundNumber, dto);
+  }
+
+  @Patch(':id/notes')
+  updateNotes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateNotesDto,
+  ) {
+    return this.games.updateNotes(id, dto);
   }
 
   @Patch(':id/rounds/:roundNumber')

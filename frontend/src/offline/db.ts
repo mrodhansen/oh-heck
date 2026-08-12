@@ -5,7 +5,8 @@ export type GameOutboxType =
   | 'createGame'
   | 'setBids'
   | 'setTricks'
-  | 'updateRound';
+  | 'updateRound'
+  | 'updateNotes';
 
 export type TournamentOutboxType =
   | 'createTournament'
@@ -36,6 +37,7 @@ export const GAME_OUTBOX_TYPES: ReadonlySet<string> = new Set([
   'setBids',
   'setTricks',
   'updateRound',
+  'updateNotes',
 ]);
 
 function openDb(): Promise<IDBDatabase> {

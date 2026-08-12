@@ -14,6 +14,7 @@ import {
   CreateGameDto,
   SetBidsDto,
   SetTricksDto,
+  UpdateNotesDto,
   UpdateRoundDto,
 } from './dto';
 import {
@@ -28,6 +29,7 @@ import {
   eventCreate,
   roundSetupFields,
 } from './analytics';
+import { asNotes, hasNotes } from './notes';
 
 const gameInclude = {
   players: { orderBy: { seatIndex: 'asc' as const } },
@@ -239,7 +241,12 @@ export class GamesService {
 
   async syncOperations(
     operations: {
-      type: 'createGame' | 'setBids' | 'setTricks' | 'updateRound';
+      type:
+        | 'createGame'
+        | 'setBids'
+        | 'setTricks'
+        | 'updateRound'
+        | 'updateNotes';
       payload: Record<string, unknown>;
     }[],
   ) {
@@ -314,6 +321,21 @@ export class GamesService {
               forbidNonWhitelisted: true,
             });
             data = await this.updateRound(gameId, roundNumber, dto);
+            break;
+          }
+          case 'updateNotes': {
+            const gameId = String(op.payload.gameId ?? '');
+            if (!gameId) {
+              throw new BadRequestException('Invalid updateNotes payload');
+            }
+            const dto = plainToInstance(UpdateNotesDto, {
+              notes: op.payload.notes,
+            });
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.updateNotes(gameId, dto);
             break;
           }
           default:
@@ -917,6 +939,37 @@ export class GamesService {
     return this.emitGame(detail);
   }
 
+  async updateNotes(gameId: string, dto: UpdateNotesDto) {
+    const game = await this.findFull(gameId);
+    if (game.playMode === PlayMode.ONLINE) {
+      throw new BadRequestException(
+        'Notes are only available on scorekeeper games',
+      );
+    }
+
+    const now = new Date().toISOString();
+    const notes = dto.notes.map((n) => ({
+      id: n.id,
+      text: n.text.trim(),
+      createdAt: n.createdAt || now,
+      updatedAt: n.updatedAt || now,
+    }));
+    const ids = new Set(notes.map((n) => n.id));
+    if (ids.size !== notes.length) {
+      throw new BadRequestException('Note ids must be unique');
+    }
+    if (notes.some((n) => n.text.length === 0)) {
+      throw new BadRequestException('Note text cannot be empty');
+    }
+
+    await this.prisma.game.update({
+      where: { id: gameId },
+      data: { notes },
+    });
+
+    return this.emitGame(await this.getGame(gameId));
+  }
+
   /** Public standings helper for tournament high-table qualification. */
   computeStandingsPublic(
     game: {
@@ -1122,6 +1175,7 @@ export class GamesService {
     return {
       id: game.id,
       name: game.name,
+      hasNotes: hasNotes(game.notes),
       status: game.status,
       playMode: game.playMode,
       liveCode: game.liveCode,
@@ -1324,6 +1378,7 @@ export class GamesService {
     return {
       id: game.id,
       name: game.name,
+      notes: game.playMode === PlayMode.ONLINE ? [] : asNotes(game.notes),
       status: game.status,
       playMode: game.playMode,
       // Never expose join code on public Board API (seat-stealing)

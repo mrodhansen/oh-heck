@@ -1,4 +1,5 @@
 import type { GameDetail, GameSummary, Standing } from '../api';
+import { assertGameNotes, hasGameNotes, type GameNote } from './notes';
 import {
   TOTAL_ROUNDS,
   bidOrderSeats,
@@ -208,6 +209,7 @@ export function createLocalGame(
   const base: GameDetail = {
     id: gameId,
     name: name?.trim() || defaultGameName(names),
+    notes: [],
     status: 'BIDDING',
     playMode: 'IN_PERSON',
     liveCode: null,
@@ -644,10 +646,21 @@ export function localUpdateRound(
   return next;
 }
 
+export function localUpdateNotes(
+  game: GameDetail,
+  notes: GameNote[],
+): GameDetail {
+  if (game.playMode === 'ONLINE') {
+    throw new Error('Notes are only available on scorekeeper games');
+  }
+  return { ...game, notes: assertGameNotes(notes) };
+}
+
 export function toSummary(game: GameDetail): GameSummary {
   return {
     id: game.id,
     name: game.name,
+    hasNotes: hasGameNotes(game.notes),
     status: game.status,
     playMode: game.playMode ?? 'IN_PERSON',
     liveCode: game.liveCode ?? null,
