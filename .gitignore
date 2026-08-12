@@ -11,3 +11,4 @@ frontend/dev-dist
 *.local
 *.db
 *.db-journal
+.run/

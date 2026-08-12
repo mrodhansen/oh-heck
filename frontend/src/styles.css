@@ -493,6 +493,8 @@ label.field {
 
 input[type='text'],
 input[type='number'],
+input[type='search'],
+input[type='date'],
 textarea {
   min-height: var(--tap);
   border-radius: 8px;
@@ -1038,6 +1040,25 @@ table.scoreboard tbody tr:last-child td:first-child::before {
 
 .table-link:active {
   opacity: 0.75;
+}
+
+.game-list-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.game-list-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.game-list-filter-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .table-primary {

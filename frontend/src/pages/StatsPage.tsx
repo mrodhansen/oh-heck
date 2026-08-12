@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, StatsGame, StatsPlayer, StatsResponse, StatsLeader } from '../api';
+import { filterStatsGames } from './statsGamesFilter';
 
 type Tab = 'overview' | 'games' | 'players';
 
@@ -124,7 +125,7 @@ function OverviewPanel({ stats }: { stats: StatsResponse }) {
         <h3 className="section-title">Leaders</h3>
         {stats.players.length === 0 ? (
           <p className="empty" style={{ padding: 12 }}>
-            Play a game to unlock leaders.
+            Claim a completed game to unlock leaders.
           </p>
         ) : (
           <div className="leader-list">
@@ -147,6 +148,16 @@ function OverviewPanel({ stats }: { stats: StatsResponse }) {
 }
 
 function GamesPanel({ games }: { games: StatsGame[] }) {
+  const [name, setName] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  const filtered = useMemo(
+    () => filterStatsGames(games, { name, from, to }),
+    [games, name, from, to],
+  );
+  const filtering = Boolean(name.trim() || from || to);
+
   if (games.length === 0) {
     return (
       <div className="card empty">No completed games yet.</div>
@@ -154,57 +165,114 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
   }
 
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div className="table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Game</th>
-              <th>Players</th>
-              <th>Winner</th>
-              <th>High</th>
-              <th>Low</th>
-              <th>FB</th>
-            </tr>
-          </thead>
-          <tbody>
-            {games.map((g) => (
-              <tr key={g.id}>
-                <td>
-                  <Link
-                    to={`/games/${g.id}`}
-                    state={{ from: 'stats' }}
-                    className="table-link"
-                  >
-                    <span className="table-primary">
-                      {g.name ?? 'Untitled'}
-                    </span>
-                    <span className="table-secondary">
-                      {formatDate(g.finishedAt ?? g.createdAt)}
-                    </span>
-                  </Link>
-                </td>
-                <td>{g.playerCount}</td>
-                <td>
-                  {g.winner ? (
-                    <>
-                      {g.winner}
-                      {g.winnerScore != null ? (
-                        <span className="muted"> ({g.winnerScore})</span>
-                      ) : null}
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td>{fmt(g.highScore)}</td>
-                <td>{fmt(g.lowScore)}</td>
-                <td>{g.forceBurns}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="stack">
+      <div className="game-list-filters">
+        <label className="field">
+          Name
+          <input
+            type="search"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Game, player, or winner"
+            autoComplete="off"
+          />
+        </label>
+        <div className="game-list-dates">
+          <label className="field">
+            From
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              max={to || undefined}
+            />
+          </label>
+          <label className="field">
+            To
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              min={from || undefined}
+            />
+          </label>
+        </div>
+        {filtering ? (
+          <div className="game-list-filter-meta">
+            <span className="muted">
+              {filtered.length} of {games.length}
+            </span>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => {
+                setName('');
+                setFrom('');
+                setTo('');
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {filtered.length === 0 ? (
+        <div className="card empty">No games match these filters.</div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Game</th>
+                  <th>Players</th>
+                  <th>Winner</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>FB</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((g) => (
+                  <tr key={g.id}>
+                    <td>
+                      <Link
+                        to={`/games/${g.id}`}
+                        state={{ from: 'stats' }}
+                        className="table-link"
+                      >
+                        <span className="table-primary">
+                          {g.name ?? 'Untitled'}
+                        </span>
+                        <span className="table-secondary">
+                          {formatDate(g.finishedAt ?? g.createdAt)}
+                        </span>
+                      </Link>
+                    </td>
+                    <td>{g.playerCount}</td>
+                    <td>
+                      {g.winner ? (
+                        <>
+                          {g.winner}
+                          {g.winnerScore != null ? (
+                            <span className="muted"> ({g.winnerScore})</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>{fmt(g.highScore)}</td>
+                    <td>{fmt(g.lowScore)}</td>
+                    <td>{g.forceBurns}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -217,7 +285,11 @@ function PlayersList({
   onSelect: (key: string) => void;
 }) {
   if (players.length === 0) {
-    return <div className="card empty">No players yet.</div>;
+    return (
+      <div className="card empty">
+        No registered players yet. Claim a seat on a completed game.
+      </div>
+    );
   }
 
   return (
@@ -230,15 +302,7 @@ function PlayersList({
           onClick={() => onSelect(p.key ?? p.name)}
         >
           <div className="min-w-0">
-            <p className="list-item-title truncate">
-              {p.name}
-              {p.userId ? (
-                <span className="muted" style={{ fontWeight: 400 }}>
-                  {' '}
-                  · account
-                </span>
-              ) : null}
-            </p>
+            <p className="list-item-title truncate">{p.name}</p>
             <p className="list-item-meta">
               {p.wins} win{p.wins === 1 ? '' : 's'}
               {p.avgScore != null ? ` · avg ${p.avgScore}` : ''}

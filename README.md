@@ -1,13 +1,13 @@
 # Oh Heck
 
-Mobile-friendly **PWA** scorekeeper + NestJS API + Postgres (or SQLite for light local).
+Mobile-friendly **PWA** scorekeeper + NestJS API + PostgreSQL.
 
 ## Stack
 
 - **Frontend:** React + TypeScript (Vite) + Progressive Web App (installable)
 - **Offline:** IndexedDB outbox + local game engine; auto-sync when online
 - **Backend:** NestJS + **Prisma** + TypeScript
-- **DB:** PostgreSQL 16 (Docker / prod) **or** SQLite file (no Docker)
+- **DB:** PostgreSQL 16 (Docker locally, Fly/hosted in prod)
 - **Rules:** in-app How to Play · `RULES.yaml` / `backend/rules/oh-heck.yaml`
 - **Technical spec:** `docs/RULES.technical.yaml`
 
@@ -28,10 +28,9 @@ Both the browser tab and the installed PWA use the **same backend** (`VITE_API_U
 | Mode | Command | DB | When |
 |------|---------|----|------|
 | **Full Docker** | `docker compose up --build` | Postgres container | Closest to prod, all-in-one |
-| **SQLite local** | `npm run start:dev:sqlite` (backend) | `prisma/dev.db` | Mac mini / no Docker stack |
-| **Postgres local** | `docker compose up db -d` + `npm run start:dev:postgres` | Postgres only | App on host, DB in Docker |
+| **Postgres local** | `docker compose up db -d` + `npm run start:dev` | Postgres only | App on host, DB in Docker |
 
-Docker is unchanged. SQLite is an extra local path — not a replacement for compose/prod.
+Copy an existing SQLite `prisma/dev.db` into Postgres with `npm run db:migrate-from-sqlite` after migrate deploy.
 
 ---
 
@@ -49,33 +48,35 @@ Phone on LAN: `http://<mac-lan-ip>:5173` (same Wi‑Fi; allow firewall if needed
 
 ---
 
-### 2) Lightweight: API + SQLite (no Docker)
+### 2) Local app + Docker Postgres only
 
 ```bash
+docker compose up db -d
+
 cd backend
-cp .env.sqlite.example .env.sqlite   # optional
+cp .env.example .env
 npm install
-npm run start:dev:sqlite
-```
+npm run start:dev
 
-- Creates/updates `backend/prisma/dev.db` via `prisma db push` (`file:./dev.db` is relative to the schema dir)
-- Listens on `0.0.0.0:3000`, `CORS_ORIGIN=*` by default
-- Regenerates the Prisma client for **sqlite** (switch back with `npm run prisma:generate` before Postgres/Docker builds)
-
-Frontend (optional, separate terminal):
-
-```bash
 cd frontend
 export VITE_API_URL=http://localhost:3000
 npm install
 npm run dev
 ```
 
+If you still have a SQLite `backend/prisma/dev.db`, copy it in after the first migrate:
+
+```bash
+cd backend
+DATABASE_URL=postgresql://ohheck:ohheck@localhost:5433/ohheck?schema=public \
+  npm run db:migrate-from-sqlite
+```
+
 #### Mac mini + ngrok
 
 ```bash
-# terminal 1 — API + SQLite
-cd backend && npm run start:dev:sqlite
+# terminal 1 — API + Postgres
+cd backend && npm run start:dev
 
 # terminal 2 — public tunnel to the API
 ngrok http 3000
@@ -93,24 +94,6 @@ Notes:
 - Backend already allows the `ngrok-skip-browser-warning` header; the frontend sends it when `VITE_API_URL` contains `ngrok`.
 - Free ngrok URLs change on restart — update `VITE_API_URL` (or a Pages secret) when they do.
 - For Socket.IO realtime through ngrok, use the same HTTPS base (no extra path).
-
----
-
-### 3) Local app + Docker Postgres only
-
-```bash
-docker compose up db -d
-
-cd backend
-cp .env.example .env
-npm install
-npm run start:dev:postgres
-
-cd frontend
-export VITE_API_URL=http://localhost:3000
-npm install
-npm run dev
-```
 
 ---
 
@@ -136,10 +119,8 @@ npx vite preview
 
 ## Prisma / schema notes
 
-- **Postgres (canonical):** `backend/prisma/schema.prisma` + `migrations/` → `prisma migrate deploy`
-- **SQLite (local only):** `backend/prisma/schema.sqlite.prisma` → `prisma db push` (no shared migrate history)
-- Keep the two schema files in sync (models identical; only `provider` differs)
-- After SQLite dev, run `npm run prisma:generate` before Docker image builds if you stay on the same machine
+- **Postgres:** `backend/prisma/schema.prisma` + `migrations/` → `prisma migrate deploy`
+- Local default is Postgres (`npm run start:dev`). A SQLite schema file remains for optional offline work (`npm run start:dev:sqlite`) but is not the source of truth.
 
 ## Game flow
 

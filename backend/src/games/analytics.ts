@@ -295,28 +295,65 @@ export function roundSetupFields(
 }
 
 export function clearOutcomeFields(): {
-  made: null;
-  trickDelta: null;
-  absDelta: null;
-  isNilBid: null;
-  isNilMade: null;
-  cumulativeScore: null;
-  placeAfterRound: null;
-  scoreBehindLeader: null;
   tricksTaken: null;
   points: null;
 } {
   return {
-    made: null,
-    trickDelta: null,
-    absDelta: null,
-    isNilBid: null,
-    isNilMade: null,
-    cumulativeScore: null,
-    placeAfterRound: null,
-    scoreBehindLeader: null,
     tricksTaken: null,
     points: null,
+  };
+}
+
+/** Bid totals from raw bids. Null until every seat has a bid. */
+export function derivedBidAggregates(
+  handSize: number,
+  bids: (number | null)[],
+): { bidSum: number | null; bidDeficit: number | null } {
+  if (bids.some((b) => b === null)) {
+    return { bidSum: null, bidDeficit: null };
+  }
+  const present = bids as number[];
+  const bidSum = present.reduce((s, b) => s + b, 0);
+  return { bidSum, bidDeficit: handSize - bidSum };
+}
+
+/** Outcome flags from raw bid / tricks. Not persisted. */
+export function derivedEntryOutcome(
+  bid: number | null,
+  tricksTaken: number | null,
+): {
+  made: boolean | null;
+  trickDelta: number | null;
+  absDelta: number | null;
+  isNilBid: boolean | null;
+  isNilMade: boolean | null;
+} {
+  if (bid === null) {
+    return {
+      made: null,
+      trickDelta: null,
+      absDelta: null,
+      isNilBid: null,
+      isNilMade: null,
+    };
+  }
+  const isNilBid = bid === 0;
+  if (tricksTaken === null) {
+    return {
+      made: null,
+      trickDelta: null,
+      absDelta: null,
+      isNilBid,
+      isNilMade: null,
+    };
+  }
+  const trickDelta = tricksTaken - bid;
+  return {
+    made: bid === tricksTaken,
+    trickDelta,
+    absDelta: Math.abs(trickDelta),
+    isNilBid,
+    isNilMade: isNilBid && tricksTaken === 0,
   };
 }
 

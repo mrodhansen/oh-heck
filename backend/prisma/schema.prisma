@@ -117,17 +117,7 @@ model Game {
   /// Round-1 dealer seat (convention: last seat)
   firstDealerSeat Int       @default(0)
   /// First time bids were committed (play actually started)
-  startedAt       DateTime?
-  /// finishedAt - createdAt in ms
-  durationMs      Int?
-  /// Single winner: highest total, then lowest seatIndex on ties (not multi-winner)
-  winnerPlayerId  String?
-  winnerScore     Int?
-  runnerUpScore   Int?
-  /// winnerScore - runnerUpScore; null when no runner-up (sole player)
-  winMargin       Int?
-  totalForceBurns Int       @default(0)
-  totalEdits      Int       @default(0)
+  startedAt DateTime?
 
   /// When set, this game belongs to a tournament table
   tournamentTableId String? @unique
@@ -194,14 +184,8 @@ model Round {
   dealerPlayerId      String?
   firstBidderPlayerId String?
   /// Seat indices in bid order (left of dealer → dealer last). Json for PG+SQLite portability.
-  bidOrderSeats       Json    @default("[]")
-  /// Sum of all bids once bidding complete
-  bidSum              Int?
-  /// handSize - bidSum (positive = table under-bid, negative = over-bid)
-  bidDeficit          Int?
-  /// Forbidden last-bid value locked when bids completed (null if unrestricted)
-  forbiddenLastBid    Int?
-  bidsCompletedAt     DateTime?
+  bidOrderSeats   Json      @default("[]")
+  bidsCompletedAt DateTime?
   tricksCompletedAt   DateTime?
   completedAt         DateTime?
   editCount           Int     @default(0)
@@ -243,20 +227,6 @@ model RoundEntry {
   /// Sum of bids by players earlier in bid order (at commit time)
   runningBidBefore Int?
 
-  /// tricksTaken == bid
-  made       Boolean?
-  /// tricksTaken - bid
-  trickDelta Int?
-  absDelta   Int?
-  isNilBid   Boolean?
-  isNilMade  Boolean?
-
-  /// Running game total after this round completed
-  cumulativeScore   Int?
-  placeAfterRound   Int?
-  /// Leader total - this total after round (0 if tied for lead or leading)
-  scoreBehindLeader Int?
-
   /// Online: when this seat's bid was placed
   bidPlacedAt DateTime?
   /// Online: dealt hand snapshot for this seat [{s,r}, ...]
@@ -269,7 +239,6 @@ model RoundEntry {
 
   @@unique([roundId, playerId])
   @@index([playerId])
-  @@index([made])
   @@index([isDealer])
   @@index([bidPosition])
 }

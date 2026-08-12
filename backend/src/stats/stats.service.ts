@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assignPlacesByTotal } from '../games/analytics';
 
 type PlayerAgg = {
-  /** Stable key: user:<id> or guest:<name> */
+  /** Stable key: user:<id> */
   key: string;
   userId: string | null;
   name: string;
@@ -36,8 +36,11 @@ type Leader = { name: string; value: number | string } | null;
 
 type SeatRef = {
   id: string;
+  /** Account username (stats identity). */
   name: string;
-  userId: string | null;
+  /** Original table name; never overwritten by claim. */
+  tableName: string;
+  userId: string;
   key: string;
 };
 
@@ -52,6 +55,7 @@ export class StatsService {
       include: {
         players: {
           orderBy: { seatIndex: 'asc' },
+          include: { user: { select: { username: true } } },
         },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
       },
@@ -148,17 +152,19 @@ export class StatsService {
         }
       }
 
-      const seats: SeatRef[] = game.players.map((p) => seatRef(p));
+      const seats = game.players.map((p) => seatRef(p));
 
       const playerTotals = game.players.map((p, idx) => {
-        const seat = seats[idx]!;
+        const seat = seats[idx] ?? null;
         let total = 0;
         let roundsPlayed = 0;
         let bidsMade = 0;
         let madeAll = true;
-        const agg = ensure(seat);
-        agg.gamesPlayed += 1;
-        agg.gamesCompleted += 1;
+        const agg = seat ? ensure(seat) : null;
+        if (agg) {
+          agg.gamesPlayed += 1;
+          agg.gamesCompleted += 1;
+        }
 
         for (const round of game.rounds) {
           const e = round.entries.find((x) => x.playerId === p.id);
@@ -173,43 +179,50 @@ export class StatsService {
           }
           roundsPlayed += 1;
           total += e.points;
-          agg.roundsPlayed += 1;
-          agg.totalPointsFromRounds += e.points;
+          if (agg) {
+            agg.roundsPlayed += 1;
+            agg.totalPointsFromRounds += e.points;
+          }
 
           if (e.bid === e.tricksTaken) {
             bidsMade += 1;
-            agg.bidsMade += 1;
+            if (agg) agg.bidsMade += 1;
           } else {
             madeAll = false;
-            if (e.tricksTaken > e.bid) agg.overtricks += 1;
-            else agg.undertricks += 1;
+            if (agg) {
+              if (e.tricksTaken > e.bid) agg.overtricks += 1;
+              else agg.undertricks += 1;
+            }
           }
 
-          if (e.bid === 0) {
+          if (e.bid === 0 && agg) {
             agg.nilBids += 1;
             if (e.tricksTaken === 0) agg.nilsMade += 1;
           }
 
-          if (round.forceBurn) {
+          if (round.forceBurn && agg) {
             const dealer = game.players.find(
               (pl) => pl.seatIndex === round.dealerSeat,
             );
             if (dealer?.id === p.id) agg.forceBurns += 1;
           }
 
-          agg.biggestRound =
-            agg.biggestRound === null
-              ? e.points
-              : Math.max(agg.biggestRound, e.points);
-          agg.smallestRound =
-            agg.smallestRound === null
-              ? e.points
-              : Math.min(agg.smallestRound, e.points);
+          if (agg) {
+            agg.biggestRound =
+              agg.biggestRound === null
+                ? e.points
+                : Math.max(agg.biggestRound, e.points);
+            agg.smallestRound =
+              agg.smallestRound === null
+                ? e.points
+                : Math.min(agg.smallestRound, e.points);
+          }
         }
 
         return {
-          name: seat.name,
-          key: seat.key,
+          name: seat?.name ?? p.name,
+          key: seat?.key ?? guestKey(p.name),
+          registered: seat !== null,
           total,
           roundsPlayed,
           bidsMade,
@@ -231,7 +244,7 @@ export class StatsService {
       const winner = top.length ? top.map((t) => t.name).join(', ') : null;
       const winnerScore = top[0]?.total ?? null;
 
-      if (places.length >= 2 && winnerScore !== null) {
+      if (places.length >= 2 && winnerScore !== null && top[0]?.registered) {
         const secondBest = places.find((p) => p.place > 1);
         if (secondBest) {
           const margin = winnerScore - secondBest.total;
@@ -249,21 +262,17 @@ export class StatsService {
         const keyed = row as {
           key: string;
           name: string;
+          registered: boolean;
           total: number;
           place: number;
           madeAll?: boolean;
         };
-        const seat =
-          seats.find((s) => s.key === keyed.key) ??
-          seats.find((s) => s.name === keyed.name);
-        const agg = seat
-          ? ensure(seat)
-          : ensure({
-              id: keyed.name,
-              name: keyed.name,
-              userId: null,
-              key: guestKey(keyed.name),
-            });
+        if (!keyed.registered) continue;
+        const seat = seats.find(
+          (s): s is SeatRef => s !== null && s.key === keyed.key,
+        );
+        if (!seat) continue;
+        const agg = ensure(seat);
         agg.totalScore += keyed.total;
         agg.bestScore =
           agg.bestScore === null
@@ -302,7 +311,7 @@ export class StatsService {
         createdAt: game.createdAt,
         finishedAt: game.finishedAt,
         playerCount: game.players.length,
-        players: seats.map((s) => s.name),
+        players: game.players.map((p, i) => seats[i]?.name ?? p.name),
         winner,
         winnerScore,
         highScore,
@@ -416,21 +425,15 @@ function seatRef(p: {
   id: string;
   name: string;
   userId: string | null;
-}): SeatRef {
-  const name = p.name.trim();
-  if (p.userId) {
-    return {
-      id: p.id,
-      userId: p.userId,
-      name,
-      key: userKey(p.userId),
-    };
-  }
+  user: { username: string } | null;
+}): SeatRef | null {
+  if (!p.userId || !p.user) return null;
   return {
     id: p.id,
-    userId: null,
-    name,
-    key: guestKey(name),
+    userId: p.userId,
+    name: p.user.username,
+    tableName: p.name,
+    key: userKey(p.userId),
   };
 }
 

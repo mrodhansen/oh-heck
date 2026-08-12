@@ -34,7 +34,13 @@ import {
   tournamentIdsWithPendingOps,
 } from './offline/sync';
 import { newId } from './offline/rules';
-import { hydrateRoundOrder } from './offline/analytics';
+import {
+  computeGameFinishStats,
+  cumulativeFieldsForRound,
+  derivedBidAggregates,
+  derivedEntryOutcome,
+  hydrateRoundOrder,
+} from './offline/analytics';
 import { parseGameNotes, type GameNote } from './offline/notes';
 
 export type { GameNote };
@@ -299,9 +305,10 @@ export type TournamentDetail = {
 export type StatsLeader = { name: string; value: number | string } | null;
 
 export type StatsPlayer = {
-  /** Stable identity: user:<id> or guest:<name> */
+  /** Stable identity: user:<id> */
   key?: string;
   userId?: string | null;
+  /** Account username. Claimed seats roll up here; table name is unchanged. */
   name: string;
   gamesPlayed: number;
   gamesCompleted: number;
@@ -371,79 +378,135 @@ export type StatsResponse = {
   players: StatsPlayer[];
 };
 
-/** Fill analytics defaults for older cached payloads missing new fields. */
+/** Fill defaults and recompute derived fields from raw bids / tricks / points. */
 function normalizeGame(raw: GameDetail): GameDetail {
   const players = raw.players ?? [];
   const playerCount = players.length;
+  const playersForCalc = players.map((p) => ({
+    id: p.id,
+    seatIndex: p.seatIndex,
+  }));
+  const sourceRounds = raw.rounds ?? [];
+  const roundsSnap = sourceRounds.map((r) => ({
+    number: r.number,
+    forceBurn: r.forceBurn,
+    entries: (r.entries ?? []).map((e) => ({
+      playerId: e.playerId,
+      points: e.points,
+    })),
+  }));
+
+  const rounds = sourceRounds.map((r) => {
+    const hydrated =
+      playerCount > 0 ? hydrateRoundOrder(players, r.dealerSeat) : null;
+    const bidOrderSeats = hydrated?.bidOrderSeats ?? r.bidOrderSeats ?? [];
+    const bidOrderPlayerIds =
+      hydrated?.bidOrderPlayerIds ?? r.bidOrderPlayerIds ?? [];
+    const firstBidderSeat =
+      hydrated?.firstBidderSeat ??
+      r.firstBidderSeat ??
+      (playerCount > 0 ? (r.dealerSeat + 1) % playerCount : 0);
+    const { bidSum, bidDeficit } = derivedBidAggregates(
+      r.handSize,
+      (r.entries ?? []).map((e) => e.bid),
+    );
+    const complete = (r.entries ?? []).every(
+      (e) => e.bid !== null && e.tricksTaken !== null && e.points !== null,
+    );
+    const cum =
+      complete && playerCount > 0
+        ? cumulativeFieldsForRound(playersForCalc, roundsSnap, r.number)
+        : null;
+
+    return {
+      ...r,
+      firstBidderSeat,
+      dealerPlayerId: hydrated?.dealerPlayerId ?? r.dealerPlayerId,
+      firstBidderPlayerId:
+        hydrated?.firstBidderPlayerId ?? r.firstBidderPlayerId,
+      bidOrderSeats,
+      bidOrderPlayerIds,
+      bidSum,
+      bidDeficit,
+      forbiddenLastBid: r.forbiddenLastBid ?? null,
+      bidsCompletedAt: r.bidsCompletedAt ?? null,
+      tricksCompletedAt: r.tricksCompletedAt ?? null,
+      completedAt: r.completedAt ?? null,
+      editCount: r.editCount ?? 0,
+      complete,
+      entries: (r.entries ?? []).map((e) => {
+        const roles = hydrated?.entryRolesByPlayerId.get(e.playerId);
+        if (!roles && playerCount > 0) {
+          throw new Error(
+            `Cannot hydrate roles for player ${e.playerId} in round ${r.number}`,
+          );
+        }
+        const outcome = derivedEntryOutcome(e.bid, e.tricksTaken);
+        const standing = cum?.get(e.playerId);
+        return {
+          ...e,
+          bidPosition: roles?.bidPosition ?? e.bidPosition ?? null,
+          isDealer: roles?.isDealer ?? false,
+          isFirstBidder: roles?.isFirstBidder ?? false,
+          isLastBidder: roles?.isLastBidder ?? false,
+          runningBidBefore: e.runningBidBefore ?? null,
+          made: outcome.made,
+          trickDelta: outcome.trickDelta,
+          absDelta: outcome.absDelta,
+          isNilBid: outcome.isNilBid,
+          isNilMade: outcome.isNilMade,
+          cumulativeScore: standing?.cumulativeScore ?? null,
+          placeAfterRound: standing?.placeAfterRound ?? null,
+          scoreBehindLeader: standing?.scoreBehindLeader ?? null,
+        };
+      }),
+    };
+  });
+
+  const allPointsPresent =
+    rounds.length > 0 &&
+    rounds.every((r) =>
+      r.entries.every((e) => e.points !== null),
+    );
+  let finish: ReturnType<typeof computeGameFinishStats> | null = null;
+  if (raw.status === 'COMPLETED' && raw.finishedAt && allPointsPresent) {
+    try {
+      finish = computeGameFinishStats(
+        playersForCalc,
+        roundsSnap,
+        raw.createdAt,
+        raw.finishedAt,
+      );
+    } catch {
+      finish = null;
+    }
+  }
 
   return {
     ...raw,
     notes: parseGameNotes(raw.notes),
     startedAt: raw.startedAt ?? null,
-    durationMs: raw.durationMs ?? null,
+    durationMs:
+      finish?.durationMs ??
+      (raw.finishedAt
+        ? Math.max(
+            0,
+            new Date(raw.finishedAt).getTime() - new Date(raw.createdAt).getTime(),
+          )
+        : null),
     playerCount,
     firstDealerSeat: raw.firstDealerSeat ?? Math.max(playerCount - 1, 0),
-    winnerPlayerId: raw.winnerPlayerId ?? null,
-    winnerScore: raw.winnerScore ?? null,
-    runnerUpScore: raw.runnerUpScore ?? null,
-    winMargin: raw.winMargin ?? null,
-    totalForceBurns: raw.totalForceBurns ?? 0,
-    totalEdits: raw.totalEdits ?? 0,
+    winnerPlayerId: finish?.winnerPlayerId ?? null,
+    winnerScore: finish?.winnerScore ?? null,
+    runnerUpScore: finish?.runnerUpScore ?? null,
+    winMargin: finish?.winMargin ?? null,
+    totalForceBurns:
+      finish?.totalForceBurns ??
+      rounds.filter((r) => r.forceBurn).length,
+    totalEdits: rounds.reduce((s, r) => s + (r.editCount ?? 0), 0),
     events: raw.events ?? [],
     players,
-    rounds: (raw.rounds ?? []).map((r) => {
-      // Always recompute seating roles from dealer when roster is known.
-      const hydrated =
-        playerCount > 0 ? hydrateRoundOrder(players, r.dealerSeat) : null;
-      const bidOrderSeats = hydrated?.bidOrderSeats ?? r.bidOrderSeats ?? [];
-      const bidOrderPlayerIds =
-        hydrated?.bidOrderPlayerIds ?? r.bidOrderPlayerIds ?? [];
-      const firstBidderSeat =
-        hydrated?.firstBidderSeat ??
-        r.firstBidderSeat ??
-        (playerCount > 0 ? (r.dealerSeat + 1) % playerCount : 0);
-
-      return {
-        ...r,
-        firstBidderSeat,
-        dealerPlayerId: hydrated?.dealerPlayerId ?? r.dealerPlayerId,
-        firstBidderPlayerId:
-          hydrated?.firstBidderPlayerId ?? r.firstBidderPlayerId,
-        bidOrderSeats,
-        bidOrderPlayerIds,
-        bidSum: r.bidSum ?? null,
-        bidDeficit: r.bidDeficit ?? null,
-        forbiddenLastBid: r.forbiddenLastBid ?? null,
-        bidsCompletedAt: r.bidsCompletedAt ?? null,
-        tricksCompletedAt: r.tricksCompletedAt ?? null,
-        completedAt: r.completedAt ?? null,
-        editCount: r.editCount ?? 0,
-        entries: (r.entries ?? []).map((e) => {
-          const roles = hydrated?.entryRolesByPlayerId.get(e.playerId);
-          if (!roles && playerCount > 0) {
-            throw new Error(
-              `Cannot hydrate roles for player ${e.playerId} in round ${r.number}`,
-            );
-          }
-          return {
-            ...e,
-            bidPosition: roles?.bidPosition ?? e.bidPosition ?? null,
-            isDealer: roles?.isDealer ?? false,
-            isFirstBidder: roles?.isFirstBidder ?? false,
-            isLastBidder: roles?.isLastBidder ?? false,
-            runningBidBefore: e.runningBidBefore ?? null,
-            made: e.made ?? null,
-            trickDelta: e.trickDelta ?? null,
-            absDelta: e.absDelta ?? null,
-            isNilBid: e.isNilBid ?? null,
-            isNilMade: e.isNilMade ?? null,
-            cumulativeScore: e.cumulativeScore ?? null,
-            placeAfterRound: e.placeAfterRound ?? null,
-            scoreBehindLeader: e.scoreBehindLeader ?? null,
-          };
-        }),
-      };
-    }),
+    rounds,
   };
 }
 

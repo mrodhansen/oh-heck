@@ -5,9 +5,10 @@
   "scripts": {
     "build": "nest build",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "bash scripts/dev-postgres.sh",
     "start:dev:postgres": "bash scripts/dev-postgres.sh",
     "start:dev:sqlite": "bash scripts/dev-sqlite.sh",
+    "db:migrate-from-sqlite": "node scripts/migrate-sqlite-to-postgres.mjs",
     "start:prod": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:generate:sqlite": "prisma generate --schema=prisma/schema.sqlite.prisma",

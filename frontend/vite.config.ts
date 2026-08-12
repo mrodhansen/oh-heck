@@ -100,7 +100,8 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    // Only pure tournament helpers — not monorepo root / backend .env
-    fs: { allow: [backendTournaments] },
+    // Frontend root plus shared tournament helpers. Do not allow the
+    // monorepo root / backend .env.
+    fs: { allow: [rootDir, backendTournaments] },
   },
 });

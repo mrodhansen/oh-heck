@@ -25,6 +25,8 @@ import {
   computeGameFinishStats,
   computeOutcome,
   cumulativeFieldsForRound,
+  derivedBidAggregates,
+  derivedEntryOutcome,
   entryRoles,
   eventCreate,
   roundSetupFields,
@@ -450,7 +452,6 @@ export class GamesService {
             isFirstBidder: a.isFirstBidder,
             isLastBidder: a.isLastBidder,
             runningBidBefore: a.runningBidBefore,
-            isNilBid: b.bid === 0,
           },
         });
       }
@@ -459,9 +460,6 @@ export class GamesService {
         where: { id: round.id },
         data: {
           forceBurn,
-          bidSum: analytics.bidSum,
-          bidDeficit: analytics.bidDeficit,
-          forbiddenLastBid: analytics.forbiddenLastBid,
           bidsCompletedAt: round.bidsCompletedAt ?? now,
           tricksCompletedAt: null,
           completedAt: null,
@@ -473,16 +471,7 @@ export class GamesService {
         data: {
           status: GameStatus.PLAYING,
           startedAt: game.startedAt ?? now,
-          // clear finish stats if re-bidding somehow
           finishedAt: null,
-          durationMs: null,
-          winnerPlayerId: null,
-          winnerScore: null,
-          runnerUpScore: null,
-          winMargin: null,
-          totalForceBurns: game.rounds.filter((r) =>
-            r.number === roundNumber ? forceBurn : r.forceBurn,
-          ).length,
         },
       });
 
@@ -613,7 +602,6 @@ export class GamesService {
     await this.prisma.$transaction(async (tx) => {
       for (const t of dto.tricks) {
         const o = outcomes.get(t.playerId)!;
-        const c = cum.get(t.playerId)!;
         await tx.roundEntry.update({
           where: {
             roundId_playerId: { roundId: round.id, playerId: t.playerId },
@@ -621,14 +609,6 @@ export class GamesService {
           data: {
             tricksTaken: t.tricksTaken,
             points: o.points,
-            made: o.made,
-            trickDelta: o.trickDelta,
-            absDelta: o.absDelta,
-            isNilBid: o.isNilBid,
-            isNilMade: o.isNilMade,
-            cumulativeScore: c.cumulativeScore,
-            placeAfterRound: c.placeAfterRound,
-            scoreBehindLeader: c.scoreBehindLeader,
           },
         });
       }
@@ -656,12 +636,6 @@ export class GamesService {
           ? {
               status: GameStatus.COMPLETED,
               finishedAt: now,
-              durationMs: finish!.durationMs,
-              winnerPlayerId: finish!.winnerPlayerId,
-              winnerScore: finish!.winnerScore,
-              runnerUpScore: finish!.runnerUpScore,
-              winMargin: finish!.winMargin,
-              totalForceBurns: finish!.totalForceBurns,
             }
           : { status: GameStatus.BIDDING },
       });
@@ -673,7 +647,10 @@ export class GamesService {
           {
             roundNumber,
             handSize: round.handSize,
-            bidSum: round.bidSum,
+            bidSum: derivedBidAggregates(
+              round.handSize,
+              round.entries.map((e) => e.bid),
+            ).bidSum,
             forceBurn: round.forceBurn,
             tricks: trickOrder,
             standingsAfter: [...cum.entries()].map(([playerId, c]) => ({
@@ -776,37 +753,6 @@ export class GamesService {
       });
     }
 
-    const roundsSnap = game.rounds.map((r) => ({
-      number: r.number,
-      forceBurn: r.number === roundNumber ? forceBurn : r.forceBurn,
-      entries: r.entries.map((e) => {
-        if (r.number !== roundNumber) {
-          return {
-            playerId: e.playerId,
-            bid: e.bid,
-            tricksTaken: e.tricksTaken,
-            points: e.points,
-          };
-        }
-        const o = outcomes.get(e.playerId)!;
-        return {
-          playerId: e.playerId,
-          bid: o.bid,
-          tricksTaken: o.tricksTaken,
-          points: o.points,
-        };
-      }),
-    }));
-
-    // Recompute cumulative for this round and every later completed round
-    const completedRoundNumbers = roundsSnap
-      .filter((r) =>
-        r.entries.every(
-          (e) => e.bid !== null && e.tricksTaken !== null && e.points !== null,
-        ),
-      )
-      .map((r) => r.number);
-
     await this.prisma.$transaction(async (tx) => {
       for (const t of dto.tricks) {
         const o = outcomes.get(t.playerId)!;
@@ -824,11 +770,6 @@ export class GamesService {
             isFirstBidder: a.isFirstBidder,
             isLastBidder: a.isLastBidder,
             runningBidBefore: a.runningBidBefore,
-            made: o.made,
-            trickDelta: o.trickDelta,
-            absDelta: o.absDelta,
-            isNilBid: o.isNilBid,
-            isNilMade: o.isNilMade,
           },
         });
       }
@@ -837,34 +778,12 @@ export class GamesService {
         where: { id: round.id },
         data: {
           forceBurn,
-          bidSum: bidAnalytics.bidSum,
-          bidDeficit: bidAnalytics.bidDeficit,
-          forbiddenLastBid: bidAnalytics.forbiddenLastBid,
           bidsCompletedAt: round.bidsCompletedAt ?? now,
           tricksCompletedAt: round.tricksCompletedAt ?? now,
           completedAt: round.completedAt ?? now,
           editCount: { increment: 1 },
         },
       });
-
-      // Refresh cumulative/place for all completed rounds (edit can reshuffle places)
-      for (const rn of completedRoundNumbers) {
-        const cum = cumulativeFieldsForRound(players, roundsSnap, rn);
-        const rnd = game.rounds.find((r) => r.number === rn)!;
-        for (const p of players) {
-          const c = cum.get(p.id)!;
-          await tx.roundEntry.update({
-            where: {
-              roundId_playerId: { roundId: rnd.id, playerId: p.id },
-            },
-            data: {
-              cumulativeScore: c.cumulativeScore,
-              placeAfterRound: c.placeAfterRound,
-              scoreBehindLeader: c.scoreBehindLeader,
-            },
-          });
-        }
-      }
 
       const refreshed = await tx.game.findUniqueOrThrow({
         where: { id: gameId },
@@ -875,37 +794,12 @@ export class GamesService {
       const finishedAt = allComplete
         ? (refreshed.finishedAt ?? now)
         : null;
-      const finish = allComplete
-        ? computeGameFinishStats(
-            players,
-            roundsSnap,
-            game.createdAt,
-            finishedAt!,
-          )
-        : null;
 
       await tx.game.update({
         where: { id: gameId },
         data: {
           status,
           finishedAt,
-          totalEdits: { increment: 1 },
-          totalForceBurns: roundsSnap.filter((r) => r.forceBurn).length,
-          ...(allComplete && finish
-            ? {
-                durationMs: finish.durationMs,
-                winnerPlayerId: finish.winnerPlayerId,
-                winnerScore: finish.winnerScore,
-                runnerUpScore: finish.runnerUpScore,
-                winMargin: finish.winMargin,
-              }
-            : {
-                durationMs: null,
-                winnerPlayerId: null,
-                winnerScore: null,
-                runnerUpScore: null,
-                winMargin: null,
-              }),
         },
       });
 
@@ -1263,6 +1157,33 @@ export class GamesService {
         ? 'completed'
         : this.roundPhase(game, currentRound);
 
+    const playersForCalc = game.players.map((p) => ({
+      id: p.id,
+      seatIndex: p.seatIndex,
+    }));
+    const roundsSnap = game.rounds.map((r) => ({
+      number: r.number,
+      forceBurn: r.forceBurn,
+      entries: r.entries.map((e) => ({
+        playerId: e.playerId,
+        points: e.points,
+      })),
+    }));
+    const allPointsPresent = game.rounds.every((r) =>
+      r.entries.every((e) => e.points !== null),
+    );
+    const finish =
+      game.status === GameStatus.COMPLETED &&
+      game.finishedAt &&
+      allPointsPresent
+        ? computeGameFinishStats(
+            playersForCalc,
+            roundsSnap,
+            game.createdAt,
+            game.finishedAt,
+          )
+        : null;
+
     const rounds = game.rounds.map((round) => {
       const storedOrder = asIntArray(round.bidOrderSeats);
       const bidOrder =
@@ -1280,10 +1201,20 @@ export class GamesService {
         }
         return sum;
       })();
-      const liveForbidden =
-        round.entries.every((e) => e.bid !== null)
-          ? round.forbiddenLastBid
-          : this.rules.forbiddenLastBid(priorSum, round.handSize);
+      const liveForbidden = this.rules.forbiddenLastBid(
+        priorSum,
+        round.handSize,
+      );
+      const { bidSum, bidDeficit } = derivedBidAggregates(
+        round.handSize,
+        round.entries.map((e) => e.bid),
+      );
+      const roundComplete = round.entries.every(
+        (e) => e.bid !== null && e.tricksTaken !== null && e.points !== null,
+      );
+      const cum = roundComplete
+        ? cumulativeFieldsForRound(playersForCalc, roundsSnap, round.number)
+        : null;
 
       const tricks =
         'tricks' in round && Array.isArray(round.tricks)
@@ -1326,8 +1257,8 @@ export class GamesService {
         bidOrderPlayerIds: bidOrder.map(
           (seat) => game.players.find((p) => p.seatIndex === seat)!.id,
         ),
-        bidSum: round.bidSum,
-        bidDeficit: round.bidDeficit,
+        bidSum,
+        bidDeficit,
         forbiddenLastBid: liveForbidden ?? null,
         bidsCompletedAt: round.bidsCompletedAt,
         tricksCompletedAt: round.tricksCompletedAt,
@@ -1341,6 +1272,8 @@ export class GamesService {
         tricks: redactPrivateCards ? [] : tricks,
         entries: game.players.map((p) => {
           const e = round.entries.find((x) => x.playerId === p.id)!;
+          const outcome = derivedEntryOutcome(e.bid, e.tricksTaken);
+          const standing = cum?.get(p.id);
           return {
             playerId: p.id,
             playerName: p.name,
@@ -1353,14 +1286,14 @@ export class GamesService {
             isFirstBidder: e.isFirstBidder,
             isLastBidder: e.isLastBidder,
             runningBidBefore: e.runningBidBefore,
-            made: e.made,
-            trickDelta: e.trickDelta,
-            absDelta: e.absDelta,
-            isNilBid: e.isNilBid,
-            isNilMade: e.isNilMade,
-            cumulativeScore: e.cumulativeScore,
-            placeAfterRound: e.placeAfterRound,
-            scoreBehindLeader: e.scoreBehindLeader,
+            made: outcome.made,
+            trickDelta: outcome.trickDelta,
+            absDelta: outcome.absDelta,
+            isNilBid: outcome.isNilBid,
+            isNilMade: outcome.isNilMade,
+            cumulativeScore: standing?.cumulativeScore ?? null,
+            placeAfterRound: standing?.placeAfterRound ?? null,
+            scoreBehindLeader: standing?.scoreBehindLeader ?? null,
             bidPlacedAt: e.bidPlacedAt ?? null,
             dealtHand: redactPrivateCards ? null : (e.dealtHand ?? null),
             cardsPlayed: redactPrivateCards ? null : (e.cardsPlayed ?? null),
@@ -1406,15 +1339,24 @@ export class GamesService {
       createdAt: game.createdAt,
       startedAt: game.startedAt,
       finishedAt: game.finishedAt,
-      durationMs: game.durationMs,
+      durationMs:
+        finish?.durationMs ??
+        (game.finishedAt
+          ? Math.max(
+              0,
+              game.finishedAt.getTime() - game.createdAt.getTime(),
+            )
+          : null),
       playerCount: game.players.length,
       firstDealerSeat: game.firstDealerSeat,
-      winnerPlayerId: game.winnerPlayerId,
-      winnerScore: game.winnerScore,
-      runnerUpScore: game.runnerUpScore,
-      winMargin: game.winMargin,
-      totalForceBurns: game.totalForceBurns,
-      totalEdits: game.totalEdits,
+      winnerPlayerId: finish?.winnerPlayerId ?? null,
+      winnerScore: finish?.winnerScore ?? null,
+      runnerUpScore: finish?.runnerUpScore ?? null,
+      winMargin: finish?.winMargin ?? null,
+      totalForceBurns:
+        finish?.totalForceBurns ??
+        game.rounds.filter((r) => r.forceBurn).length,
+      totalEdits: game.rounds.reduce((s, r) => s + r.editCount, 0),
       tournamentId: game.tournamentId,
       tournamentTableId: game.tournamentTableId,
       isHighTable: game.isHighTable,
