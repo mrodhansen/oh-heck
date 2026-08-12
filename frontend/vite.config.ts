@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { copyFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -80,6 +81,21 @@ export default defineConfig({
         enabled: false,
       },
     }),
+    // After PWA rewrites index.html. GH Pages has no rewrite, so unknown
+    // paths (refresh on /stats) serve this copy of the SPA shell.
+    {
+      name: 'spa-github-pages-404',
+      apply: 'build',
+      closeBundle: {
+        sequential: true,
+        order: 'post',
+        handler() {
+          const index = path.resolve(rootDir, 'dist/index.html');
+          const dest = path.resolve(rootDir, 'dist/404.html');
+          if (existsSync(index)) copyFileSync(index, dest);
+        },
+      },
+    },
   ],
   server: {
     host: true,

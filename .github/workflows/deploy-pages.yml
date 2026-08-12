@@ -39,6 +39,8 @@ jobs:
         run: |
           npm install
           npm run build
+          # SPA fallback: refresh on /oh-heck/stats etc. must serve the app, not GH's 404
+          cp dist/index.html dist/404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:

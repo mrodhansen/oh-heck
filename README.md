@@ -124,6 +124,8 @@ npm run dev
 4. Push to `main` — workflow `.github/workflows/deploy-pages.yml` builds & deploys.
 5. Open the Pages URL → **Add to Home Screen** for the PWA.
 
+Refresh on `/stats`, `/account`, `/games/…` works because the build copies `index.html` to `404.html`. GitHub Pages has no rewrite rules; that file is the SPA fallback.
+
 ### Local PWA build
 
 ```bash
