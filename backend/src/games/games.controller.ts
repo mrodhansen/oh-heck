@@ -14,6 +14,7 @@ import {
   ClaimSeatDto,
   CreateGameDto,
   SetBidsDto,
+  SetSuperPlayDto,
   SetTricksDto,
   SyncDto,
   UpdateNotesDto,
@@ -74,6 +75,15 @@ export class GamesController {
     @Body() dto: SetTricksDto,
   ) {
     return this.games.setTricks(id, roundNumber, dto);
+  }
+
+  @Post(':id/rounds/:roundNumber/super-play')
+  setSuperPlay(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('roundNumber', ParseIntPipe) roundNumber: number,
+    @Body() dto: SetSuperPlayDto,
+  ) {
+    return this.games.setSuperPlay(id, roundNumber, dto);
   }
 
   @Patch(':id/notes')

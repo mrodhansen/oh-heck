@@ -50,4 +50,20 @@ export type TrickHistoryEntry = {
   plays: TrickHistoryPlay[];
 };
 
+export type CurrentTrickPlay = {
+  playOrder: number;
+  seatIndex: number;
+  playerId: string;
+  s: Suit;
+  r: Rank;
+  key: string;
+  followedSuit: boolean;
+  playedTrump: boolean;
+};
+
+export type CurrentTrickJson = {
+  leadSeat: number;
+  plays: CurrentTrickPlay[];
+};
+
 

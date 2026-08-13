@@ -4,6 +4,13 @@ COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm install
 
+FROM node:22-alpine AS dev
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && exec npx nest start --watch"]
+
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

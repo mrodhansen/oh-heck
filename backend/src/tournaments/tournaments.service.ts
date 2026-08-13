@@ -534,6 +534,7 @@ export class TournamentsService {
       name: gameName,
       ...(dto.gameId ? { id: dto.gameId } : {}),
       ...(dto.playerIds ? { playerIds: dto.playerIds } : {}),
+      ...(dto.superScorer === true ? { superScorer: true } : {}),
     });
 
     // Link tournament players onto game players by seat index
@@ -709,6 +710,7 @@ export class TournamentsService {
             const dto = plainToInstance(StartTournamentTableDto, {
               gameId: fieldValue(payload, 'gameId'),
               playerIds: fieldValue(payload, 'playerIds'),
+              superScorer: fieldValue(payload, 'superScorer'),
             });
             await validateOrReject(dto, {
               whitelist: true,

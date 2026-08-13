@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -65,11 +66,60 @@ export class CreateGameDto {
   @IsString()
   @MaxLength(16)
   liveCode?: string;
+
+  /** IN_PERSON: record every card and auto-fill tricks */
+  @IsOptional()
+  @IsBoolean()
+  superScorer?: boolean;
+}
+
+export class CardDto {
+  @IsIn(['C', 'D', 'H', 'S'])
+  s!: 'C' | 'D' | 'H' | 'S';
+
+  @IsIn(['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'])
+  r!: '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A';
+}
+
+export class SuperPlayItemDto {
+  @IsUUID()
+  playerId!: string;
+
+  @ValidateNested()
+  @Type(() => CardDto)
+  card!: CardDto;
+}
+
+export class SetSuperPlayDto {
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @ValidateNested()
+  @Type(() => CardDto)
+  trumpCard?: CardDto | null;
+
+  @IsArray()
+  @ArrayMaxSize(49)
+  @ValidateNested({ each: true })
+  @Type(() => SuperPlayItemDto)
+  plays!: SuperPlayItemDto[];
 }
 
 export class SyncOperationDto {
-  @IsIn(['createGame', 'setBids', 'setTricks', 'updateRound', 'updateNotes'])
-  type!: 'createGame' | 'setBids' | 'setTricks' | 'updateRound' | 'updateNotes';
+  @IsIn([
+    'createGame',
+    'setBids',
+    'setTricks',
+    'updateRound',
+    'updateNotes',
+    'setSuperPlay',
+  ])
+  type!:
+    | 'createGame'
+    | 'setBids'
+    | 'setTricks'
+    | 'updateRound'
+    | 'updateNotes'
+    | 'setSuperPlay';
 
   @IsObject()
   payload!: object;

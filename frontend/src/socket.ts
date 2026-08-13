@@ -13,7 +13,7 @@ function socketBaseUrl(): string | undefined {
   return undefined;
 }
 
-const joinedRooms = new Set<string>();
+const joinedRooms = new Map<string, string | undefined>();
 
 function getSocket(): Socket {
   if (!socket) {
@@ -22,18 +22,18 @@ function getSocket(): Socket {
       transports: ['websocket', 'polling'],
     });
     socket.on('connect', () => {
-      for (const room of joinedRooms) {
-        socket?.emit('join', { room });
+      for (const [room, token] of joinedRooms) {
+        socket?.emit('join', { room, token });
       }
     });
   }
   return socket;
 }
 
-export function joinRoom(room: string) {
+export function joinRoom(room: string, token?: string) {
   const s = getSocket();
-  joinedRooms.add(room);
-  s.emit('join', { room });
+  joinedRooms.set(room, token);
+  s.emit('join', { room, token });
 }
 
 export function leaveRoom(room: string) {

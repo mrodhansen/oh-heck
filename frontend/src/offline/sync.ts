@@ -61,7 +61,8 @@ export async function gameIdsWithPendingOps(): Promise<Set<string>> {
       op.type === 'setBids' ||
       op.type === 'setTricks' ||
       op.type === 'updateRound' ||
-      op.type === 'updateNotes'
+      op.type === 'updateNotes' ||
+      op.type === 'setSuperPlay'
     ) {
       ids.add(op.payload.gameId);
     }
@@ -376,6 +377,20 @@ export function startSyncListeners(): void {
 export async function enqueue(
   op: Omit<OutboxOp, 'id' | 'createdAt'>,
 ): Promise<void> {
+  if (op.type === 'setSuperPlay' && 'gameId' in op.payload && 'roundNumber' in op.payload) {
+    const gameId = op.payload.gameId;
+    const roundNumber = op.payload.roundNumber;
+    const existing = await outboxAll();
+    const stale = existing.filter(
+      (row) =>
+        row.type === 'setSuperPlay' &&
+        row.payload.gameId === gameId &&
+        row.payload.roundNumber === roundNumber,
+    );
+    if (stale.length) {
+      await outboxRemove(stale.map((row) => row.id));
+    }
+  }
   const full = {
     ...op,
     id: newId(),

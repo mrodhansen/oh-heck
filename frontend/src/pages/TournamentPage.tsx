@@ -8,6 +8,7 @@ import {
 } from '../api';
 import { toUserMessage } from '../api/errors';
 import { SyncStatus } from '../components/SyncStatus';
+import { SuperScorerToggle } from '../components/SuperScorerToggle';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 
@@ -20,6 +21,7 @@ export function TournamentPage() {
   const [nameInput, setNameInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [superScorer, setSuperScorer] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -106,7 +108,9 @@ export function TournamentPage() {
     setError(null);
     setBusy(true);
     try {
-      const res = await api.startTournamentTable(id, tableId);
+      const res = await api.startTournamentTable(id, tableId, {
+        superScorer,
+      });
       setT(res.tournament);
       navigate(`/games/${res.game.id}`);
     } catch (err) {
@@ -126,6 +130,8 @@ export function TournamentPage() {
         busy={busy}
         error={error}
         onBack={() => setSelectedTableId(null)}
+        superScorer={superScorer}
+        onToggleSuperScorer={() => setSuperScorer((v) => !v)}
         onStart={() => void startGame(selectedTable.id)}
         onOpenGame={(gameId) => navigate(`/games/${gameId}`)}
       />
@@ -313,6 +319,8 @@ function TableDetail({
   table,
   busy,
   error,
+  superScorer,
+  onToggleSuperScorer,
   onBack,
   onStart,
   onOpenGame,
@@ -320,6 +328,8 @@ function TableDetail({
   table: TournamentTable;
   busy: boolean;
   error: string | null;
+  superScorer: boolean;
+  onToggleSuperScorer: () => void;
   onBack: () => void;
   onStart: () => void;
   onOpenGame: (gameId: string) => void;
@@ -382,6 +392,10 @@ function TableDetail({
                 </div>
               ))}
           </div>
+        )}
+
+        {canStart && (
+          <SuperScorerToggle on={superScorer} onToggle={onToggleSuperScorer} />
         )}
       </div>
 

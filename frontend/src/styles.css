@@ -1406,6 +1406,13 @@ table.scoreboard tbody tr:last-child td:first-child::before {
   font-weight: 500;
 }
 
+.phase-dealer {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--grey-800);
+}
+
 .phase-total {
   margin: 6px 0 16px;
   font-size: 0.9rem;
@@ -2217,7 +2224,8 @@ a.btn.primary.mode-card,
   flex-direction: column;
   align-items: center;
   line-height: 1.1;
-  min-width: 2rem;
+  flex: 1 1 0;
+  min-width: 2.6rem;
 }
 
 .seat-stat-label {
@@ -2233,15 +2241,6 @@ a.btn.primary.mode-card,
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--grey-800);
-}
-
-.seat-stat-tricks .tricks-num {
-  font-size: 1.15rem;
-  color: var(--grey-900);
-}
-
-.seat-chip.me .seat-stat-tricks .tricks-num {
-  color: var(--ok);
 }
 
 .live-me-area {
@@ -3003,7 +3002,8 @@ button.playing-card:disabled {
   flex-direction: column;
   align-items: center;
   line-height: 1.1;
-  min-width: 2rem;
+  flex: 1 1 0;
+  min-width: 2.6rem;
 }
 
 .seat-stat-label {
@@ -3019,15 +3019,6 @@ button.playing-card:disabled {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--grey-800);
-}
-
-.seat-stat-tricks .tricks-num {
-  font-size: 1.15rem;
-  color: var(--grey-900);
-}
-
-.seat-chip.me .seat-stat-tricks .tricks-num {
-  color: var(--ok);
 }
 
 .live-me-area {
@@ -3225,10 +3216,6 @@ button.playing-card:disabled {
 
 .live-play.crowd .seat-stat-value {
   font-size: 0.85rem;
-}
-
-.live-play.crowd .seat-stat-tricks .tricks-num {
-  font-size: 1rem;
 }
 
 .live-play.crowd {
@@ -3929,10 +3916,6 @@ button.playing-card:disabled {
     font-size: 1.15rem;
   }
 
-  .seat-stat-tricks .tricks-num {
-    font-size: 1.4rem;
-  }
-
   :root {
     --trick-w: 60px;
     --trick-band-nudge: 14px;
@@ -4054,10 +4037,6 @@ button.playing-card:disabled {
     font-size: 1.3rem;
   }
 
-  .live-play.side-heavy .seat-stat-tricks .tricks-num {
-    font-size: 1.55rem;
-  }
-
   /* You seat: same size as side seats, centered on bottom row */
   .live-play.side-heavy .live-felt-bottom {
     display: flex;
@@ -4115,5 +4094,228 @@ button.playing-card:disabled {
   .live-play.crowd .playing-card:not(.compact) {
     width: 40px;
     height: 56px;
+  }
+}
+
+.super-scorer-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.super-scorer-toggle.on {
+  border-color: var(--grey-700);
+  background: var(--sand-100);
+  box-shadow: inset 0 0 0 1px var(--grey-700);
+}
+
+.super-scorer-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.super-scorer-toggle-text strong {
+  font-size: 1rem;
+}
+
+.super-scorer-toggle-text span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.super-scorer-switch {
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--sand-200);
+  border: 1px solid var(--line-strong);
+  position: relative;
+}
+
+.super-scorer-toggle.on .super-scorer-switch {
+  background: var(--grey-800);
+  border-color: var(--grey-800);
+}
+
+.super-scorer-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.super-scorer-toggle.on .super-scorer-knob {
+  left: 20px;
+}
+
+.super-play {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 2px 8px;
+}
+
+.super-play-trump {
+  margin: 0;
+  text-align: center;
+  font-weight: 650;
+  color: var(--grey-800);
+}
+
+.super-play-standings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.super-play-seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.super-play-seat.turn {
+  border-color: var(--grey-700);
+  background: var(--sand-100);
+  font-weight: 650;
+}
+
+.super-play-trick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.super-play-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.super-play-who {
+  margin: 4px 0 0;
+  text-align: center;
+  font-family: var(--font);
+  font-size: 1.45rem;
+  font-weight: 650;
+}
+
+.card-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-picker-suits,
+.card-picker-ranks {
+  display: flex;
+  gap: 6px;
+}
+
+.card-picker-suits {
+  justify-content: stretch;
+}
+
+.card-picker-ranks {
+  flex-wrap: nowrap;
+  justify-content: stretch;
+}
+
+.card-picker-suit,
+.card-picker-rank {
+  flex: 1 1 0;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  cursor: pointer;
+  font-family: var(--font);
+}
+
+.card-picker-suit {
+  font-size: 1.6rem;
+  min-width: 0;
+}
+
+.card-picker-rank {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 4px 0;
+  font-weight: 700;
+  font-size: 0.8rem;
+  line-height: 1.1;
+}
+
+.card-picker-rank-suit {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.card-picker-suit.red,
+.card-picker-rank.red {
+  color: var(--danger);
+}
+
+.card-picker-suit.black,
+.card-picker-rank.black {
+  color: var(--grey-900);
+}
+
+.card-picker-suit.selected,
+.card-picker-rank.selected {
+  border-color: var(--grey-800);
+  background: var(--sand-100);
+  box-shadow: inset 0 0 0 1px var(--grey-800);
+}
+
+.card-picker-rank:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (orientation: portrait) {
+  .card-picker-ranks {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .card-picker-rank {
+    flex: unset;
+    font-size: 0.95rem;
   }
 }

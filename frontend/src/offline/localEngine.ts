@@ -1,4 +1,6 @@
 import type { GameDetail, GameSummary, Standing } from '../api';
+import type { CardJson } from '../types/cards';
+import { buildSuperPlay } from './superPlay';
 import { assertGameNotes, hasGameNotes, type GameNote } from './notes';
 import {
   TOTAL_ROUNDS,
@@ -152,6 +154,7 @@ export function createLocalGame(
     gameId: string;
     playerIds: string[];
     playerUserIds?: (string | null)[];
+    superScorer?: boolean;
   },
 ): GameDetail {
   const names = playerNames.map((n) => n.trim()).filter(Boolean);
@@ -217,6 +220,7 @@ export function createLocalGame(
     notes: [],
     status: 'BIDDING',
     playMode: 'IN_PERSON',
+    superScorer: ids?.superScorer === true,
     liveCode: null,
     phase: 'bidding',
     currentRound: 1,
@@ -245,6 +249,7 @@ export function createLocalGame(
       playerCount: n,
       firstDealerSeat: firstDealer,
       playerNames: names,
+      superScorer: ids?.superScorer === true,
       playerIds: players.map((p) => p.id),
       seatOrder: players.map((p) => ({
         playerId: p.id,
@@ -359,6 +364,150 @@ export function localSetBids(
   };
 
   return recompute(next);
+}
+
+export function localSetSuperPlay(
+  game: GameDetail,
+  roundNumber: number,
+  trumpCard: CardJson | null,
+  plays: { playerId: string; card: CardJson }[],
+): GameDetail {
+  if (game.playMode === 'ONLINE') {
+    throw new Error('Super scorer is only available for scorekeeper games');
+  }
+  if (!game.superScorer) {
+    throw new Error('This game is not in super scorer mode');
+  }
+  const round = game.rounds.find((r) => r.number === roundNumber);
+  if (!round) {
+    throw new Error(`Round ${roundNumber} not found`);
+  }
+  const bidsIn = round.entries.every((e) => e.bid !== null);
+  if (!bidsIn && plays.length > 0) {
+    throw new Error('All bids must be set before play');
+  }
+  if (round.entries.every((e) => e.tricksTaken !== null)) {
+    throw new Error('Round already scored');
+  }
+
+  const view = buildSuperPlay({
+    playerCount: game.players.length,
+    firstLeadSeat: round.firstBidderSeat,
+    handSize: round.handSize,
+    players: game.players.map((p) => ({
+      id: p.id,
+      seatIndex: p.seatIndex,
+    })),
+    trumpCard,
+    plays: plays.map((p) => ({
+      playerId: p.playerId,
+      s: p.card.s,
+      r: p.card.r,
+    })),
+  });
+
+  const cardsByPlayer = new Map<
+    string,
+    NonNullable<GameDetail['rounds'][number]['entries'][number]['cardsPlayed']>
+  >();
+  for (const p of game.players) {
+    cardsByPlayer.set(p.id, []);
+  }
+  for (const trick of view.completed) {
+    for (const play of trick.plays) {
+      const list = cardsByPlayer.get(play.playerId);
+      if (!list) {
+        throw new Error('Play for unknown player');
+      }
+      list.push({
+        trickIndex: trick.trickIndex,
+        playOrder: play.playOrder,
+        s: play.card.s,
+        r: play.card.r,
+        key: play.card.key,
+      });
+    }
+  }
+  if (view.current) {
+    for (const play of view.current.plays) {
+      const list = cardsByPlayer.get(play.playerId);
+      if (!list) {
+        throw new Error('Play for unknown player');
+      }
+      list.push({
+        trickIndex: view.completed.length,
+        playOrder: play.playOrder,
+        s: play.s,
+        r: play.r,
+        key: play.key,
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const patched: GameDetail = {
+    ...game,
+    rounds: game.rounds.map((r) => {
+      if (r.number !== roundNumber) return r;
+      return {
+        ...r,
+        trumpSuit: view.trumpCard?.s ?? null,
+        trumpCard: view.trumpCard,
+        currentTrick: view.current,
+        trickHistory: view.completed,
+        tricks: view.completed.map((t) => ({
+          id: `${r.id}-trick-${t.trickIndex}`,
+          trickIndex: t.trickIndex,
+          leadSeat: t.leadSeat,
+          leadSuit: t.leadSuit,
+          winnerSeat: t.winnerSeat,
+          winnerPlayerId: t.winnerPlayerId,
+          completedAt: now,
+          plays: t.plays.map((p) => ({
+            playOrder: p.playOrder,
+            seatIndex: p.seatIndex,
+            playerId: p.playerId,
+            cardSuit: p.card.s,
+            cardRank: p.card.r,
+            cardKey: p.card.key,
+            followedSuit: p.followedSuit,
+            playedTrump: p.playedTrump,
+            playedAt: now,
+          })),
+        })),
+        entries: r.entries.map((e) => ({
+          ...e,
+          cardsPlayed: cardsByPlayer.get(e.playerId) ?? [],
+        })),
+      };
+    }),
+    events: appendEvent(
+      game,
+      view.completed.length > 0 &&
+        plays.length === view.completed.length * game.players.length
+        ? 'TRICK_COMPLETED'
+        : 'CARD_PLAYED',
+      {
+        roundNumber,
+        trumpCard: view.trumpCard,
+        playCount: plays.length,
+        tricksCompleted: view.completed.length,
+        turnPlayerId: view.turnPlayerId,
+        roundComplete: view.roundComplete,
+      },
+      roundNumber,
+    ),
+  };
+
+  if (!view.roundComplete) {
+    return recompute(patched);
+  }
+
+  const tricks = game.players.map((p) => ({
+    playerId: p.id,
+    tricksTaken: view.tricksTakenByPlayerId[p.id] ?? 0,
+  }));
+  return localSetTricks(patched, roundNumber, tricks);
 }
 
 export function localSetTricks(
@@ -545,6 +694,11 @@ export function localUpdateRound(
       tricksCompletedAt: r.tricksCompletedAt ?? now,
       completedAt: r.completedAt ?? now,
       editCount: (r.editCount ?? 0) + 1,
+      trumpSuit: null,
+      trumpCard: null,
+      currentTrick: null,
+      trickHistory: null,
+      tricks: [],
       entries: r.entries.map((e) => {
         const bid = bidMap.get(e.playerId);
         const taken = trickMap.get(e.playerId);
@@ -568,6 +722,7 @@ export function localUpdateRound(
           absDelta: o.absDelta,
           isNilBid: o.isNilBid,
           isNilMade: o.isNilMade,
+          cardsPlayed: [],
         };
       }),
       complete: true,
@@ -668,6 +823,7 @@ export function toSummary(game: GameDetail): GameSummary {
     hasNotes: hasGameNotes(game.notes),
     status: game.status,
     playMode: game.playMode ?? 'IN_PERSON',
+    superScorer: game.superScorer === true,
     liveCode: game.liveCode ?? null,
     createdAt: game.createdAt,
     finishedAt: game.finishedAt,

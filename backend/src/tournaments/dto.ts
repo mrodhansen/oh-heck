@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -105,6 +106,10 @@ export class StartTournamentTableDto {
   @ArrayMaxSize(7)
   @IsUUID('4', { each: true })
   playerIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  superScorer?: boolean;
 }
 
 export class TournamentSyncOperationDto {

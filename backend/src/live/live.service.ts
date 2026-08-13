@@ -342,6 +342,32 @@ export class LiveService {
     return { ok: true as const, removed: false, gone: true as const };
   }
 
+  async identifyLiveSocket(sessionId: string, token: string) {
+    if (!token) return null;
+    const session = await this.prisma.liveSession.findUnique({
+      where: { id: sessionId },
+      include: { players: true },
+    });
+    if (!session || session.status === LiveSessionStatus.COMPLETED) {
+      return null;
+    }
+    const player = session.players.find((p) => p.token === token && !p.gone);
+    if (!player) return null;
+    return { playerId: player.id };
+  }
+
+  async dropIfUnsubscribed(sessionId: string, playerId: string) {
+    try {
+      const session = await this.loadSession(sessionId);
+      const actor = session.players.find((p) => p.id === playerId);
+      if (!actor || actor.gone) return;
+      await this.leave(sessionId, actor.token);
+    } catch (e) {
+      if (e instanceof NotFoundException) return;
+      throw e;
+    }
+  }
+
   async getView(sessionId: string, token: string) {
     const session = await this.loadSession(sessionId);
     const player = this.authPlayer(session, token);
