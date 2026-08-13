@@ -129,7 +129,7 @@ export function LiveHubPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const name = createName.trim();
+    const name = (user?.username ?? createName).trim();
     if (!name) {
       setError('Enter your name');
       return;
@@ -216,6 +216,7 @@ export function LiveHubPage() {
           <label className="field">
             Name
             <input
+              type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
               maxLength={24}
@@ -252,7 +253,7 @@ export function LiveHubPage() {
 
         <form className="card stack" onSubmit={onJoinCode}>
           <label className="field">
-            Game code
+            Join Game
             <input
               type="number"
               className="code-input"
@@ -282,25 +283,22 @@ export function LiveHubPage() {
 
         <form className="card stack" onSubmit={onCreate}>
           <label className="field">
-            Your name
-            <input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              maxLength={24}
-              autoComplete="nickname"
-              placeholder="Host name"
-            />
+            Create a new game
+            {user ? null : (
+              <input
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                maxLength={24}
+                autoComplete="nickname"
+                placeholder="Host name"
+              />
+            )}
           </label>
-          {user ? (
-            <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-              Account stays {user.username}. The name above is what the table
-              shows.
-            </p>
-          ) : null}
           <button
             type="submit"
             className="btn primary"
-            disabled={busy || !createName.trim()}
+            disabled={busy || !(user?.username ?? createName).trim()}
           >
             {busy ? 'Creating…' : 'Create new game'}
           </button>

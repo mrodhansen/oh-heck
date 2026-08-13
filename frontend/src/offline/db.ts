@@ -6,7 +6,8 @@ export type GameOutboxType =
   | 'setBids'
   | 'setTricks'
   | 'updateRound'
-  | 'updateNotes';
+  | 'updateNotes'
+  | 'setSuperPlay';
 
 export type TournamentOutboxType =
   | 'createTournament'
@@ -26,6 +27,7 @@ export type CreateGamePayload = {
   id: string;
   playerIds: string[];
   playerUserIds?: (string | null)[];
+  superScorer?: boolean;
 };
 
 export type SetBidsPayload = {
@@ -47,6 +49,16 @@ export type UpdateRoundPayload = {
   bids: BidItem[];
   tricks: TrickItem[];
   forceBurn?: boolean;
+};
+
+export type SetSuperPlayPayload = {
+  gameId: string;
+  roundNumber: number;
+  trumpCard: { s: 'C' | 'D' | 'H' | 'S'; r: string } | null;
+  plays: {
+    playerId: string;
+    card: { s: 'C' | 'D' | 'H' | 'S'; r: string };
+  }[];
 };
 
 export type UpdateNotesPayload = {
@@ -95,6 +107,7 @@ export type StartTournamentTablePayload = {
   tableId: string;
   gameId: string;
   playerIds: string[];
+  superScorer?: boolean;
 };
 
 export type OutboxOp = {
@@ -106,6 +119,7 @@ export type OutboxOp = {
   | { type: 'setTricks'; payload: SetTricksPayload }
   | { type: 'updateRound'; payload: UpdateRoundPayload }
   | { type: 'updateNotes'; payload: UpdateNotesPayload }
+  | { type: 'setSuperPlay'; payload: SetSuperPlayPayload }
   | { type: 'createTournament'; payload: CreateTournamentPayload }
   | { type: 'addTournamentPlayer'; payload: AddTournamentPlayerPayload }
   | { type: 'removeTournamentPlayer'; payload: RemoveTournamentPlayerPayload }
@@ -127,6 +141,7 @@ export const GAME_OUTBOX_TYPES: ReadonlySet<GameOutboxType> = new Set([
   'setTricks',
   'updateRound',
   'updateNotes',
+  'setSuperPlay',
 ]);
 
 function openDb(): Promise<IDBDatabase> {

@@ -3,6 +3,7 @@ import { isNetworkFailure } from './api/errors';
 import type {
   CardJson,
   CardPlayRecord,
+  CurrentTrickJson,
   DealtHandsJson,
   TrickHistoryEntry,
 } from './types/cards';
@@ -20,6 +21,7 @@ import {
 import {
   createLocalGame,
   localSetBids,
+  localSetSuperPlay,
   localSetTricks,
   localUpdateNotes,
   localUpdateRound,
@@ -61,6 +63,7 @@ export type GameSummary = {
   hasNotes?: boolean;
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
+  superScorer?: boolean;
   liveCode?: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -151,6 +154,7 @@ export type RoundDetail = {
   dealtHands?: DealtHandsJson | null;
   dealtAt?: string | null;
   trickHistory?: TrickHistoryEntry[] | null;
+  currentTrick?: CurrentTrickJson | null;
   tricks?: TrickDetail[];
   entries: RoundEntry[];
   complete: boolean;
@@ -194,6 +198,7 @@ export type GameDetail = {
   notes: GameNote[];
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
+  superScorer?: boolean;
   liveCode?: string | null;
   phase: 'bidding' | 'tricks' | 'completed';
   currentRound: number | null;
@@ -502,6 +507,7 @@ function normalizeGame(raw: GameDetail): GameDetail {
 
   return {
     ...raw,
+    superScorer: raw.superScorer === true,
     notes: parseGameNotes(raw.notes),
     startedAt: raw.startedAt ?? null,
     durationMs:
@@ -647,11 +653,12 @@ export const api = {
   createGame: async (
     playerNames: string[],
     name?: string,
-    opts?: { playerUserIds?: (string | null)[] },
+    opts?: { playerUserIds?: (string | null)[]; superScorer?: boolean },
   ): Promise<GameDetail> => {
     const gameId = newId();
     const playerIds = playerNames.map(() => newId());
     const playerUserIds = opts?.playerUserIds;
+    const superScorer = opts?.superScorer === true;
 
     if (isOnline()) {
       try {
@@ -664,6 +671,7 @@ export const api = {
               id: gameId,
               playerIds,
               ...(playerUserIds ? { playerUserIds } : {}),
+              ...(superScorer ? { superScorer: true } : {}),
             }),
           });
           return rememberGame(game);
@@ -677,6 +685,7 @@ export const api = {
       gameId,
       playerIds,
       playerUserIds,
+      superScorer,
     });
     await rememberGame(local);
     await enqueue({
@@ -687,6 +696,7 @@ export const api = {
         id: gameId,
         playerIds,
         ...(playerUserIds ? { playerUserIds } : {}),
+        ...(superScorer ? { superScorer: true } : {}),
       },
     });
     return local;
@@ -763,6 +773,51 @@ export const api = {
     await enqueue({
       type: 'setTricks',
       payload: { gameId, roundNumber, tricks },
+    });
+    return next;
+  },
+
+  setSuperPlay: async (
+    gameId: string,
+    roundNumber: number,
+    body: {
+      trumpCard: CardJson | null;
+      plays: { playerId: string; card: CardJson }[];
+    },
+  ): Promise<GameDetail> => {
+    if (isOnline()) {
+      try {
+        return await onlineWrite(async () => {
+          const game = await httpRequest<GameDetail>(
+            `/games/${gameId}/rounds/${roundNumber}/super-play`,
+            {
+              method: 'POST',
+              body: JSON.stringify(body),
+            },
+          );
+          return rememberGame(game);
+        });
+      } catch (e) {
+        if (!shouldGoOffline(e)) throw e;
+      }
+    }
+
+    const current = await getCachedGame<GameDetail>(gameId);
+    if (!current) throw new Error('Game not available offline');
+    const normalized = normalizeGame(current);
+    if (normalized.prelimEditsLocked) {
+      throw new Error('Prelim edits locked — reconnect to sync tournament state');
+    }
+    const next = localSetSuperPlay(
+      normalized,
+      roundNumber,
+      body.trumpCard,
+      body.plays,
+    );
+    await rememberGame(next);
+    await enqueue({
+      type: 'setSuperPlay',
+      payload: { gameId, roundNumber, ...body },
     });
     return next;
   },
@@ -1059,7 +1114,9 @@ export const api = {
   startTournamentTable: async (
     tournamentId: string,
     tableId: string,
+    opts?: { superScorer?: boolean },
   ): Promise<{ tournament: TournamentDetail; game: GameDetail }> => {
+    const superScorer = opts?.superScorer === true;
     if (isOnline()) {
       try {
         return await onlineWrite(async () => {
@@ -1068,7 +1125,7 @@ export const api = {
             game: GameDetail;
           }>(`/tournaments/${tournamentId}/tables/${tableId}/start`, {
             method: 'POST',
-            body: JSON.stringify({}),
+            body: JSON.stringify(superScorer ? { superScorer: true } : {}),
           });
           await rememberTournament(res.tournament);
           await rememberGame(res.game);
@@ -1081,7 +1138,7 @@ export const api = {
 
     const current = await getCachedTournament<TournamentDetail>(tournamentId);
     if (!current) throw new Error('Tournament not available offline');
-    const started = localStartTable(current, tableId);
+    const started = localStartTable(current, tableId, { superScorer });
     await rememberTournament(started.tournament);
     await rememberGame(started.game);
     await enqueue({
@@ -1091,6 +1148,7 @@ export const api = {
         tableId,
         gameId: started.gameId,
         playerIds: started.playerIds,
+        ...(superScorer ? { superScorer: true } : {}),
       },
     });
     return { tournament: started.tournament, game: started.game };

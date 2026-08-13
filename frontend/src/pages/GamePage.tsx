@@ -7,6 +7,10 @@ import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
 import { EditRoundModal } from '../components/EditRoundModal';
 import { GameNotes } from '../components/GameNotes';
+import { SuperScorerPlay } from '../components/SuperScorerPlay';
+import { SuperScorerTrump } from '../components/SuperScorerTrump';
+import { suitGlyph } from '../live/cards';
+import { hasTrumpCard } from '../offline/superPlay';
 import { SyncStatus } from '../components/SyncStatus';
 import {
   forbiddenLastBid as computeForbiddenLast,
@@ -414,12 +418,24 @@ export function GamePage() {
         <div className="play-layout">
           <header className="phase-header">
             <h2 className="phase-title">
-              {phase === 'bidding' ? 'Bidding' : 'Scoring'}
+              {game.superScorer && !hasTrumpCard(current.trumpCard) && phase === 'bidding'
+                ? 'Choose trump'
+                : phase === 'bidding'
+                  ? 'Bidding'
+                  : game.superScorer
+                    ? 'Play'
+                    : 'Scoring'}
             </h2>
             <p className="phase-sub">
               Round {current.number}
               <span className="phase-dot">·</span>
               {handSize} cards
+              {hasTrumpCard(current.trumpCard) && current.trumpCard ? (
+                <>
+                  <span className="phase-dot">·</span>
+                  {suitGlyph(current.trumpCard.s)}
+                </>
+              ) : null}
               {phase === 'tricks' && current.forceBurn ? (
                 <>
                   <span className="phase-dot">·</span>
@@ -427,17 +443,57 @@ export function GamePage() {
                 </>
               ) : null}
             </p>
-            <p className="phase-total">
-              <strong>
-                {phase === 'bidding' ? totalBidsLocked : totalBidsForRound}
-              </strong>{' '}
-              {(phase === 'bidding' ? totalBidsLocked : totalBidsForRound) <= 1
-                ? 'has been bid'
-                : 'have been bid'}
+            <p className="phase-dealer">
+              {game.players.find(
+                (p) =>
+                  p.id === current.dealerPlayerId ||
+                  p.seatIndex === current.dealerSeat,
+              )?.name}{' '}
+              is Dealer
             </p>
+            {!(
+              game.superScorer &&
+              !hasTrumpCard(current.trumpCard) &&
+              phase === 'bidding'
+            ) && (
+              <p className="phase-total">
+                <strong>
+                  {phase === 'bidding' ? totalBidsLocked : totalBidsForRound}
+                </strong>{' '}
+                {(phase === 'bidding' ? totalBidsLocked : totalBidsForRound) <= 1
+                  ? 'has been bid'
+                  : 'have been bid'}
+              </p>
+            )}
           </header>
 
-          {phase === 'bidding' && currentBidder && (
+          {phase === 'bidding' &&
+            game.superScorer &&
+            !hasTrumpCard(current.trumpCard) && (
+              <SuperScorerTrump
+                saving={saving}
+                onSave={async (trumpCard) => {
+                  setError(null);
+                  setSaving(true);
+                  try {
+                    const updated = await api.setSuperPlay(
+                      game.id,
+                      current.number,
+                      { trumpCard, plays: [] },
+                    );
+                    setGame(updated);
+                  } catch (e) {
+                    setError(toUserMessage(e, 'Failed to save trump'));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              />
+            )}
+
+          {phase === 'bidding' &&
+            currentBidder &&
+            !(game.superScorer && !hasTrumpCard(current.trumpCard)) && (
             <>
               <div className="play-middle">
                 <div className="turn-list">
@@ -540,7 +596,31 @@ export function GamePage() {
             </>
           )}
 
-          {phase === 'tricks' && trickPlayer && (
+          {phase === 'tricks' && game.superScorer && (
+            <SuperScorerPlay
+              game={game}
+              current={current}
+              saving={saving}
+              onSave={async (body) => {
+                setError(null);
+                setSaving(true);
+                try {
+                  const updated = await api.setSuperPlay(
+                    game.id,
+                    current.number,
+                    body,
+                  );
+                  setGame(updated);
+                } catch (e) {
+                  setError(toUserMessage(e, 'Failed to save play'));
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            />
+          )}
+
+          {phase === 'tricks' && !game.superScorer && trickPlayer && (
             <>
               <div className="play-middle">
                 <div className="turn-list">

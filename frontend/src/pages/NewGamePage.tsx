@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { toUserMessage } from '../api/errors';
 import { useAuth } from '../useAuth';
+import { SuperScorerToggle } from '../components/SuperScorerToggle';
 
 const MIN = 2;
 const MAX = 7;
@@ -17,6 +18,7 @@ export function NewGamePage() {
   const [selfSlot, setSelfSlot] = useState<number | null>(null);
   const [gameName, setGameName] = useState('');
   const [dealerIndex, setDealerIndex] = useState(0);
+  const [superScorer, setSuperScorer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -86,9 +88,10 @@ export function NewGamePage() {
       const game = await api.createGame(
         rotated.map((p) => p.name),
         gameName.trim() || undefined,
-        playerUserIds.some((id) => id)
-          ? { playerUserIds }
-          : undefined,
+        {
+          ...(playerUserIds.some((id) => id) ? { playerUserIds } : {}),
+          ...(superScorer ? { superScorer: true } : {}),
+        },
       );
       navigate(`/games/${game.id}`);
     } catch (err) {
@@ -130,6 +133,11 @@ export function NewGamePage() {
               );
             })}
           </div>
+
+          <SuperScorerToggle
+            on={superScorer}
+            onToggle={() => setSuperScorer((v) => !v)}
+          />
         </div>
 
         <div className="action-bar">

@@ -75,11 +75,16 @@ export function LiveSessionPage() {
     };
   }, [id, auth?.token, load]);
 
-  useSocketRoom(id ? `live:${id}` : null, 'live:update', () => {
-    void load().catch((e: unknown) =>
-      setError(toUserMessage(e, 'Could not refresh session')),
-    );
-  });
+  useSocketRoom(
+    id ? `live:${id}` : null,
+    'live:update',
+    () => {
+      void load().catch((e: unknown) =>
+        setError(toUserMessage(e, 'Could not refresh session')),
+      );
+    },
+    auth?.token,
+  );
 
   useEffect(() => {
     if (view?.phase === 'complete' || view?.status === 'COMPLETED') {
@@ -508,10 +513,10 @@ function LivePlayTable({
           {handSize} cards
         </p>
         <p className="live-phase-row live-phase-row-meta">
-          Bid {totalBid}
-          <span className="phase-dot">·</span>
           Tricks {tricksTaken}
           {handSize > 0 ? `/${handSize}` : ''}
+          <span className="phase-dot">·</span>
+          Bid {totalBid}
         </p>
       </header>
 
@@ -977,12 +982,12 @@ function BidTricksBadge({
       </span>
       <span className="seat-stats seat-stats-full">
         <span className="seat-stat">
+          <span className="seat-stat-label">Tricks</span>
+          <span className="seat-stat-value">{tricks ?? 0}</span>
+        </span>
+        <span className="seat-stat">
           <span className="seat-stat-label">Bid</span>
           <span className="seat-stat-value">{bidVal ?? '—'}</span>
-        </span>
-        <span className="seat-stat seat-stat-tricks">
-          <span className="seat-stat-label">Tricks</span>
-          <span className="seat-stat-value tricks-num">{tricks ?? 0}</span>
         </span>
       </span>
     </>

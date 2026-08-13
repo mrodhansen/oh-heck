@@ -119,6 +119,9 @@ model Game {
   /// First time bids were committed (play actually started)
   startedAt DateTime?
 
+  /// IN_PERSON scorekeeper records every card and auto-fills tricks
+  superScorer Boolean @default(false)
+
   /// When set, this game belongs to a tournament table
   tournamentTableId String? @unique
   isHighTable       Boolean @default(false)
@@ -200,6 +203,8 @@ model Round {
   dealtAt     DateTime?
   /// Full trick log mirror (same data as Trick rows) for easy export
   trickHistory Json?
+  /// Super scorer: in-progress trick { leadSeat, plays: [...] }
+  currentTrick Json?
 
   game    Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
   entries RoundEntry[]

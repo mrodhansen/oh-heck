@@ -268,7 +268,7 @@ export function localSeatTables(t: TournamentDetail): {
 export function localStartTable(
   t: TournamentDetail,
   tableId: string,
-  opts?: { gameId?: string; playerIds?: string[] },
+  opts?: { gameId?: string; playerIds?: string[]; superScorer?: boolean },
 ): {
   tournament: TournamentDetail;
   game: GameDetail;
@@ -298,7 +298,11 @@ export function localStartTable(
     ? `${t.name ?? 'Tournament'} — High Table`
     : `${t.name ?? 'Tournament'} — Table ${table.tableNumber}`;
 
-  const game = createLocalGame(names, gameName, { gameId, playerIds });
+  const game = createLocalGame(names, gameName, {
+    gameId,
+    playerIds,
+    superScorer: opts?.superScorer === true,
+  });
   const linked: GameDetail = {
     ...game,
     tournamentId: t.id,

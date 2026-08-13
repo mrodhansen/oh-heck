@@ -14,10 +14,18 @@ import { TournamentsService } from '../tournaments/tournaments.service';
 import {
   CreateGameDto,
   SetBidsDto,
+  SetSuperPlayDto,
   SetTricksDto,
   UpdateNotesDto,
   UpdateRoundDto,
 } from './dto';
+import { toInputJson, type JsonValue } from '../common/json';
+import {
+  buildSuperPlay,
+  hasTrumpCard,
+  parseCard,
+  type SuperPlayCard,
+} from './super-play';
 import {
   asIntArray,
   assignPlacesByTotal,
@@ -169,12 +177,18 @@ export class GamesService {
         dto.playMode === 'ONLINE' && opts?.fromLive === true
           ? PlayMode.ONLINE
           : PlayMode.IN_PERSON;
+      if (dto.superScorer === true && playMode === PlayMode.ONLINE) {
+        throw new BadRequestException(
+          'Super scorer is only available for scorekeeper games',
+        );
+      }
       const created = await tx.game.create({
         data: {
           ...(dto.id ? { id: dto.id } : {}),
           name: dto.name?.trim() || defaultGameName(names),
           status: GameStatus.BIDDING,
           playMode,
+          superScorer: dto.superScorer === true && playMode === PlayMode.IN_PERSON,
           liveCode:
             playMode === PlayMode.ONLINE
               ? dto.liveCode?.trim() || null
@@ -240,6 +254,7 @@ export class GamesService {
           {
             name: created.name,
             playMode,
+            superScorer: created.superScorer,
             liveCode: created.liveCode,
             playerCount,
             firstDealerSeat,
@@ -270,7 +285,8 @@ export class GamesService {
         | 'setBids'
         | 'setTricks'
         | 'updateRound'
-        | 'updateNotes';
+        | 'updateNotes'
+        | 'setSuperPlay';
       payload: object;
     }[],
   ) {
@@ -361,6 +377,23 @@ export class GamesService {
             data = await this.updateNotes(gameId, dto);
             break;
           }
+          case 'setSuperPlay': {
+            const gameId = fieldString(payload, 'gameId');
+            const roundNumber = fieldNumber(payload, 'roundNumber');
+            if (!gameId || !Number.isInteger(roundNumber)) {
+              throw new BadRequestException('Invalid setSuperPlay payload');
+            }
+            const dto = plainToInstance(SetSuperPlayDto, {
+              trumpCard: fieldValue(payload, 'trumpCard'),
+              plays: fieldValue(payload, 'plays'),
+            });
+            await validateOrReject(dto, {
+              whitelist: true,
+              forbidNonWhitelisted: true,
+            });
+            data = await this.setSuperPlay(gameId, roundNumber, dto);
+            break;
+          }
           default:
             throw new BadRequestException(`Unknown op type`);
         }
@@ -412,6 +445,9 @@ export class GamesService {
     }
 
     this.assertCurrentRoundForBids(game, roundNumber);
+    if (game.superScorer && !hasTrumpCard(round.trumpCard)) {
+      throw new BadRequestException('Trump must be set before bidding');
+    }
     this.validateBids(game, round, dto.bids);
 
     const players = game.players.map((p) => ({
@@ -692,6 +728,224 @@ export class GamesService {
     return this.emitGame(await this.getGame(gameId));
   }
 
+  async setSuperPlay(
+    gameId: string,
+    roundNumber: number,
+    dto: SetSuperPlayDto,
+  ) {
+    const game = await this.findFull(gameId);
+    this.assertClientMayMutate(game, false);
+    if (game.playMode !== PlayMode.IN_PERSON) {
+      throw new BadRequestException(
+        'Super scorer is only available for scorekeeper games',
+      );
+    }
+    if (!game.superScorer) {
+      throw new BadRequestException('This game is not in super scorer mode');
+    }
+    if (game.status === GameStatus.COMPLETED) {
+      throw new BadRequestException('Game is completed');
+    }
+    if (game.tournamentId && !game.isHighTable) {
+      await this.tournaments.assertPrelimEditable(game.tournamentId);
+    }
+
+    const round = game.rounds.find((r) => r.number === roundNumber);
+    if (!round) {
+      throw new NotFoundException(`Round ${roundNumber} not found`);
+    }
+    const bidsIn = round.entries.every((e) => e.bid !== null);
+    const trumpOnly = dto.plays.length === 0;
+    if (!bidsIn && !trumpOnly) {
+      throw new BadRequestException('All bids must be set before play');
+    }
+    if (bidsIn) {
+      this.assertCurrentRoundForTricks(game, roundNumber);
+    } else {
+      this.assertCurrentRoundForBids(game, roundNumber);
+    }
+
+    const trumpCard =
+      dto.trumpCard == null ? null : parseCard(dto.trumpCard.s, dto.trumpCard.r);
+    const plays: SuperPlayCard[] = dto.plays.map((p) => {
+      const card = parseCard(p.card.s, p.card.r);
+      return { playerId: p.playerId, s: card.s, r: card.r };
+    });
+
+    let view;
+    try {
+      view = buildSuperPlay({
+        playerCount: game.players.length,
+        firstLeadSeat: round.firstBidderSeat,
+        handSize: round.handSize,
+        players: game.players.map((p) => ({
+          id: p.id,
+          seatIndex: p.seatIndex,
+        })),
+        trumpCard,
+        plays,
+      });
+    } catch (e) {
+      throw new BadRequestException(
+        e instanceof Error ? e.message : 'Invalid play',
+      );
+    }
+
+    const cardsByPlayer = new Map<string, JsonValue[]>();
+    for (const p of game.players) {
+      cardsByPlayer.set(p.id, []);
+    }
+    for (const trick of view.completed) {
+      for (const play of trick.plays) {
+        const list = cardsByPlayer.get(play.playerId);
+        if (!list) {
+          throw new BadRequestException('Play for unknown player');
+        }
+        list.push({
+          trickIndex: trick.trickIndex,
+          playOrder: play.playOrder,
+          s: play.card.s,
+          r: play.card.r,
+          key: play.card.key,
+        });
+      }
+    }
+    if (view.current) {
+      for (const play of view.current.plays) {
+        const list = cardsByPlayer.get(play.playerId);
+        if (!list) {
+          throw new BadRequestException('Play for unknown player');
+        }
+        list.push({
+          trickIndex: view.completed.length,
+          playOrder: play.playOrder,
+          s: play.s,
+          r: play.r,
+          key: play.key,
+        });
+      }
+    }
+
+    const currentTrickJson: JsonValue | null = view.current
+      ? {
+          leadSeat: view.current.leadSeat,
+          plays: view.current.plays.map((p) => ({
+            playOrder: p.playOrder,
+            seatIndex: p.seatIndex,
+            playerId: p.playerId,
+            s: p.s,
+            r: p.r,
+            key: p.key,
+            followedSuit: p.followedSuit,
+            playedTrump: p.playedTrump,
+          })),
+        }
+      : null;
+
+    const historyJson: JsonValue = view.completed.map((t) => ({
+      trickIndex: t.trickIndex,
+      leadSeat: t.leadSeat,
+      leadSuit: t.leadSuit,
+      winnerSeat: t.winnerSeat,
+      winnerPlayerId: t.winnerPlayerId,
+      plays: t.plays.map((p) => ({
+        playOrder: p.playOrder,
+        seatIndex: p.seatIndex,
+        playerId: p.playerId,
+        card: { s: p.card.s, r: p.card.r, key: p.card.key },
+        followedSuit: p.followedSuit,
+        playedTrump: p.playedTrump,
+      })),
+    }));
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.trick.deleteMany({ where: { roundId: round.id } });
+
+      await tx.round.update({
+        where: { id: round.id },
+        data: {
+          trumpSuit: view.trumpCard?.s ?? null,
+          trumpCard: view.trumpCard
+            ? toInputJson({ s: view.trumpCard.s, r: view.trumpCard.r })
+            : Prisma.JsonNull,
+          currentTrick:
+            currentTrickJson == null
+              ? Prisma.JsonNull
+              : toInputJson(currentTrickJson),
+          trickHistory: toInputJson(historyJson),
+        },
+      });
+
+      for (const trick of view.completed) {
+        await tx.trick.create({
+          data: {
+            gameId,
+            roundId: round.id,
+            trickIndex: trick.trickIndex,
+            leadSeat: trick.leadSeat,
+            leadSuit: trick.leadSuit,
+            winnerSeat: trick.winnerSeat,
+            winnerPlayerId: trick.winnerPlayerId,
+            plays: {
+              create: trick.plays.map((p) => ({
+                playOrder: p.playOrder,
+                seatIndex: p.seatIndex,
+                playerId: p.playerId,
+                cardSuit: p.card.s,
+                cardRank: p.card.r,
+                cardKey: p.card.key,
+                followedSuit: p.followedSuit,
+                playedTrump: p.playedTrump,
+              })),
+            },
+          },
+        });
+      }
+
+      for (const p of game.players) {
+        await tx.roundEntry.update({
+          where: {
+            roundId_playerId: { roundId: round.id, playerId: p.id },
+          },
+          data: {
+            cardsPlayed: toInputJson(cardsByPlayer.get(p.id) ?? []),
+          },
+        });
+      }
+
+      await tx.gameEvent.create({
+        data: eventCreate(
+          gameId,
+          view.completed.length > 0 &&
+            dto.plays.length === view.completed.length * game.players.length
+            ? GameEventType.TRICK_COMPLETED
+            : GameEventType.CARD_PLAYED,
+          {
+            roundNumber,
+            trumpCard: view.trumpCard
+              ? { s: view.trumpCard.s, r: view.trumpCard.r }
+              : null,
+            playCount: dto.plays.length,
+            tricksCompleted: view.completed.length,
+            turnPlayerId: view.turnPlayerId,
+            roundComplete: view.roundComplete,
+          },
+          roundNumber,
+        ),
+      });
+    });
+
+    if (view.roundComplete) {
+      const tricks = game.players.map((p) => ({
+        playerId: p.id,
+        tricksTaken: view.tricksTakenByPlayerId[p.id] ?? 0,
+      }));
+      return this.setTricks(gameId, roundNumber, { tricks });
+    }
+
+    return this.emitGame(await this.getGame(gameId));
+  }
+
   async updateRound(
     gameId: string,
     roundNumber: number,
@@ -782,6 +1036,7 @@ export class GamesService {
         });
       }
 
+      await tx.trick.deleteMany({ where: { roundId: round.id } });
       await tx.round.update({
         where: { id: round.id },
         data: {
@@ -790,8 +1045,18 @@ export class GamesService {
           tricksCompletedAt: round.tricksCompletedAt ?? now,
           completedAt: round.completedAt ?? now,
           editCount: { increment: 1 },
+          trumpSuit: null,
+          trumpCard: Prisma.JsonNull,
+          currentTrick: Prisma.JsonNull,
+          trickHistory: Prisma.JsonNull,
         },
       });
+      for (const e of round.entries) {
+        await tx.roundEntry.update({
+          where: { id: e.id },
+          data: { cardsPlayed: Prisma.JsonNull },
+        });
+      }
 
       const refreshed = await tx.game.findUniqueOrThrow({
         where: { id: gameId },
@@ -1099,6 +1364,7 @@ export class GamesService {
       hasNotes: hasNotes(game.notes),
       status: game.status,
       playMode: game.playMode,
+      superScorer: game.superScorer,
       liveCode: game.liveCode,
       createdAt: game.createdAt,
       finishedAt: game.finishedAt,
@@ -1280,6 +1546,7 @@ export class GamesService {
         dealtHands: redactPrivateCards ? null : (round.dealtHands ?? null),
         dealtAt: round.dealtAt ?? null,
         trickHistory: redactPrivateCards ? null : (round.trickHistory ?? null),
+        currentTrick: redactPrivateCards ? null : (round.currentTrick ?? null),
         tricks: redactPrivateCards ? [] : tricks,
         entries: game.players.map((p) => {
           const e = round.entries.find((x) => x.playerId === p.id)!;
@@ -1339,6 +1606,7 @@ export class GamesService {
       notes: game.playMode === PlayMode.ONLINE ? [] : asNotes(game.notes),
       status: game.status,
       playMode: game.playMode,
+      superScorer: game.superScorer,
       // Never expose join code on public Board API (seat-stealing)
       liveCode:
         game.playMode === PlayMode.ONLINE ? null : game.liveCode,

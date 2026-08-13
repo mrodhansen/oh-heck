@@ -1,5 +1,6 @@
 import type { GameDetail } from '../api';
 import { bidOrderSeats, forbiddenLastBid } from './rules';
+import { hasTrumpCard } from './superPlay';
 
 export function assertBids(
   game: GameDetail,
@@ -17,6 +18,9 @@ export function assertBids(
       throw new Error(`Can only set bids on current round (${game.currentRound})`);
     }
     if (round.complete) throw new Error('Round already complete; use edit');
+    if (game.superScorer && !hasTrumpCard(round.trumpCard)) {
+      throw new Error('Trump must be set before bidding');
+    }
   } else {
     // Edit path: no future rounds past the furthest incomplete/complete frontier
     const maxRound =
