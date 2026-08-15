@@ -170,7 +170,7 @@ export function AccountPage() {
                   />
                 </label>
                 <label className="field">
-                  Email (optional)
+                  Email
                   <input
                     type="email"
                     value={email}
@@ -316,25 +316,18 @@ export function AccountPage() {
 
         <section className="card stack">
           <h3 className="section-title">Profile</h3>
-          <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          <div className="profile-identity">
+            <p className="profile-name">
+              {user.firstName} {user.lastName}
+            </p>
+            <p className="profile-username">{user.username}</p>
+            {user.email ? (
+              <p className="profile-email">{user.email}</p>
+            ) : null}
+          </div>
+          <p className="hint" style={{ margin: 0 }}>
             Only your password can be changed.
           </p>
-          <label className="field">
-            First name
-            <input value={user.firstName} readOnly />
-          </label>
-          <label className="field">
-            Last name
-            <input value={user.lastName} readOnly />
-          </label>
-          <label className="field">
-            Email
-            <input type="email" value={user.email ?? ''} readOnly />
-          </label>
-          <label className="field">
-            Username
-            <input value={user.username} readOnly />
-          </label>
         </section>
 
         <section className="card stack">

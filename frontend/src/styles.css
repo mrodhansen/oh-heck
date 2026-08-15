@@ -513,6 +513,27 @@ label.field {
   min-width: 0;
 }
 
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--grey-900);
+}
+
+.profile-username,
+.profile-email {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 input[type='text'],
 input[type='number'],
 input[type='search'],
