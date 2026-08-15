@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { api, StatsGame, StatsPlayer, StatsResponse, StatsLeader } from '../api';
 import { toUserMessage } from '../api/errors';
 import { filterStatsGames } from './statsGamesFilter';
+import { filterStatsPlayers } from './statsPlayersFilter';
 
 type Tab = 'overview' | 'games' | 'players';
 
@@ -291,6 +292,10 @@ function PlayersList({
   players: StatsPlayer[];
   onSelect: (key: string) => void;
 }) {
+  const [name, setName] = useState('');
+  const filtered = useMemo(() => filterStatsPlayers(players, name), [players, name]);
+  const filtering = Boolean(name.trim());
+
   if (players.length === 0) {
     return (
       <div className="card empty">
@@ -300,27 +305,75 @@ function PlayersList({
   }
 
   return (
-    <div className="list">
-      {players.map((p) => (
-        <button
-          key={p.key ?? p.name}
-          type="button"
-          className="list-item list-item-btn"
-          onClick={() => onSelect(p.key ?? p.name)}
-        >
-          <div className="min-w-0">
-            <p className="list-item-title truncate">{p.name}</p>
-            <p className="list-item-meta">
-              {p.wins} win{p.wins === 1 ? '' : 's'}
-              {p.avgScore != null ? ` · avg ${p.avgScore}` : ''}
-              {p.bidAccuracy != null ? ` · ${p.bidAccuracy}% bids` : ''}
-            </p>
+    <div className="stack">
+      <div className="game-list-filters">
+        <label className="field">
+          Name
+          <input
+            type="search"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Player name"
+            autoComplete="off"
+          />
+        </label>
+        {filtering ? (
+          <div className="game-list-filter-meta">
+            <span className="muted">
+              {filtered.length} of {players.length}
+            </span>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => setName('')}
+            >
+              Clear
+            </button>
           </div>
-          <span className="list-item-chevron" aria-hidden>
-            ›
-          </span>
-        </button>
-      ))}
+        ) : null}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card empty">No players match these filters.</div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Games</th>
+                  <th>Wins</th>
+                  <th>Avg</th>
+                  <th>Bids</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => (
+                  <tr key={p.key ?? p.name}>
+                    <td>
+                      <button
+                        type="button"
+                        className="table-link"
+                        onClick={() => onSelect(p.key ?? p.name)}
+                      >
+                        <span className="table-primary">{p.name}</span>
+                        <span className="table-secondary">
+                          {p.gamesCompleted} finished
+                        </span>
+                      </button>
+                    </td>
+                    <td>{p.gamesPlayed}</td>
+                    <td>{p.wins}</td>
+                    <td>{fmt(p.avgScore)}</td>
+                    <td>{pct(p.bidAccuracy)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
