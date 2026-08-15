@@ -12,14 +12,18 @@ Pages build vars (repo Actions): `VITE_API_URL=https://oh-heck-api.fly.dev`, `VI
 
 ## Deploy order (always)
 
-1. **Migrate + API first** — new frontend will 400 against an old API (`forbidNonWhitelisted`).
-2. **Then frontend** — push `main` (or `workflow_dispatch` on `Deploy frontend to GitHub Pages`).
+Push `main` (or `workflow_dispatch` on `Deploy frontend to GitHub Pages`).
+`.github/workflows/deploy-pages.yml` deploys **API first** (Fly `release_command` migrates Neon), then Pages.
 
-Never apply schema SQL by hand. Never `fly deploy` without the new `prisma/migrations/` in the image.
+Needs repo secret `FLY_API_TOKEN` (Fly deploy token for `oh-heck-api`).
+
+Never apply schema SQL by hand. Never deploy the API without the new `prisma/migrations/` in the image.
 
 ## Backend + Neon
 
-From repo:
+CI: `flyctl deploy --remote-only` from `backend/` in the Pages workflow.
+
+Manual:
 
 ```bash
 cd backend
@@ -28,7 +32,7 @@ fly deploy
 
 - Builds `backend/Dockerfile` (target `runner`).
 - `fly.toml` `[deploy] release_command = "npx prisma migrate deploy"` runs against Neon **before** the new machines take traffic.
-- Secrets already set: `DATABASE_URL`, `CORS_ORIGIN`, `COOKIE_SAMESITE`, `COOKIE_SECURE`.
+- Fly secrets: `DATABASE_URL`, `CORS_ORIGIN`, `COOKIE_SAMESITE`, `COOKIE_SECURE`.
 - Health: `GET https://oh-heck-api.fly.dev/health` → `{ ok: true }`.
 
 If migrate fails, Fly aborts the release (old API stays up). Fix the migration; do not `db push` or hand-edit Neon.
@@ -41,11 +45,10 @@ fly ssh console -a oh-heck-api --command "node -e \"const{PrismaClient}=require(
 
 ## Frontend (GitHub Pages)
 
-Pushes to `main`/`master` that touch `frontend/**` run `.github/workflows/deploy-pages.yml`.
+Same workflow. Pushes to `main`/`master` that touch `frontend/**` or `backend/**` run it.
 
 ```bash
 git push origin main
-# or, if only backend changed and you still need a rebuild:
 gh workflow run "Deploy frontend to GitHub Pages" --repo mrodhansen/oh-heck
 ```
 

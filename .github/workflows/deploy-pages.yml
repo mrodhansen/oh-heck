@@ -5,6 +5,7 @@ on:
     branches: [main, master]
     paths:
       - 'frontend/**'
+      - 'backend/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
@@ -14,11 +15,26 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: prod-deploy
+  cancel-in-progress: false
 
 jobs:
+  api:
+    name: Deploy API (Fly + Neon)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy API and migrate Neon
+        working-directory: backend
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
   build:
+    needs: api
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +48,11 @@ jobs:
       - name: Install & build
         working-directory: frontend
         env:
-          # Public API base URL, e.g. https://api.example.com  (no trailing slash)
           VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
-          # Repo pages path, e.g. /oh-heck/ — leave empty for user/org root site
           VITE_BASE: ${{ vars.VITE_BASE || format('/{0}/', github.event.repository.name) }}
         run: |
           npm install
           npm run build
-          # SPA fallback: refresh on /oh-heck/stats etc. must serve the app, not GH's 404
           cp dist/index.html dist/404.html
 
       - uses: actions/upload-pages-artifact@v3
