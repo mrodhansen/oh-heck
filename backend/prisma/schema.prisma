@@ -152,7 +152,7 @@ model Game {
 model Player {
   id        String   @id @default(uuid())
   gameId    String
-  /// Table display name as entered (auto-filled from username on signed-in join).
+  /// Table display name as entered (auto-filled from first + last on signed-in join).
   /// Claim / account link must not overwrite this.
   name      String
   seatIndex Int

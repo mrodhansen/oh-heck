@@ -10,6 +10,7 @@ import {
   notFound,
   unauthorized,
 } from '../common/api-error';
+import { accountNameNeedles } from '../common/users';
 
 export type PublicUser = {
   id: string;
@@ -147,8 +148,11 @@ export class AuthService {
     return { ok: true as const, alreadyClaimed: false as const };
   }
 
-  async listClaimableGames(userId: string, username: string) {
-    const needle = username.trim().toLowerCase();
+  async listClaimableGames(
+    userId: string,
+    user: { username: string; firstName: string; lastName: string },
+  ) {
+    const needles = accountNameNeedles(user);
     const games = await this.prisma.game.findMany({
       where: {
         players: {
@@ -167,7 +171,8 @@ export class AuthService {
       .filter((g) =>
         g.players.some(
           (p) =>
-            p.userId === null && p.name.trim().toLowerCase() === needle,
+            p.userId === null &&
+            needles.includes(p.name.trim().toLowerCase()),
         ),
       )
       .map((g) => ({

@@ -10,6 +10,25 @@ export type AuthUser = {
   createdAt: string;
 };
 
+export function accountDisplayName(
+  user: Pick<AuthUser, 'firstName' | 'lastName'>,
+): string {
+  return `${user.firstName} ${user.lastName}`.replace(/\s+/g, ' ').trim();
+}
+
+export function accountNameNeedles(
+  user: Pick<AuthUser, 'username' | 'firstName' | 'lastName'>,
+): string[] {
+  const names = [
+    user.username,
+    user.firstName,
+    accountDisplayName(user),
+  ]
+    .map((n) => n.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(names)];
+}
+
 export type ClaimableGame = {
   id: string;
   name: string | null;

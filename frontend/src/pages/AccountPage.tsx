@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi, type ClaimableGame } from '../auth';
+import { accountNameNeedles, authApi, type ClaimableGame } from '../auth';
 import type { StatsPlayer } from '../api';
 import { toUserMessage } from '../api/errors';
 import { useAuth } from '../useAuth';
@@ -277,7 +277,7 @@ export function AccountPage() {
                   <ClaimableGameCard
                     key={g.id}
                     game={g}
-                    username={user.username}
+                    user={user}
                   />
                 ))}
               </div>
@@ -325,9 +325,6 @@ export function AccountPage() {
               <p className="profile-email">{user.email}</p>
             ) : null}
           </div>
-          <p className="hint" style={{ margin: 0 }}>
-            Only your password can be changed.
-          </p>
         </section>
 
         <section className="card stack">
@@ -368,15 +365,15 @@ export function AccountPage() {
 
 function ClaimableGameCard({
   game,
-  username,
+  user,
 }: {
   game: ClaimableGame;
-  username: string;
+  user: { username: string; firstName: string; lastName: string };
 }) {
-  const needle = username.trim().toLowerCase();
+  const needles = accountNameNeedles(user);
   const matchNames = game.players
     .filter(
-      (p) => p.claimable && p.name.trim().toLowerCase() === needle,
+      (p) => p.claimable && needles.includes(p.name.trim().toLowerCase()),
     )
     .map((p) => p.name);
   const status = formatGameStatus(game.status);

@@ -12,7 +12,7 @@ import {
 export class CreateLiveDto {
   @IsString()
   @MinLength(1)
-  @MaxLength(24)
+  @MaxLength(40)
   name!: string;
 
   /** When set with a valid session, links the host seat to this account */
@@ -30,7 +30,7 @@ export class JoinLiveDto {
 
   @IsString()
   @MinLength(1)
-  @MaxLength(24)
+  @MaxLength(40)
   name!: string;
 
   @IsOptional()

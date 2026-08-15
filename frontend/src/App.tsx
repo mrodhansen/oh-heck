@@ -38,7 +38,7 @@ export function App() {
               Play
             </NavLink>
             <NavLink to="/stats">Stats</NavLink>
-            <NavLink to="/account">{user ? user.username : 'Account'}</NavLink>
+            <NavLink to="/account">{user ? user.firstName : 'Account'}</NavLink>
           </nav>
         </header>
       )}

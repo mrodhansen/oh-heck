@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { toUserMessage } from '../api/errors';
+import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
 import { SuperScorerToggle } from '../components/SuperScorerToggle';
 
@@ -23,10 +24,12 @@ export function NewGamePage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!user?.username) return;
+    if (!user) return;
+    const display = accountDisplayName(user);
+    if (!display) return;
     setNames((prev) => {
       if (prev.some((n) => n.trim())) return prev;
-      return prev.map((n, i) => (i === 0 ? user.username : n));
+      return prev.map((n, i) => (i === 0 ? display : n));
     });
     setSelfSlot((s) => (s == null ? 0 : s));
   }, [user]);

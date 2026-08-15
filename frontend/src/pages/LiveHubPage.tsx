@@ -4,6 +4,7 @@ import { toUserMessage } from '../api/errors';
 import { liveApi } from '../live/api';
 import { saveLiveAuth } from '../live/session';
 import type { LiveGoneSeat, LiveLookup } from '../live/types';
+import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
 import { useOnline } from '../useOnline';
 
@@ -21,9 +22,11 @@ export function LiveHubPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!user?.username) return;
-    setCreateName((n) => n || user.username);
-    setJoinName((n) => n || user.username);
+    if (!user) return;
+    const display = accountDisplayName(user);
+    if (!display) return;
+    setCreateName((n) => n || display);
+    setJoinName((n) => n || display);
   }, [user]);
 
   useEffect(() => {
@@ -129,7 +132,7 @@ export function LiveHubPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const name = (user?.username ?? createName).trim();
+    const name = (user ? accountDisplayName(user) : createName).trim();
     if (!name) {
       setError('Enter your name');
       return;
@@ -219,7 +222,7 @@ export function LiveHubPage() {
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
-              maxLength={24}
+              maxLength={40}
               autoFocus
               autoComplete="nickname"
               placeholder="Enter name"
@@ -289,7 +292,7 @@ export function LiveHubPage() {
                 type="text"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                maxLength={24}
+                maxLength={40}
                 autoComplete="nickname"
                 placeholder="Host name"
               />
@@ -298,7 +301,9 @@ export function LiveHubPage() {
           <button
             type="submit"
             className="btn primary"
-            disabled={busy || !(user?.username ?? createName).trim()}
+            disabled={
+              busy || !(user ? accountDisplayName(user) : createName).trim()
+            }
           >
             {busy ? 'Creating…' : 'Create new game'}
           </button>

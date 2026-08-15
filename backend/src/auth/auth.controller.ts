@@ -88,7 +88,7 @@ export class AuthController {
   @Get('me/claimable')
   @UseGuards(AuthGuard)
   claimable(@CurrentUser() user: PublicUser) {
-    return this.auth.listClaimableGames(user.id, user.username);
+    return this.auth.listClaimableGames(user.id, user);
   }
 
   @Post('games/:gameId/claim')

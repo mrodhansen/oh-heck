@@ -1,6 +1,28 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiErrorCode, notFound } from './api-error';
 
+export function accountDisplayName(user: {
+  firstName: string;
+  lastName: string;
+}): string {
+  return `${user.firstName} ${user.lastName}`.replace(/\s+/g, ' ').trim();
+}
+
+export function accountNameNeedles(user: {
+  username: string;
+  firstName: string;
+  lastName: string;
+}): string[] {
+  const names = [
+    user.username,
+    user.firstName,
+    accountDisplayName(user),
+  ]
+    .map((n) => n.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(names)];
+}
+
 export async function assertUsersExist(
   prisma: PrismaService,
   ids: readonly (string | null | undefined)[],

@@ -331,7 +331,6 @@ export type StatsPlayer = {
   /** Stable identity: user:<id> */
   key?: string;
   userId?: string | null;
-  /** Account username. Claimed seats roll up here; table name is unchanged. */
   name: string;
   gamesPlayed: number;
   gamesCompleted: number;

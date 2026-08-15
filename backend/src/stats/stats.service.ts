@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GameStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assignPlacesByTotal } from '../games/analytics';
+import { accountDisplayName } from '../common/users';
 
 type PlayerAgg = {
   /** Stable key: user:<id> */
@@ -36,7 +37,6 @@ type Leader = { name: string; value: number | string } | null;
 
 type SeatRef = {
   id: string;
-  /** Account username (stats identity). */
   name: string;
   /** Original table name; never overwritten by claim. */
   tableName: string;
@@ -55,7 +55,9 @@ export class StatsService {
       include: {
         players: {
           orderBy: { seatIndex: 'asc' },
-          include: { user: { select: { username: true } } },
+           include: {
+              user: { select: { firstName: true, lastName: true } },
+            },
         },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
       },
@@ -425,13 +427,13 @@ function seatRef(p: {
   id: string;
   name: string;
   userId: string | null;
-  user: { username: string } | null;
+  user: { firstName: string; lastName: string } | null;
 }): SeatRef | null {
   if (!p.userId || !p.user) return null;
   return {
     id: p.id,
     userId: p.userId,
-    name: p.user.username,
+    name: accountDisplayName(p.user),
     tableName: p.name,
     key: userKey(p.userId),
   };
