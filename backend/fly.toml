@@ -1,12 +1,15 @@
 # Optional permanent API host (Fly.io).
-# After: fly auth login && fly postgres create && fly apps create oh-heck-api
-# Set DATABASE_URL secret, then: fly deploy --config backend/fly.toml --dockerfile backend/Dockerfile
+# After: fly auth login && fly apps create oh-heck-api
+# Set DATABASE_URL secret, then: cd backend && fly deploy
 
 app = "oh-heck-api"
-primary_region = "iad"
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "npx prisma migrate deploy"
 
 [env]
   PORT = "3000"
@@ -18,6 +21,13 @@ primary_region = "iad"
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
 
 [[vm]]
   memory = "512mb"

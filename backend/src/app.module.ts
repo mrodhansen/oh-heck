@@ -7,8 +7,10 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
 import { LiveModule } from './live/live.module';
 import { AuthModule } from './auth/auth.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     PrismaModule,
     RulesModule,

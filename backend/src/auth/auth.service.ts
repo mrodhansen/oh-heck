@@ -14,6 +14,9 @@ import {
 export type PublicUser = {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
   createdAt: Date;
 };
 
@@ -24,17 +27,28 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<{ user: PublicUser; token: string }> {
     const username = normalizeUsername(dto.username);
     if (!username) throw badRequest('Username required');
+    if (username.includes('@')) {
+      throw badRequest('Username cannot be an email');
+    }
+    const firstName = normalizeName(dto.firstName);
+    const lastName = normalizeName(dto.lastName);
+    if (!firstName) throw badRequest('First name required');
+    if (!lastName) throw badRequest('Last name required');
+    const email = dto.email ? normalizeEmail(dto.email) : null;
+    if (dto.email && !email) throw badRequest('Email required');
+
     await this.assertUsernameAvailable(username);
+    if (email) await this.assertEmailAvailable(email);
 
     const passwordHash = await hashPassword(dto.password);
     let user;
     try {
       user = await this.prisma.user.create({
-        data: { username, passwordHash },
+        data: { username, firstName, lastName, email, passwordHash },
       });
     } catch (e) {
       if (isUniqueViolation(e)) {
-        throw conflict('Username already taken', ApiErrorCode.USERNAME_TAKEN);
+        throw uniqueConflict(e);
       }
       throw e;
     }
@@ -43,16 +57,20 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<{ user: PublicUser; token: string }> {
-    const username = normalizeUsername(dto.username);
-    if (!username) {
-      throw notFound(ApiErrorCode.USER_NOT_FOUND, 'No account with that username');
+    const identifier = dto.username.trim().toLowerCase();
+    if (!identifier) {
+      throw notFound(
+        ApiErrorCode.USER_NOT_FOUND,
+        'No account with that username or email',
+      );
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { username },
-    });
+    const user = await this.findByUsernameOrEmail(identifier);
     if (!user) {
-      throw notFound(ApiErrorCode.USER_NOT_FOUND, 'No account with that username');
+      throw notFound(
+        ApiErrorCode.USER_NOT_FOUND,
+        'No account with that username or email',
+      );
     }
 
     const ok = await verifyPassword(dto.password, user.passwordHash);
@@ -177,12 +195,31 @@ export class AuthService {
     return token;
   }
 
+  private async findByUsernameOrEmail(identifier: string) {
+    const byUsername = await this.prisma.user.findUnique({
+      where: { username: identifier },
+    });
+    if (byUsername) return byUsername;
+    return this.prisma.user.findUnique({
+      where: { email: identifier },
+    });
+  }
+
   private async assertUsernameAvailable(username: string) {
     const existing = await this.prisma.user.findUnique({
       where: { username },
     });
     if (existing) {
       throw conflict('Username already taken', ApiErrorCode.USERNAME_TAKEN);
+    }
+  }
+
+  private async assertEmailAvailable(email: string) {
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    if (existing) {
+      throw conflict('Email already in use', ApiErrorCode.EMAIL_TAKEN);
     }
   }
 }
@@ -196,19 +233,47 @@ function isUniqueViolation(e: unknown): boolean {
   );
 }
 
+function uniqueConflict(e: unknown) {
+  const target = uniqueTarget(e);
+  if (target.includes('email')) {
+    return conflict('Email already in use', ApiErrorCode.EMAIL_TAKEN);
+  }
+  return conflict('Username already taken', ApiErrorCode.USERNAME_TAKEN);
+}
+
+function uniqueTarget(e: unknown): string[] {
+  if (typeof e !== 'object' || e === null || !('meta' in e)) return [];
+  const meta = (e as { meta?: { target?: unknown } }).meta;
+  if (!meta || !Array.isArray(meta.target)) return [];
+  return meta.target.filter((t): t is string => typeof t === 'string');
+}
+
 function normalizeUsername(raw: string): string {
-  // Lowercase so uniqueness is case-insensitive.
   return raw.trim().toLowerCase();
+}
+
+function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+function normalizeName(raw: string): string {
+  return raw.trim();
 }
 
 function toPublic(user: {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
   createdAt: Date;
 }): PublicUser {
   return {
     id: user.id,
     username: user.username,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
     createdAt: user.createdAt,
   };
 }

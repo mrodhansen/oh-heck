@@ -161,7 +161,13 @@ def main():
             auth,
             "POST",
             "/auth/register",
-            {"username": "demo", "password": "demo"},
+            {
+                "username": "demo",
+                "firstName": "Demo",
+                "lastName": "Player",
+                "email": "demo@ohheck.local",
+                "password": "demo",
+            },
         )["user"]
         print(f"  registered demo / demo  ({user['id'][:8]}…)")
     except SystemExit as e:

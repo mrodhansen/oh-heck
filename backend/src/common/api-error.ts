@@ -5,6 +5,7 @@ export const ApiErrorCode = {
   USER_NOT_FOUND: 'USER_NOT_FOUND',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   USERNAME_TAKEN: 'USERNAME_TAKEN',
+  EMAIL_TAKEN: 'EMAIL_TAKEN',
   SIGN_IN_REQUIRED: 'SIGN_IN_REQUIRED',
   GAME_NOT_FOUND: 'GAME_NOT_FOUND',
   GAME_CODE_NOT_FOUND: 'GAME_CODE_NOT_FOUND',
@@ -146,7 +147,8 @@ function inferCode(
   if (
     m.includes('no account') ||
     m.includes('user not found') ||
-    m.includes('account with that username')
+    m.includes('account with that username') ||
+    m.includes('username or email')
   ) {
     return ApiErrorCode.USER_NOT_FOUND;
   }
@@ -154,6 +156,7 @@ function inferCode(
     return ApiErrorCode.INVALID_CREDENTIALS;
   }
   if (m.includes('username already taken')) return ApiErrorCode.USERNAME_TAKEN;
+  if (m.includes('email already')) return ApiErrorCode.EMAIL_TAKEN;
   if (m.includes('sign in required')) return ApiErrorCode.SIGN_IN_REQUIRED;
   if (m.includes('game code not found')) return ApiErrorCode.GAME_CODE_NOT_FOUND;
   if (m.includes('game not found')) return ApiErrorCode.GAME_NOT_FOUND;

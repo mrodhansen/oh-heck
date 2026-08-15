@@ -260,8 +260,15 @@ async function createUsers() {
   const passwordHash = hashPassword(PASSWORD);
   const users = [];
   for (const a of ACCOUNTS) {
+    const firstName = a.username[0].toUpperCase() + a.username.slice(1);
     const user = await prisma.user.create({
-      data: { username: a.username, passwordHash },
+      data: {
+        username: a.username,
+        firstName,
+        lastName: 'Player',
+        email: `${a.username}@ohheck.local`,
+        passwordHash,
+      },
     });
     users.push({ ...user, skill: a.skill });
   }

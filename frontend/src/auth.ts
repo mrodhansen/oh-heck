@@ -4,6 +4,9 @@ import type { StatsPlayer } from './api';
 export type AuthUser = {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
   createdAt: string;
 };
 
@@ -26,12 +29,18 @@ export type ClaimableGame = {
 export const authApi = {
   me: () => httpRequest<{ user: AuthUser | null }>('/auth/me'),
 
-  register: async (username: string, password: string) => {
+  register: async (data: {
+    username: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    password: string;
+  }) => {
     const res = await httpRequest<{ user: AuthUser; token: string }>(
       '/auth/register',
       {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(data),
       },
     );
     setAuthToken(res.token);

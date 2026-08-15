@@ -32,6 +32,15 @@ describe('parseApiErrorBody', () => {
     expect(parsed.message).toBe('name must be longer than 0');
   });
 
+  it('maps email-already-taken copy', () => {
+    expect(
+      parseApiErrorBody(
+        { statusCode: 409, message: 'Email already in use' },
+        409,
+      ).code,
+    ).toBe(ApiErrorCode.EMAIL_TAKEN);
+  });
+
   it('does not treat 404 as a network failure', () => {
     const parsed = parseApiErrorBody(
       { statusCode: 404, message: 'Game code not found' },

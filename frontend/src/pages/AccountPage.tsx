@@ -11,6 +11,9 @@ export function AccountPage() {
   const { user, loading, setUser, refresh } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [username, setUsername] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -71,10 +74,19 @@ export function AccountPage() {
     try {
       const res =
         mode === 'register'
-          ? await authApi.register(username.trim(), password)
+          ? await authApi.register({
+              username: username.trim(),
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              ...(email.trim() ? { email: email.trim() } : {}),
+              password,
+            })
           : await authApi.login(username.trim(), password);
       setUser(res.user);
       setPassword('');
+      setFirstName('');
+      setLastName('');
+      setEmail('');
       setMessage(mode === 'register' ? 'Account created.' : 'Signed in.');
     } catch (err) {
       setError(toUserMessage(err, 'Could not sign in'));
@@ -135,12 +147,46 @@ export function AccountPage() {
             <h2 className="page-title">
               {mode === 'register' ? 'Register' : 'Sign in'}
             </h2>
+            {mode === 'register' && (
+              <>
+                <label className="field">
+                  First name
+                  <input
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    maxLength={50}
+                    autoComplete="given-name"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  Last name
+                  <input
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    maxLength={50}
+                    autoComplete="family-name"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  Email (optional)
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    maxLength={254}
+                    autoComplete="email"
+                  />
+                </label>
+              </>
+            )}
             <label className="field">
-              Username
+              {mode === 'register' ? 'Username' : 'Username or email'}
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                maxLength={32}
+                maxLength={mode === 'register' ? 32 : 254}
                 autoComplete="username"
                 required
               />
@@ -193,7 +239,13 @@ export function AccountPage() {
             <button
               type="submit"
               className="btn primary"
-              disabled={busy || !username.trim() || !password}
+              disabled={
+                busy ||
+                !username.trim() ||
+                !password ||
+                (mode === 'register' &&
+                  (!firstName.trim() || !lastName.trim()))
+              }
             >
               {busy ? '…' : mode === 'register' ? 'Register' : 'Sign in'}
             </button>
@@ -263,10 +315,30 @@ export function AccountPage() {
         </section>
 
         <section className="card stack">
-          <h3 className="section-title">Password</h3>
+          <h3 className="section-title">Profile</h3>
           <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            Username cannot be changed.
+            Only your password can be changed.
           </p>
+          <label className="field">
+            First name
+            <input value={user.firstName} readOnly />
+          </label>
+          <label className="field">
+            Last name
+            <input value={user.lastName} readOnly />
+          </label>
+          <label className="field">
+            Email
+            <input type="email" value={user.email ?? ''} readOnly />
+          </label>
+          <label className="field">
+            Username
+            <input value={user.username} readOnly />
+          </label>
+        </section>
+
+        <section className="card stack">
+          <h3 className="section-title">Password</h3>
           <form className="stack" onSubmit={onSave}>
             <label className="field">
               New password
