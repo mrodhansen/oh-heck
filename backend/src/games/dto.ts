@@ -61,12 +61,6 @@ export class CreateGameDto {
   @IsIn(['IN_PERSON', 'ONLINE'])
   playMode?: 'IN_PERSON' | 'ONLINE';
 
-  /** Online join code when playMode = ONLINE */
-  @IsOptional()
-  @IsString()
-  @MaxLength(16)
-  liveCode?: string;
-
   /** IN_PERSON: record every card and auto-fill tricks */
   @IsOptional()
   @IsBoolean()

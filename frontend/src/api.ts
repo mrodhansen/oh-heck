@@ -172,7 +172,11 @@ export type GameEventType =
   | 'PLAYER_LEFT'
   | 'SEAT_CLAIMED'
   | 'PLAYER_JOINED'
-  | 'GAME_STARTED_LIVE';
+  | 'GAME_STARTED_LIVE'
+  | 'SESSION_CREATED'
+  | 'SESSION_ENDED'
+  | 'ROUND_SCORED'
+  | 'GAME_COMPLETED';
 
 export type GameEventJson =
   | string

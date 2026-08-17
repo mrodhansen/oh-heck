@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { LiveSessionStatus, Prisma } from '@prisma/client';
+import { GameEventType, LiveSessionStatus, Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
@@ -14,31 +14,34 @@ import {
   currentBidderSeat,
   dealRound,
   emptyLobbyState,
-  engineStateToJson,
+  engineFromScorecard,
   EngineState,
-  parseEngineState,
   placeBid,
   playCard,
+  roundHasDeal,
   tablePlays,
 } from './engine';
 import { Card, cardKey, legalPlays, Suit } from './cards';
 import {
-  logLiveEvent,
   persistBidPlaced,
   persistCardPlay,
   persistCompletedTrick,
+  persistCurrentTrick,
   persistDeal,
+  logEvent,
 } from './telemetry';
 import { resolveExistingUserId } from '../common/users';
 import { toInputJson } from '../common/json';
+import { parseLobby, type LobbySeat } from './lobby';
+import { gameSeatInclude, seatedPlayers } from '../games/seats';
 
 const CODE_DIGITS = 4;
 const CODE_MIN = 1000;
 const CODE_SPAN = 9000;
 
-type SessionWithPlayers = Prisma.LiveSessionGetPayload<{
-  include: { players: true };
-}>;
+type SessionWithPlayers = Prisma.LiveSessionGetPayload<
+  Record<string, never>
+> & { players: LobbySeat[] };
 
 @Injectable()
 export class LiveService {
@@ -59,23 +62,23 @@ export class LiveService {
     for (let attempt = 0; attempt < 3 && !session; attempt++) {
       const code = await this.allocCode();
       try {
-        session = await this.prisma.liveSession.create({
+        const hostSeat: LobbySeat = {
+          id: randomBytes(16).toString('hex'),
+          name: trimmed,
+          token,
+          seatIndex: 0,
+          isHost: true,
+          gone: false,
+          userId: linkedUserId ?? null,
+        };
+        const created = await this.prisma.liveSession.create({
           data: {
             code,
             status: LiveSessionStatus.LOBBY,
-            state: toInputJson(engineStateToJson(emptyLobbyState())),
-            players: {
-              create: {
-                name: trimmed,
-                seatIndex: 0,
-                token,
-                isHost: true,
-                ...(linkedUserId ? { userId: linkedUserId } : {}),
-              },
-            },
+            lobby: toInputJson([hostSeat]),
           },
-          include: { players: { orderBy: { createdAt: 'asc' } } },
         });
+        session = { ...created, players: [hostSeat] };
       } catch (e) {
         if (
           e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -98,14 +101,14 @@ export class LiveService {
     });
     session.hostPlayerId = host.id;
 
-    await logLiveEvent(this.prisma, {
+    await logEvent(this.prisma, {
       sessionId: session.id,
-      type: 'SESSION_CREATED',
+      type: GameEventType.SESSION_CREATED,
       playerId: host.id,
       payload: { code: session.code, hostName: host.name },
     });
 
-    const view = this.toView(session, host.id);
+    const view = await this.toView(session, host.id);
     this.emitSession(session.id);
     return { ...view, token, playerId: host.id };
   }
@@ -122,7 +125,6 @@ export class LiveService {
     const player = await this.prisma.$transaction(async (tx) => {
       const session = await tx.liveSession.findUnique({
         where: { code },
-        include: { players: { orderBy: { seatIndex: 'asc' } } },
       });
       if (!session) throw new NotFoundException('Game code not found');
       if (session.status === LiveSessionStatus.COMPLETED) {
@@ -134,44 +136,47 @@ export class LiveService {
         );
       }
 
-      const present = session.players.filter((p) => !p.gone);
+      const seats = parseLobby(session.lobby);
+      const present = seats.filter((p) => !p.gone);
       if (present.length >= limits.max) {
         throw new BadRequestException(`Table full (max ${limits.max})`);
       }
 
-      const taken = session.players.some(
+      const taken = seats.some(
         (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
       );
       if (taken) throw new BadRequestException('Name already taken');
 
       if (linkedUserId) {
-        const already = session.players.some((p) => p.userId === linkedUserId);
+        const already = seats.some((p) => p.userId === linkedUserId);
         if (already) {
           throw new BadRequestException('You already joined this table');
         }
       }
 
-      // Lowest free seat (leave deletes rows without compacting)
-      const used = new Set(session.players.map((p) => p.seatIndex));
+      const used = new Set(seats.map((p) => p.seatIndex));
       let seatIndex = 0;
       while (used.has(seatIndex)) seatIndex += 1;
 
-      return tx.livePlayer.create({
-        data: {
-          sessionId: session.id,
-          name: trimmed,
-          seatIndex,
-          token,
-          isHost: false,
-          gone: false,
-          ...(linkedUserId ? { userId: linkedUserId } : {}),
-        },
+      const next: LobbySeat = {
+        id: randomBytes(16).toString('hex'),
+        name: trimmed,
+        token,
+        seatIndex,
+        isHost: false,
+        gone: false,
+        userId: linkedUserId ?? null,
+      };
+      await tx.liveSession.update({
+        where: { id: session.id },
+        data: { lobby: toInputJson([...seats, next]) },
       });
+      return { ...next, sessionId: session.id };
     });
 
-    await logLiveEvent(this.prisma, {
+    await logEvent(this.prisma, {
       sessionId: player.sessionId,
-      type: 'PLAYER_JOINED',
+      type: GameEventType.PLAYER_JOINED,
       playerId: player.id,
       payload: {
         name: player.name,
@@ -180,7 +185,7 @@ export class LiveService {
     });
 
     const updated = await this.loadSession(player.sessionId);
-    const view = this.toView(updated, player.id);
+    const view = await this.toView(updated, player.id);
     this.emitSession(player.sessionId);
     return { ...view, token, playerId: player.id };
   }
@@ -190,11 +195,11 @@ export class LiveService {
    */
   async claim(codeRaw: string, playerId: string, userId?: string | null) {
     const code = normalizeCode(codeRaw);
-    const session = await this.prisma.liveSession.findUnique({
+    const raw = await this.prisma.liveSession.findUnique({
       where: { code },
-      include: { players: true },
     });
-    if (!session) throw new NotFoundException('Game code not found');
+    if (!raw) throw new NotFoundException('Game code not found');
+    const session = { ...raw, players: await this.loadSeats(raw) };
     if (session.status === LiveSessionStatus.COMPLETED) {
       throw new BadRequestException('Game is finished');
     }
@@ -219,29 +224,33 @@ export class LiveService {
     }
 
     const token = newToken();
-    const claimed = await this.prisma.livePlayer.updateMany({
-      where: { id: playerId, sessionId: session.id, gone: true },
-      data: {
-        gone: false,
-        token,
-        ...(linkedUserId && !target.userId ? { userId: linkedUserId } : {}),
-      },
+    if (!session.gameId) {
+      throw new BadRequestException('Live game missing linked scorekeeper');
+    }
+    const claimed = await this.prisma.gamePlayer.updateMany({
+      where: { gameId: session.gameId, playerId, gone: true },
+      data: { gone: false, token },
     });
     if (claimed.count !== 1) {
       throw new BadRequestException('Seat was already claimed');
     }
 
-    if (session.gameId && linkedUserId && !target.userId) {
-      await this.prisma.player.updateMany({
-        where: { id: playerId, gameId: session.gameId, userId: null },
-        data: { userId: linkedUserId },
+    if (linkedUserId && !target.userId) {
+      const existing = await this.prisma.player.findUnique({
+        where: { userId: linkedUserId },
       });
+      if (!existing) {
+        await this.prisma.player.update({
+          where: { id: playerId },
+          data: { userId: linkedUserId },
+        });
+      }
     }
 
-    await logLiveEvent(this.prisma, {
+    await logEvent(this.prisma, {
       sessionId: session.id,
       gameId: session.gameId,
-      type: 'SEAT_CLAIMED',
+      type: GameEventType.SEAT_CLAIMED,
       playerId,
       payload: {
         name: target.name,
@@ -249,22 +258,9 @@ export class LiveService {
         isHost: target.isHost,
       },
     });
-    if (session.gameId) {
-      await this.prisma.gameEvent.create({
-        data: {
-          gameId: session.gameId,
-          type: 'SEAT_CLAIMED',
-          payload: {
-            playerId,
-            name: target.name,
-            seatIndex: target.seatIndex,
-          },
-        },
-      });
-    }
 
     const updated = await this.loadSession(session.id);
-    const view = this.toView(updated, playerId);
+    const view = await this.toView(updated, playerId);
     this.emitSession(session.id);
     return { ...view, token, playerId };
   }
@@ -280,9 +276,9 @@ export class LiveService {
     // Lobby: remove non-host; host leaving tears down the lobby
     if (session.status === LiveSessionStatus.LOBBY) {
       if (actor.isHost) {
-        await logLiveEvent(this.prisma, {
+        await logEvent(this.prisma, {
           sessionId,
-          type: 'SESSION_ENDED',
+          type: GameEventType.SESSION_ENDED,
           playerId: actor.id,
           payload: { reason: 'host_left_lobby' },
         });
@@ -290,9 +286,9 @@ export class LiveService {
         this.emitSession(sessionId);
         return { ok: true as const, removed: true, ended: true as const };
       }
-      await logLiveEvent(this.prisma, {
+      await logEvent(this.prisma, {
         sessionId,
-        type: 'PLAYER_LEFT',
+        type: GameEventType.PLAYER_LEFT,
         playerId: actor.id,
         payload: {
           name: actor.name,
@@ -300,7 +296,10 @@ export class LiveService {
           phase: 'lobby',
         },
       });
-      await this.prisma.livePlayer.delete({ where: { id: actor.id } });
+      await this.saveLobby(
+        sessionId,
+        session.players.filter((p) => p.id !== actor.id),
+      );
       this.emitSession(sessionId);
       return { ok: true as const, removed: true };
     }
@@ -309,14 +308,19 @@ export class LiveService {
     if (actor.gone) {
       return { ok: true as const, removed: false, alreadyGone: true as const };
     }
-    await this.prisma.livePlayer.update({
-      where: { id: actor.id },
+    if (!session.gameId) {
+      throw new BadRequestException('Live game missing linked scorekeeper');
+    }
+    await this.prisma.gamePlayer.update({
+      where: {
+        gameId_playerId: { gameId: session.gameId, playerId: actor.id },
+      },
       data: { gone: true, token: newToken() },
     });
-    await logLiveEvent(this.prisma, {
+    await logEvent(this.prisma, {
       sessionId,
       gameId: session.gameId,
-      type: 'PLAYER_LEFT',
+      type: GameEventType.PLAYER_LEFT,
       playerId: actor.id,
       payload: {
         name: actor.name,
@@ -325,19 +329,6 @@ export class LiveService {
         gone: true,
       },
     });
-    if (session.gameId) {
-      await this.prisma.gameEvent.create({
-        data: {
-          gameId: session.gameId,
-          type: 'PLAYER_LEFT',
-          payload: {
-            playerId: actor.id,
-            name: actor.name,
-            seatIndex: actor.seatIndex,
-          },
-        },
-      });
-    }
     this.emitSession(sessionId);
     return { ok: true as const, removed: false, gone: true as const };
   }
@@ -346,12 +337,12 @@ export class LiveService {
     if (!token) return null;
     const session = await this.prisma.liveSession.findUnique({
       where: { id: sessionId },
-      include: { players: true },
     });
     if (!session || session.status === LiveSessionStatus.COMPLETED) {
       return null;
     }
-    const player = session.players.find((p) => p.token === token && !p.gone);
+    const players = await this.loadSeats(session);
+    const player = players.find((p) => p.token === token && !p.gone);
     if (!player) return null;
     return { playerId: player.id };
   }
@@ -371,15 +362,16 @@ export class LiveService {
   async getView(sessionId: string, token: string) {
     const session = await this.loadSession(sessionId);
     const player = this.authPlayer(session, token);
-    return this.toView(session, player.id);
+    return await this.toView(session, player.id);
   }
 
   async lookupCode(codeRaw: string) {
     const code = normalizeCode(codeRaw);
-    const session = await this.prisma.liveSession.findUnique({
+    const raw = await this.prisma.liveSession.findUnique({
       where: { code },
-      include: { players: { orderBy: { seatIndex: 'asc' } } },
     });
+    if (!raw) throw new NotFoundException('Game code not found');
+    const session = { ...raw, players: await this.loadSeats(raw) };
     if (!session) throw new NotFoundException('Game code not found');
     if (session.status === LiveSessionStatus.COMPLETED) {
       throw new BadRequestException('Game is finished');
@@ -439,20 +431,11 @@ export class LiveService {
       );
     }
 
-    // Drop anyone still marked gone from lobby before seating
-    const goneIds = session.players.filter((p) => p.gone).map((p) => p.id);
-    if (goneIds.length) {
-      await this.prisma.livePlayer.deleteMany({
-        where: { id: { in: goneIds }, sessionId },
-      });
-    }
-
-    // Seat order: joiners by join time, host last (round-1 dealer)
     const host = activePlayers.find((p) => p.isHost);
     if (!host) throw new BadRequestException('Host missing');
     const others = activePlayers
       .filter((p) => !p.isHost)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      .sort((a, b) => a.seatIndex - b.seatIndex);
     const ordered = [...others, host];
 
     // CAS: only one start wins
@@ -484,29 +467,30 @@ export class LiveService {
       );
     }
 
+    const names = ordered.map((p) => p.name);
+    const playerUserIds = ordered.map((p) => p.userId ?? null);
+    const playerIds: string[] = [];
     try {
-      await this.prisma.$transaction(async (tx) => {
-        for (let i = 0; i < ordered.length; i++) {
-          await tx.livePlayer.update({
-            where: { id: ordered[i]!.id },
-            data: { seatIndex: 1000 + i },
+      for (const seat of ordered) {
+        let player = seat.userId
+          ? await this.prisma.player.findUnique({
+              where: { userId: seat.userId },
+            })
+          : null;
+        if (!player) {
+          player = await this.prisma.player.create({
+            data: {
+              name: seat.name,
+              ...(seat.userId ? { userId: seat.userId } : {}),
+            },
           });
         }
-        for (let i = 0; i < ordered.length; i++) {
-          await tx.livePlayer.update({
-            where: { id: ordered[i]!.id },
-            data: { seatIndex: i },
-          });
-        }
-      });
+        playerIds.push(player.id);
+      }
     } catch (e) {
       await rollbackLobby();
       throw e;
     }
-
-    const names = ordered.map((p) => p.name);
-    const playerIds = ordered.map((p) => p.id);
-    const playerUserIds = ordered.map((p) => p.userId ?? null);
     let gameDetail;
     try {
       gameDetail = await this.games.createGame(
@@ -516,7 +500,6 @@ export class LiveService {
           playerIds,
           playerUserIds,
           playMode: 'ONLINE',
-          liveCode: session.code,
         },
         { fromLive: true },
       );
@@ -539,40 +522,48 @@ export class LiveService {
     });
 
     const seatPlayers = ordered.map((p, seatIndex) => ({
-      id: p.id,
+      id: playerIds[seatIndex]!,
       name: p.name,
       seatIndex,
     }));
+    const hostPlayerId = playerIds[playerIds.length - 1]!;
+    const actorPlayerId =
+      playerIds[ordered.findIndex((p) => p.id === actor.id)] ?? hostPlayerId;
 
     try {
+      for (let i = 0; i < playerIds.length; i++) {
+        await this.prisma.gamePlayer.update({
+          where: {
+            gameId_playerId: {
+              gameId: gameDetail.id,
+              playerId: playerIds[i]!,
+            },
+          },
+          data: {
+            token: ordered[i]!.token,
+            isHost: ordered[i]!.isHost,
+            gone: false,
+          },
+        });
+      }
       await this.prisma.liveSession.update({
         where: { id: sessionId },
         data: {
           gameId: gameDetail.id,
-          state: toInputJson(engineStateToJson(engine)),
+          hostPlayerId,
+          lobby: toInputJson([]),
         },
       });
 
-      await logLiveEvent(this.prisma, {
+      await logEvent(this.prisma, {
         sessionId,
         gameId: gameDetail.id,
-        type: 'GAME_STARTED_LIVE',
-        playerId: actor.id,
+        type: GameEventType.GAME_STARTED_LIVE,
+        playerId: actorPlayerId,
         payload: {
           code: session.code,
           playerCount,
           seats: seatPlayers,
-        },
-      });
-      await this.prisma.gameEvent.create({
-        data: {
-          gameId: gameDetail.id,
-          type: 'GAME_STARTED_LIVE',
-          payload: {
-            sessionId,
-            code: session.code,
-            seats: seatPlayers,
-          },
         },
       });
 
@@ -589,7 +580,7 @@ export class LiveService {
     }
 
     const updated = await this.loadSession(sessionId);
-    const view = this.toView(updated, actor.id);
+    const view = await this.toView(updated, actorPlayerId);
     this.emitSession(sessionId);
     return view;
   }
@@ -603,7 +594,7 @@ export class LiveService {
         throw new BadRequestException('Live game missing linked scorekeeper');
       }
 
-      let state = parseEngineState(session.state, session.status);
+      let state = await this.loadEngine(session);
       const seat = actor.seatIndex;
       const priorSum = state.bids.reduce<number>((s, b) => s + (b ?? 0), 0);
       const isLast = state.bidIndex === state.bidOrder.length - 1;
@@ -621,7 +612,15 @@ export class LiveService {
         );
       }
 
-      // Scorekeeper + telemetry before committing engine state (avoid stuck bidding)
+      const players = [...session.players].sort(
+        (a, b) => a.seatIndex - b.seatIndex,
+      );
+      const seatPlayers = players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        seatIndex: p.seatIndex,
+      }));
+
       await persistBidPlaced(this.prisma, {
         gameId: session.gameId,
         sessionId,
@@ -632,6 +631,8 @@ export class LiveService {
         bidPosition,
         runningBidBefore,
         isLast,
+        isDealer: seat === state.dealerSeat,
+        isFirstBidder: bidPosition === 0,
         forceBurn: forceBurn === true && forbidden !== null,
         forbiddenLastBid: forbidden,
       });
@@ -642,9 +643,6 @@ export class LiveService {
         ) {
           throw new BadRequestException('Corrupt bids state');
         }
-        const players = [...session.players].sort(
-          (a, b) => a.seatIndex - b.seatIndex,
-        );
         await this.games.setBids(
           session.gameId,
           state.roundNumber,
@@ -657,15 +655,16 @@ export class LiveService {
           },
           { fromLive: true },
         );
+        await persistCurrentTrick(this.prisma, {
+          gameId: session.gameId,
+          roundNumber: state.roundNumber,
+          state,
+          players: seatPlayers,
+        });
       }
 
-      await this.prisma.liveSession.update({
-        where: { id: sessionId },
-        data: { state: toInputJson(engineStateToJson(state)) },
-      });
-
       const updated = await this.loadSession(sessionId);
-      const view = this.toView(updated, actor.id);
+      const view = await this.toView(updated, actor.id);
       this.emitSession(sessionId);
       return view;
     });
@@ -681,7 +680,7 @@ export class LiveService {
         throw new BadRequestException('Live game missing linked scorekeeper');
       }
 
-      let state = parseEngineState(session.state, session.status);
+      let state = await this.loadEngine(session);
       const players = [...session.players].sort(
         (a, b) => a.seatIndex - b.seatIndex,
       );
@@ -756,32 +755,33 @@ export class LiveService {
         state.tricksPlayed >= state.handSize
       ) {
         state = await this.finalizeRound(session, state, seatPlayers);
+      } else {
+        await persistCurrentTrick(this.prisma, {
+          gameId: session.gameId,
+          roundNumber: roundNumberAtPlay,
+          state,
+          players: seatPlayers,
+        });
       }
 
-      await this.prisma.liveSession.update({
-        where: { id: sessionId },
-        data: {
-          state: toInputJson(engineStateToJson(state)),
-          ...(state.phase === 'complete'
-            ? {
-                status: LiveSessionStatus.COMPLETED,
-                finishedAt: new Date(),
-              }
-            : {}),
-        },
-      });
-
       if (state.phase === 'complete') {
-        await logLiveEvent(this.prisma, {
+        await this.prisma.liveSession.update({
+          where: { id: sessionId },
+          data: {
+            status: LiveSessionStatus.COMPLETED,
+            finishedAt: new Date(),
+          },
+        });
+        await logEvent(this.prisma, {
           sessionId,
           gameId: session.gameId,
-          type: 'GAME_COMPLETED',
+          type: GameEventType.GAME_COMPLETED,
           payload: { roundNumber: state.roundNumber },
         });
       }
 
       const updated = await this.loadSession(sessionId);
-      const view = this.toView(updated, actor.id);
+      const view = await this.toView(updated, actor.id);
       this.emitSession(sessionId);
       return view;
     });
@@ -831,10 +831,10 @@ export class LiveService {
       { fromLive: true },
     );
 
-    await logLiveEvent(this.prisma, {
+    await logEvent(this.prisma, {
       sessionId: session.id,
       gameId: session.gameId,
-      type: 'ROUND_SCORED',
+      type: GameEventType.ROUND_SCORED,
       roundNumber: state.roundNumber,
       payload: {
         tricksTaken: players.map((p) => ({
@@ -884,13 +884,47 @@ export class LiveService {
     this.realtime.emitLive(sessionId, { at: Date.now(), sessionId });
   }
 
+  private async loadSeats(
+    session: Prisma.LiveSessionGetPayload<Record<string, never>>,
+  ): Promise<LobbySeat[]> {
+    if (session.status === LiveSessionStatus.LOBBY || !session.gameId) {
+      return parseLobby(session.lobby);
+    }
+    const seats = await this.prisma.gamePlayer.findMany({
+      where: { gameId: session.gameId },
+      orderBy: { seatIndex: 'asc' },
+      include: { player: true },
+    });
+    return seats.map((s) => {
+      if (!s.token) {
+        throw new BadRequestException('Live seat missing token');
+      }
+      return {
+        id: s.player.id,
+        name: s.player.name,
+        token: s.token,
+        seatIndex: s.seatIndex,
+        isHost: s.isHost,
+        gone: s.gone,
+        userId: s.player.userId,
+      };
+    });
+  }
+
+  private async saveLobby(sessionId: string, seats: LobbySeat[]) {
+    await this.prisma.liveSession.update({
+      where: { id: sessionId },
+      data: { lobby: toInputJson(seats) },
+    });
+  }
+
   private async loadSession(id: string): Promise<SessionWithPlayers> {
     const session = await this.prisma.liveSession.findUnique({
       where: { id },
-      include: { players: { orderBy: { seatIndex: 'asc' } } },
     });
     if (!session) throw new NotFoundException('Session not found');
-    return session;
+    const players = await this.loadSeats(session);
+    return { ...session, players };
   }
 
   private authPlayer(session: SessionWithPlayers, token: string) {
@@ -935,8 +969,77 @@ export class LiveService {
     throw new BadRequestException('Could not allocate game code');
   }
 
-  private toView(session: SessionWithPlayers, viewerId: string) {
-    const state = parseEngineState(session.state, session.status);
+  private async loadLiveGame(gameId: string) {
+    const game = await this.prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        seats: gameSeatInclude,
+        rounds: {
+          orderBy: { number: 'asc' },
+          include: {
+            entries: { include: { player: true } },
+            tricks: {
+              orderBy: { trickIndex: 'asc' },
+              include: {
+                plays: { orderBy: { playOrder: 'asc' } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!game) throw new NotFoundException('Linked game not found');
+    return game;
+  }
+
+  private async loadEngine(session: SessionWithPlayers): Promise<EngineState> {
+    if (session.status === LiveSessionStatus.LOBBY) {
+      return emptyLobbyState();
+    }
+    if (!session.gameId) {
+      throw new BadRequestException('Live game missing linked scorekeeper');
+    }
+    let game = await this.loadLiveGame(session.gameId);
+    if (session.status === LiveSessionStatus.PLAYING) {
+      const open = game.rounds.find((r) => r.completedAt == null);
+      if (open && !roundHasDeal(open)) {
+        const players = [...session.players].sort(
+          (a, b) => a.seatIndex - b.seatIndex,
+        );
+        const playerCount = players.length;
+        const engine = dealRound({
+          playerCount,
+          roundNumber: open.number,
+          handSize: this.rules.getHandSize(open.number),
+          dealerSeat: this.rules.dealerSeat(open.number, playerCount),
+          bidOrder: this.rules.bidOrderSeats(open.number, playerCount),
+        });
+        await persistDeal(this.prisma, {
+          gameId: game.id,
+          sessionId: session.id,
+          roundNumber: open.number,
+          state: engine,
+          players: players.map((p) => ({
+            id: p.id,
+            name: p.name,
+            seatIndex: p.seatIndex,
+          })),
+        });
+        game = await this.loadLiveGame(session.gameId);
+      }
+    }
+    return engineFromScorecard({
+      sessionStatus: session.status,
+      players: seatedPlayers(game.seats).map((p) => ({
+        id: p.id,
+        seatIndex: p.seatIndex,
+      })),
+      rounds: game.rounds,
+    });
+  }
+
+  private async toView(session: SessionWithPlayers, viewerId: string) {
+    const state = await this.loadEngine(session);
     const players = [...session.players].sort(
       (a, b) => a.seatIndex - b.seatIndex,
     );

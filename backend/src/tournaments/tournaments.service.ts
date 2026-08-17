@@ -29,22 +29,26 @@ import {
   rotateDealerLast,
   shuffleInPlace,
 } from './table-balance';
+import { gameSeatInclude, withSeatedPlayers } from '../games/seats';
 
 const tableInclude = {
   seats: {
     orderBy: { seatIndex: 'asc' as const },
-    include: { tournamentPlayer: true },
+    include: { player: true },
   },
   game: {
     include: {
-      players: { orderBy: { seatIndex: 'asc' as const } },
+      seats: gameSeatInclude,
       rounds: { include: { entries: true } },
     },
   },
 } satisfies Prisma.TournamentTableInclude;
 
 const tournamentInclude = {
-  players: { orderBy: { orderIndex: 'asc' as const } },
+  roster: {
+    orderBy: { orderIndex: 'asc' as const },
+    include: { player: true },
+  },
   tables: {
     orderBy: [{ stage: 'asc' as const }, { tableNumber: 'asc' as const }],
     include: tableInclude,
@@ -53,7 +57,28 @@ const tournamentInclude = {
 
 type FullTournament = Prisma.TournamentGetPayload<{
   include: typeof tournamentInclude;
-}>;
+}> & {
+  players: {
+    id: string;
+    name: string;
+    orderIndex: number;
+    createdAt: Date;
+  }[];
+};
+
+function withRoster(
+  t: Prisma.TournamentGetPayload<{ include: typeof tournamentInclude }>,
+): FullTournament {
+  return {
+    ...t,
+    players: t.roster.map((r) => ({
+      id: r.player.id,
+      name: r.player.name,
+      orderIndex: r.orderIndex,
+      createdAt: r.createdAt,
+    })),
+  };
+}
 
 @Injectable()
 export class TournamentsService {
@@ -80,7 +105,7 @@ export class TournamentsService {
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        players: true,
+        roster: true,
         tables: { include: { game: true } },
       },
     });
@@ -91,7 +116,7 @@ export class TournamentsService {
     const rows = await this.prisma.tournament.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
-        players: true,
+        roster: true,
         tables: { include: { game: true } },
       },
     });
@@ -157,7 +182,7 @@ export class TournamentsService {
             'Tournament id already exists with different name',
           );
         }
-        return this.toDetail(existing);
+        return this.toDetail(withRoster(existing));
       }
     }
 
@@ -171,7 +196,7 @@ export class TournamentsService {
       include: tournamentInclude,
     });
 
-    const detail = this.toDetail(created);
+    const detail = this.toDetail(withRoster(created));
     this.realtime.emitTournamentList();
     this.realtime.emitTournament(created.id, detail);
     return detail;
@@ -216,11 +241,17 @@ export class TournamentsService {
     const growTarget = nextCount > t.targetPlayerCount;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.tournamentPlayer.create({
+      const player = dto.id
+        ? await tx.player.upsert({
+            where: { id: dto.id },
+            create: { id: dto.id, name },
+            update: {},
+          })
+        : await tx.player.create({ data: { name } });
+      await tx.tournamentRoster.create({
         data: {
-          ...(dto.id ? { id: dto.id } : {}),
           tournamentId,
-          name,
+          playerId: player.id,
           orderIndex,
         },
       });
@@ -246,7 +277,9 @@ export class TournamentsService {
       throw new BadRequestException('Cannot remove players after seating');
     }
 
-    await this.prisma.tournamentPlayer.delete({ where: { id: playerId } });
+    await this.prisma.tournamentRoster.deleteMany({
+      where: { tournamentId, playerId },
+    });
     return this.refreshAndEmit(tournamentId);
   }
 
@@ -274,7 +307,7 @@ export class TournamentsService {
       id?: string;
       tableNumber: number;
       dealerSeat: number;
-      seats: { id?: string; tournamentPlayerId: string; seatIndex: number }[];
+      seats: { id?: string; playerId: string; seatIndex: number }[];
     };
 
     let tablePlans: PlanRow[];
@@ -309,7 +342,7 @@ export class TournamentsService {
           tableNumber: i + 1,
           dealerSeat: slice.length - 1,
           seats: slice.map((p, seatIndex) => ({
-            tournamentPlayerId: p.id,
+            playerId: p.id,
             seatIndex,
           })),
         });
@@ -341,7 +374,7 @@ export class TournamentsService {
             seats: {
               create: plan.seats.map((s) => ({
                 ...(s.id ? { id: s.id } : {}),
-                tournamentPlayerId: s.tournamentPlayerId,
+                playerId: s.playerId,
                 seatIndex: s.seatIndex,
               })),
             },
@@ -360,7 +393,7 @@ export class TournamentsService {
     id: string;
     tableNumber: number;
     dealerSeat: number;
-    seats: { id: string; tournamentPlayerId: string; seatIndex: number }[];
+    seats: { id: string; playerId: string; seatIndex: number }[];
   }[] {
     const rosterIds = new Set(t.players.map((p) => p.id));
     const seenPlayers = new Set<string>();
@@ -419,7 +452,7 @@ export class TournamentsService {
         seatCount += 1;
         return {
           id: s.id,
-          tournamentPlayerId: s.tournamentPlayerId,
+          playerId: s.tournamentPlayerId,
           seatIndex: s.seatIndex,
         };
       });
@@ -465,13 +498,13 @@ export class TournamentsService {
     }
 
     const seat = table.seats.find(
-      (s) => s.tournamentPlayerId === dto.tournamentPlayerId,
+      (s) => s.playerId === dto.tournamentPlayerId,
     );
     if (!seat) throw new BadRequestException('Player not at this table');
 
     const ordered = [...table.seats].sort((a, b) => a.seatIndex - b.seatIndex);
     const dealerIdx = ordered.findIndex(
-      (s) => s.tournamentPlayerId === dto.tournamentPlayerId,
+      (s) => s.playerId === dto.tournamentPlayerId,
     );
     const rotated = rotateDealerLast(ordered, dealerIdx);
 
@@ -524,61 +557,33 @@ export class TournamentsService {
       throw new BadRequestException('playerIds must be unique');
     }
 
-    const names = seats.map((s) => s.tournamentPlayer.name);
+    const names = seats.map((s) => s.player.name);
     const gameName = table.isHighTable
       ? `${t.name ?? 'Tournament'} — High Table`
       : `${t.name ?? 'Tournament'} — Table ${table.tableNumber}`;
 
     const game = await this.games.createGame({
       playerNames: names,
+      playerIds: seats.map((s) => s.playerId),
       name: gameName,
       ...(dto.gameId ? { id: dto.gameId } : {}),
-      ...(dto.playerIds ? { playerIds: dto.playerIds } : {}),
       ...(dto.superScorer === true ? { superScorer: true } : {}),
     });
 
-    // Link tournament players onto game players by seat index
     try {
       await this.prisma.$transaction(async (tx) => {
         const fullGame = await tx.game.findUniqueOrThrow({
           where: { id: game.id },
-          include: { players: { orderBy: { seatIndex: 'asc' } } },
         });
 
-        if (fullGame.players.length !== seats.length) {
-          throw new BadRequestException(
-            'Game player count does not match table seats',
-          );
-        }
-
-        // Already linked (idempotent createGame path after partial prior run)
-        if (
-          fullGame.tournamentTableId === table.id &&
-          fullGame.tournamentId === tournamentId
-        ) {
+        if (fullGame.tournamentTableId === table.id) {
           return;
-        }
-
-        for (const gp of fullGame.players) {
-          const seat = seats.find((s) => s.seatIndex === gp.seatIndex);
-          if (!seat) {
-            throw new BadRequestException(
-              `No tournament seat for game seat index ${gp.seatIndex}`,
-            );
-          }
-          await tx.player.update({
-            where: { id: gp.id },
-            data: { tournamentPlayerId: seat.tournamentPlayerId },
-          });
         }
 
         await tx.game.update({
           where: { id: game.id },
           data: {
             tournamentTableId: table.id,
-            tournamentId,
-            isHighTable: table.isHighTable,
-            tableNumber: table.tableNumber,
           },
         });
 
@@ -752,14 +757,14 @@ export class TournamentsService {
       where: { id: gameId },
       include: {
         tournamentTable: true,
-        players: { orderBy: { seatIndex: 'asc' } },
+        seats: gameSeatInclude,
         rounds: { include: { entries: true } },
       },
     });
-    if (!game?.tournamentTableId || !game.tournamentId) return null;
+    if (!game?.tournamentTable) return null;
 
-    const tableId = game.tournamentTableId;
-    const tournamentId = game.tournamentId;
+    const tableId = game.tournamentTable.id;
+    const tournamentId = game.tournamentTable.tournamentId;
 
     await this.prisma.tournamentTable.update({
       where: { id: tableId },
@@ -769,7 +774,7 @@ export class TournamentsService {
       },
     });
 
-    if (game.isHighTable) {
+    if (game.tournamentTable.isHighTable) {
       await this.tryFinalizeTournament(tournamentId);
       return this.refreshAndEmit(tournamentId);
     }
@@ -858,12 +863,13 @@ export class TournamentsService {
           `Table ${table.tableNumber} has no completed game`,
         );
       }
-      const standings = this.games.computeStandingsPublic(table.game);
+      const standings = this.games.computeStandingsPublic(
+        withSeatedPlayers(table.game),
+      );
       for (const s of standings) {
-        const gp = table.game.players.find((p) => p.id === s.playerId);
         const resolved = this.resolveTournamentPlayer(
           t,
-          gp?.tournamentPlayerId,
+          s.playerId,
           s.playerName,
           `table ${table.tableNumber}`,
         );
@@ -939,7 +945,7 @@ export class TournamentsService {
             dealerSeat: ordered.length - 1,
             seats: {
               create: ordered.map((q, seatIndex) => ({
-                tournamentPlayerId: q.tournamentPlayerId,
+                 playerId: q.tournamentPlayerId,
                 seatIndex,
                 sourceTableId: q.sourceTableId,
                 sourceTableNumber: q.sourceTableNumber,
@@ -1037,13 +1043,13 @@ export class TournamentsService {
       include: tournamentInclude,
     });
     if (!t) throw new NotFoundException('Tournament not found');
-    return t;
+    return withRoster(t);
   }
 
   private toSummary(
     t: Prisma.TournamentGetPayload<{
       include: {
-        players: true;
+        roster: true;
         tables: { include: { game: true } };
       };
     }>,
@@ -1058,7 +1064,7 @@ export class TournamentsService {
       name: t.name,
       status: t.status,
       targetPlayerCount: t.targetPlayerCount,
-      playerCount: t.players.length,
+      playerCount: t.roster.length,
       tableCount: t.tables.length,
       tablesCompleted,
       preferredTableSize: t.preferredTableSize,
@@ -1073,7 +1079,7 @@ export class TournamentsService {
   private toDetail(t: FullTournament) {
     const tables = t.tables.map((tb) => {
       const gameStandings = tb.game
-        ? this.games.computeStandingsPublic(tb.game)
+        ? this.games.computeStandingsPublic(withSeatedPlayers(tb.game))
         : null;
       return {
         id: tb.id,
@@ -1090,8 +1096,8 @@ export class TournamentsService {
         seats: tb.seats.map((s) => ({
           id: s.id,
           seatIndex: s.seatIndex,
-          tournamentPlayerId: s.tournamentPlayerId,
-          name: s.tournamentPlayer.name,
+          tournamentPlayerId: s.playerId,
+          name: s.player.name,
           isDealer: s.seatIndex === tb.dealerSeat,
           sourceTableId: s.sourceTableId,
           sourceTableNumber: s.sourceTableNumber,
@@ -1185,7 +1191,9 @@ export class TournamentsService {
       highTableScore: number | null;
     };
 
-    const highStandings = this.games.computeStandingsPublic(high.game);
+    const highStandings = this.games.computeStandingsPublic(
+      withSeatedPlayers(high.game),
+    );
     const placed = new Set<string>();
     const rows: Row[] = [];
 
@@ -1195,16 +1203,15 @@ export class TournamentsService {
     });
 
     for (const s of sortedHigh) {
-      const gp = high.game.players.find((p) => p.id === s.playerId);
       const resolved = this.resolveTournamentPlayer(
         t,
-        gp?.tournamentPlayerId,
+        s.playerId,
         s.playerName,
         'high table',
       );
       if (placed.has(resolved.id)) continue;
       placed.add(resolved.id);
-      const seat = high.seats.find((x) => x.tournamentPlayerId === resolved.id);
+      const seat = high.seats.find((x) => x.playerId === resolved.id);
       rows.push({
         tournamentPlayerId: resolved.id,
         name: resolved.name,
@@ -1235,12 +1242,13 @@ export class TournamentsService {
           `Prelim table ${table.tableNumber} has no game for final standings`,
         );
       }
-      const standings = this.games.computeStandingsPublic(table.game);
+      const standings = this.games.computeStandingsPublic(
+        withSeatedPlayers(table.game),
+      );
       for (const s of standings) {
-        const gp = table.game.players.find((p) => p.id === s.playerId);
         const resolved = this.resolveTournamentPlayer(
           t,
-          gp?.tournamentPlayerId,
+          s.playerId,
           s.playerName,
           `prelim table ${table.tableNumber}`,
         );

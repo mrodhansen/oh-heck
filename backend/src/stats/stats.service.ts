@@ -53,11 +53,15 @@ export class StatsService {
     const games = await this.prisma.game.findMany({
       where: { status: GameStatus.COMPLETED },
       include: {
-        players: {
+        seats: {
           orderBy: { seatIndex: 'asc' },
-           include: {
-              user: { select: { firstName: true, lastName: true } },
+          include: {
+            player: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
             },
+          },
         },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
       },
@@ -154,9 +158,16 @@ export class StatsService {
         }
       }
 
-      const seats = game.players.map((p) => seatRef(p));
+      const players = game.seats.map((s) => ({
+        id: s.player.id,
+        name: s.player.name,
+        seatIndex: s.seatIndex,
+        userId: s.player.userId,
+        user: s.player.user,
+      }));
+      const seats = players.map((p) => seatRef(p));
 
-      const playerTotals = game.players.map((p, idx) => {
+      const playerTotals = players.map((p, idx) => {
         const seat = seats[idx] ?? null;
         let total = 0;
         let roundsPlayed = 0;
@@ -203,7 +214,7 @@ export class StatsService {
           }
 
           if (round.forceBurn && agg) {
-            const dealer = game.players.find(
+            const dealer = players.find(
               (pl) => pl.seatIndex === round.dealerSeat,
             );
             if (dealer?.id === p.id) agg.forceBurns += 1;
@@ -312,8 +323,8 @@ export class StatsService {
         status: game.status,
         createdAt: game.createdAt,
         finishedAt: game.finishedAt,
-        playerCount: game.players.length,
-        players: game.players.map((p, i) => seats[i]?.name ?? p.name),
+        playerCount: players.length,
+        players: players.map((p, i) => seats[i]?.name ?? p.name),
         winner,
         winnerScore,
         highScore,

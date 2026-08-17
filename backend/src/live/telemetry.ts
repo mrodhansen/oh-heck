@@ -1,43 +1,37 @@
-import { GameEventType } from '@prisma/client';
+import { GameEventType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { cardKey, Card, Suit } from './cards';
 import { EngineState } from './engine';
 import { eventCreate } from '../games/analytics';
-import { toInputJson, type JsonArray, type JsonObject } from '../common/json';
+import { toInputJson, type JsonObject } from '../common/json';
+import { toCurrentTrickJson } from '../games/play-json';
 import { NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
-
-function jsonArray(value: Prisma.JsonValue | null): JsonArray {
-  if (!Array.isArray(value)) return [];
-  return JSON.parse(JSON.stringify(value)) as JsonArray;
-}
 
 type SeatPlayer = { id: string; name: string; seatIndex: number };
 
-export async function logLiveEvent(
+export async function logEvent(
   prisma: PrismaService,
   args: {
     sessionId?: string | null;
     gameId?: string | null;
-    type: string;
+    type: GameEventType;
     playerId?: string | null;
     roundNumber?: number | null;
     payload?: JsonObject;
   },
 ) {
-  await prisma.liveEvent.create({
-    data: {
-      sessionId: args.sessionId ?? null,
-      gameId: args.gameId ?? null,
+  await prisma.gameEvent.create({
+    data: eventCreate({
+      sessionId: args.sessionId,
+      gameId: args.gameId,
       type: args.type,
-      playerId: args.playerId ?? null,
-      roundNumber: args.roundNumber ?? null,
-      payload: toInputJson(args.payload ?? {}),
-    },
+      playerId: args.playerId,
+      roundNumber: args.roundNumber,
+      payload: args.payload ?? {},
+    }),
   });
 }
 
-/** Persist deal snapshot onto Round + entries + events. */
 export async function persistDeal(
   prisma: PrismaService,
   args: {
@@ -57,14 +51,13 @@ export async function persistDeal(
     throw new NotFoundException(`Round ${roundNumber} not found`);
   }
 
-  const bySeat = state.hands.map((hand) =>
-    hand.map((c) => ({ s: c.s, r: c.r })),
-  );
   const byPlayerId: { [playerId: string]: { s: Card['s']; r: Card['r'] }[] } = {};
   for (const p of players) {
-    byPlayerId[p.id] = bySeat[p.seatIndex] ?? [];
+    byPlayerId[p.id] = (state.hands[p.seatIndex] ?? []).map((c) => ({
+      s: c.s,
+      r: c.r,
+    }));
   }
-  const dealtHands = { bySeat, byPlayerId };
   const trumpCard = state.trumpCard
     ? { s: state.trumpCard.s, r: state.trumpCard.r }
     : null;
@@ -76,9 +69,8 @@ export async function persistDeal(
       data: {
         trumpSuit: state.trumpSuit,
         trumpCard: trumpCard ? toInputJson(trumpCard) : undefined,
-        dealtHands: toInputJson(dealtHands),
         dealtAt: now,
-        trickHistory: toInputJson([]),
+        currentTrick: Prisma.JsonNull,
       },
     });
 
@@ -91,24 +83,23 @@ export async function persistDeal(
         where: { id: entry.id },
         data: {
           dealtHand: toInputJson(byPlayerId[p.id] ?? []),
-          cardsPlayed: toInputJson([]),
           bidPlacedAt: null,
         },
       });
     }
 
     await tx.gameEvent.create({
-      data: eventCreate(
+      data: eventCreate({
         gameId,
-        GameEventType.ROUND_DEALT,
-        {
+        sessionId,
+        type: GameEventType.ROUND_DEALT,
+        payload: {
           roundNumber,
           handSize: state.handSize,
           dealerSeat: state.dealerSeat,
           bidOrderSeats: state.bidOrder,
           trumpSuit: state.trumpSuit,
           trumpCard,
-          dealtHands,
           seats: players.map((p) => ({
             playerId: p.id,
             name: p.name,
@@ -116,32 +107,50 @@ export async function persistDeal(
           })),
         },
         roundNumber,
-      ),
-    });
-
-    await tx.liveEvent.create({
-      data: {
-        sessionId,
-        gameId,
-        type: 'ROUND_DEALT',
-        roundNumber,
-        payload: toInputJson({
-          handSize: state.handSize,
-          dealerSeat: state.dealerSeat,
-          trumpSuit: state.trumpSuit,
-          trumpCard,
-          handCounts: players.map((p) => ({
-            playerId: p.id,
-            seatIndex: p.seatIndex,
-            cards: (byPlayerId[p.id] ?? []).length,
-          })),
-        }),
-      },
+      }),
     });
   });
 }
 
-/** Record a single card play (partial trick) as events. */
+export async function persistCurrentTrick(
+  prisma: PrismaService,
+  args: {
+    gameId: string;
+    roundNumber: number;
+    state: EngineState;
+    players: SeatPlayer[];
+  },
+) {
+  const round = await prisma.round.findUnique({
+    where: {
+      gameId_number: { gameId: args.gameId, number: args.roundNumber },
+    },
+  });
+  if (!round) {
+    throw new NotFoundException(`Round ${args.roundNumber} not found`);
+  }
+  const bySeat = new Map(args.players.map((p) => [p.seatIndex, p]));
+  const json = args.state.currentTrick
+    ? toCurrentTrickJson({
+        leadSeat: args.state.currentTrick.leadSeat,
+        plays: args.state.currentTrick.plays.map((p) => {
+          const player = bySeat.get(p.seat);
+          if (!player) {
+            throw new NotFoundException(`No player at seat ${p.seat}`);
+          }
+          return { seat: p.seat, card: p.card, playerId: player.id };
+        }),
+        trumpSuit: args.state.trumpSuit,
+      })
+    : null;
+  await prisma.round.update({
+    where: { id: round.id },
+    data: {
+      currentTrick: json == null ? Prisma.JsonNull : toInputJson(json),
+    },
+  });
+}
+
 export async function persistCardPlay(
   prisma: PrismaService,
   args: {
@@ -174,60 +183,18 @@ export async function persistCardPlay(
     playedTrump,
   };
 
-  await prisma.$transaction(async (tx) => {
-    await tx.gameEvent.create({
-      data: eventCreate(
-        args.gameId,
-        GameEventType.CARD_PLAYED,
-        payload,
-        args.roundNumber,
-      ),
-    });
-    await tx.liveEvent.create({
-      data: {
-        sessionId: args.sessionId,
-        gameId: args.gameId,
-        type: 'CARD_PLAYED',
-        playerId: args.playerId,
-        roundNumber: args.roundNumber,
-        payload: toInputJson(payload),
-      },
-    });
-
-    // Append to RoundEntry.cardsPlayed
-    const round = await tx.round.findUnique({
-      where: {
-        gameId_number: { gameId: args.gameId, number: args.roundNumber },
-      },
-      include: { entries: true },
-    });
-    if (!round) {
-      throw new NotFoundException(`Round ${args.roundNumber} not found`);
-    }
-    const entry = round.entries.find((e) => e.playerId === args.playerId);
-    if (!entry) {
-      throw new NotFoundException(`Round entry missing for player ${args.playerId}`);
-    }
-    const prev = jsonArray(entry.cardsPlayed);
-    await tx.roundEntry.update({
-      where: { id: entry.id },
-      data: {
-        cardsPlayed: toInputJson([
-          ...prev,
-          {
-            trickIndex: args.trickIndex,
-            playOrder: args.playOrder,
-            s: args.card.s,
-            r: args.card.r,
-            key,
-          },
-        ]),
-      },
-    });
+  await prisma.gameEvent.create({
+    data: eventCreate({
+      gameId: args.gameId,
+      sessionId: args.sessionId,
+      playerId: args.playerId,
+      type: GameEventType.CARD_PLAYED,
+      payload,
+      roundNumber: args.roundNumber,
+    }),
   });
 }
 
-/** Persist a completed trick (normalized + round.trickHistory + events). */
 export async function persistCompletedTrick(
   prisma: PrismaService,
   args: {
@@ -310,32 +277,15 @@ export async function persistCompletedTrick(
       },
     });
 
-    const prevHist = jsonArray(round.trickHistory);
-    await tx.round.update({
-      where: { id: round.id },
-      data: {
-        trickHistory: toInputJson([...prevHist, historyEntry]),
-      },
-    });
-
     await tx.gameEvent.create({
-      data: eventCreate(
+      data: eventCreate({
         gameId,
-        GameEventType.TRICK_COMPLETED,
-        historyEntry,
-        roundNumber,
-      ),
-    });
-
-    await tx.liveEvent.create({
-      data: {
         sessionId,
-        gameId,
-        type: 'TRICK_COMPLETED',
         playerId: winner?.id ?? null,
+        type: GameEventType.TRICK_COMPLETED,
+        payload: historyEntry,
         roundNumber,
-        payload: toInputJson(historyEntry),
-      },
+      }),
     });
   });
 }
@@ -352,6 +302,8 @@ export async function persistBidPlaced(
     bidPosition: number;
     runningBidBefore: number;
     isLast: boolean;
+    isDealer: boolean;
+    isFirstBidder: boolean;
     forceBurn: boolean;
     forbiddenLastBid: number | null;
   },
@@ -385,26 +337,26 @@ export async function persistBidPlaced(
     }
     await tx.roundEntry.update({
       where: { id: entry.id },
-      data: { bidPlacedAt: now },
+      data: {
+        bid: args.bid,
+        bidPlacedAt: now,
+        bidPosition: args.bidPosition,
+        runningBidBefore: args.runningBidBefore,
+        isLastBidder: args.isLast,
+        isDealer: args.isDealer,
+        isFirstBidder: args.isFirstBidder,
+      },
     });
 
     await tx.gameEvent.create({
-      data: eventCreate(
-        args.gameId,
-        GameEventType.BID_PLACED,
-        payload,
-        args.roundNumber,
-      ),
-    });
-    await tx.liveEvent.create({
-      data: {
-        sessionId: args.sessionId,
+      data: eventCreate({
         gameId: args.gameId,
-        type: 'BID_PLACED',
+        sessionId: args.sessionId,
         playerId: args.playerId,
+        type: GameEventType.BID_PLACED,
+        payload,
         roundNumber: args.roundNumber,
-        payload: toInputJson(payload),
-      },
+      }),
     });
   });
 }

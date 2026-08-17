@@ -11,6 +11,7 @@ import {
   unauthorized,
 } from '../common/api-error';
 import { accountNameNeedles } from '../common/users';
+import { gameSeatInclude, seatedPlayers } from '../games/seats';
 
 export type PublicUser = {
   id: string;
@@ -119,11 +120,12 @@ export class AuthService {
   async claimGamePlayer(userId: string, gameId: string, playerId: string) {
     const game = await this.prisma.game.findUnique({
       where: { id: gameId },
-      include: { players: { orderBy: { seatIndex: 'asc' } } },
+      include: { seats: gameSeatInclude },
     });
     if (!game) throw notFound(ApiErrorCode.GAME_NOT_FOUND, 'Game not found');
 
-    const target = game.players.find((p) => p.id === playerId);
+    const players = seatedPlayers(game.seats);
+    const target = players.find((p) => p.id === playerId);
     if (!target) {
       throw notFound(ApiErrorCode.PLAYER_NOT_FOUND, 'Player not found in game');
     }
@@ -134,16 +136,43 @@ export class AuthService {
       throw conflict('That seat is already claimed');
     }
 
-    const already = game.players.find((p) => p.userId === userId);
+    const already = players.find((p) => p.userId === userId);
     if (already) {
       throw conflict(`You already claimed ${already.name} in this game`);
     }
 
-    // Link the account only. Keep the originally entered table name.
-    await this.prisma.player.update({
-      where: { id: playerId },
-      data: { userId },
+    const existing = await this.prisma.player.findUnique({
+      where: { userId },
     });
+    if (existing && existing.id !== playerId) {
+      const seat = game.seats.find((s) => s.playerId === playerId);
+      if (!seat) {
+        throw notFound(ApiErrorCode.PLAYER_NOT_FOUND, 'Player not found in game');
+      }
+      await this.prisma.$transaction(async (tx) => {
+        await tx.gamePlayer.update({
+          where: { id: seat.id },
+          data: { playerId: existing.id },
+        });
+        await tx.roundEntry.updateMany({
+          where: { playerId, round: { gameId } },
+          data: { playerId: existing.id },
+        });
+        await tx.trickPlay.updateMany({
+          where: { playerId, trick: { gameId } },
+          data: { playerId: existing.id },
+        });
+        await tx.trick.updateMany({
+          where: { winnerPlayerId: playerId, gameId },
+          data: { winnerPlayerId: existing.id },
+        });
+      });
+    } else if (!existing) {
+      await this.prisma.player.update({
+        where: { id: playerId },
+        data: { userId },
+      });
+    }
 
     return { ok: true as const, alreadyClaimed: false as const };
   }
@@ -155,13 +184,13 @@ export class AuthService {
     const needles = accountNameNeedles(user);
     const games = await this.prisma.game.findMany({
       where: {
-        players: {
-          some: { userId: null },
-          none: { userId },
+        seats: {
+          some: { player: { userId: null } },
+          none: { player: { userId } },
         },
       },
       include: {
-        players: { orderBy: { seatIndex: 'asc' } },
+        seats: gameSeatInclude,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -169,7 +198,7 @@ export class AuthService {
 
     return games
       .filter((g) =>
-        g.players.some(
+        seatedPlayers(g.seats).some(
           (p) =>
             p.userId === null &&
             needles.includes(p.name.trim().toLowerCase()),
@@ -182,7 +211,7 @@ export class AuthService {
         playMode: g.playMode,
         createdAt: g.createdAt,
         finishedAt: g.finishedAt,
-        players: g.players.map((p) => ({
+        players: seatedPlayers(g.seats).map((p) => ({
           id: p.id,
           name: p.name,
           seatIndex: p.seatIndex,

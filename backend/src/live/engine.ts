@@ -1,11 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
-import type { JsonObject } from '../common/json';
+import {
+  enginePlays,
+  parseCardJson,
+  parseCardList,
+  parseCurrentTrick,
+} from '../games/play-json';
 import {
   Card,
-  RANKS,
-  SUITS,
   Suit,
-  Rank,
   legalPlays,
   makeDeck,
   removeCard,
@@ -13,6 +15,7 @@ import {
   sortHand,
   winnerOfTrick,
   cardsEqual,
+  cardKey,
 } from './cards';
 
 type LivePhase =
@@ -286,249 +289,244 @@ export function tablePlays(state: EngineState): {
   return { plays: [], leadSuit: null, winnerSeat: null, complete: false };
 }
 
-const PHASES: readonly LivePhase[] = [
-  'lobby',
-  'bidding',
-  'playing',
-  'trick_reveal',
-  'complete',
-];
+export type ScorecardSeat = { id: string; seatIndex: number };
 
-function isLivePhase(value: unknown): value is LivePhase {
-  return typeof value === 'string' && (PHASES as readonly string[]).includes(value);
-}
+export type ScorecardTrickPlay = {
+  playOrder: number;
+  seatIndex: number;
+  cardSuit: string;
+  cardRank: string;
+};
 
-function isSuit(value: unknown): value is Suit {
-  return typeof value === 'string' && (SUITS as readonly string[]).includes(value);
-}
+export type ScorecardTrick = {
+  trickIndex: number;
+  leadSeat: number;
+  leadSuit: string;
+  winnerSeat: number;
+  plays: ScorecardTrickPlay[];
+};
 
-function isRank(value: unknown): value is Rank {
-  return typeof value === 'string' && (RANKS as readonly string[]).includes(value);
-}
+export type ScorecardEntry = {
+  playerId: string;
+  bid: number | null;
+  dealtHand: unknown;
+};
 
-function parseCardValue(value: unknown): Card | null {
-  if (!value || typeof value !== 'object') return null;
-  if (!('s' in value) || !('r' in value)) return null;
-  if (!isSuit(value.s) || !isRank(value.r)) return null;
-  return { s: value.s, r: value.r };
-}
+export type ScorecardRound = {
+  number: number;
+  handSize: number;
+  dealerSeat: number;
+  forceBurn: boolean;
+  trumpSuit: string | null;
+  trumpCard: unknown;
+  currentTrick: unknown;
+  bidOrderSeats: unknown;
+  completedAt: Date | null;
+  dealtAt: Date | null;
+  entries: ScorecardEntry[];
+  tricks: ScorecardTrick[];
+};
 
-function parseCardList(value: unknown): Card[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: Card[] = [];
-  for (const item of value) {
-    const card = parseCardValue(item);
-    if (!card) return null;
-    out.push(card);
-  }
-  return out;
-}
-
-function parseHands(value: unknown): Card[][] | null {
-  if (!Array.isArray(value)) return null;
-  const out: Card[][] = [];
-  for (const hand of value) {
-    const cards = parseCardList(hand);
-    if (!cards) return null;
-    out.push(cards);
-  }
-  return out;
-}
-
-function parseIntList(value: unknown): number[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: number[] = [];
-  for (const item of value) {
-    if (typeof item !== 'number' || !Number.isInteger(item)) return null;
-    out.push(item);
-  }
-  return out;
-}
-
-function parseNullableIntList(value: unknown): (number | null)[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: (number | null)[] = [];
-  for (const item of value) {
-    if (item === null) {
-      out.push(null);
-      continue;
-    }
-    if (typeof item !== 'number' || !Number.isInteger(item)) return null;
-    out.push(item);
-  }
-  return out;
-}
-
-function parseTrickPlays(
-  value: unknown,
-): { seat: number; card: Card }[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: { seat: number; card: Card }[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== 'object') return null;
-    if (!('seat' in item) || !('card' in item)) return null;
-    if (typeof item.seat !== 'number' || !Number.isInteger(item.seat)) return null;
-    const card = parseCardValue(item.card);
-    if (!card) return null;
-    out.push({ seat: item.seat, card });
-  }
-  return out;
-}
-
-export function engineStateToJson(state: EngineState): JsonObject {
-  const card = (c: Card): JsonObject => ({ s: c.s, r: c.r });
-  const play = (p: { seat: number; card: Card }): JsonObject => ({
-    seat: p.seat,
-    card: card(p.card),
+export function roundHasDeal(round: ScorecardRound): boolean {
+  if (round.dealtAt) return true;
+  return round.entries.some((e) => {
+    const hand = parseCardList(e.dealtHand);
+    return hand != null && hand.length > 0;
   });
-  return {
-    phase: state.phase,
-    roundNumber: state.roundNumber,
-    handSize: state.handSize,
-    dealerSeat: state.dealerSeat,
-    trumpSuit: state.trumpSuit,
-    trumpCard: state.trumpCard ? card(state.trumpCard) : null,
-    hands: state.hands.map((hand) => hand.map(card)),
-    bids: state.bids,
-    bidOrder: state.bidOrder,
-    bidIndex: state.bidIndex,
-    forceBurn: state.forceBurn,
-    tricksTaken: state.tricksTaken,
-    currentTrick: state.currentTrick
-      ? {
-          leadSeat: state.currentTrick.leadSeat,
-          plays: state.currentTrick.plays.map(play),
-        }
-      : null,
-    turnSeat: state.turnSeat,
-    tricksPlayed: state.tricksPlayed,
-    lastTrick: state.lastTrick
-      ? {
-          plays: state.lastTrick.plays.map(play),
-          winnerSeat: state.lastTrick.winnerSeat,
-          leadSuit: state.lastTrick.leadSuit,
-        }
-      : null,
-    playerCount: state.playerCount,
-  };
 }
 
-export function parseEngineState(
-  raw: unknown,
-  status?: 'LOBBY' | 'PLAYING' | 'COMPLETED',
-): EngineState {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    if (status && status !== 'LOBBY') {
-      throw new BadRequestException('Corrupt live game state');
+export function engineFromScorecard(args: {
+  sessionStatus: 'LOBBY' | 'PLAYING' | 'COMPLETED';
+  players: ScorecardSeat[];
+  rounds: ScorecardRound[];
+}): EngineState {
+  const { sessionStatus, players, rounds } = args;
+  const playerCount = players.length;
+  if (sessionStatus === 'LOBBY' || playerCount === 0) {
+    return emptyLobbyState();
+  }
+
+  const current =
+    sessionStatus === 'COMPLETED'
+      ? [...rounds].reverse().find(roundHasDeal) ?? rounds[rounds.length - 1]
+      : rounds.find((r) => r.completedAt == null);
+
+  if (!current || !roundHasDeal(current)) {
+    if (sessionStatus === 'COMPLETED') {
+      return { ...emptyLobbyState(), phase: 'complete', playerCount };
     }
     return emptyLobbyState();
   }
 
-  const rec = raw as { readonly [key: string]: unknown };
-  if (!isLivePhase(rec.phase)) {
-    if (status && status !== 'LOBBY') {
-      throw new BadRequestException('Corrupt live game state');
+  const bidOrder = seatOrder(current.bidOrderSeats);
+  if (bidOrder.length !== playerCount) {
+    throw new BadRequestException('Corrupt live bid order');
+  }
+
+  const seatByPlayer = new Map(players.map((p) => [p.id, p.seatIndex] as const));
+  const bySeat = new Map(
+    current.entries.map((e) => {
+      const seat = seatByPlayer.get(e.playerId);
+      if (seat == null) {
+        throw new BadRequestException('Round entry missing seat');
+      }
+      return [seat, e] as const;
+    }),
+  );
+  const bids: (number | null)[] = Array.from({ length: playerCount }, (_, seat) => {
+    return bySeat.get(seat)?.bid ?? null;
+  });
+  const openBid = bidOrder.findIndex((seat) => bids[seat] == null);
+  const allBidsIn = openBid < 0;
+
+  const played = new Set<string>();
+  const sortedTricks = [...current.tricks].sort(
+    (a, b) => a.trickIndex - b.trickIndex,
+  );
+  for (const trick of sortedTricks) {
+    for (const p of trick.plays) {
+      played.add(`${p.cardRank}${p.cardSuit}`);
     }
-    return emptyLobbyState();
   }
-  if (status === 'PLAYING' && (rec.phase === 'lobby' || !Array.isArray(rec.hands))) {
-    throw new BadRequestException('Corrupt live game state');
-  }
-
-  const parsedHands = parseHands(rec.hands);
-  const parsedBids = parseNullableIntList(rec.bids);
-  const parsedBidOrder = parseIntList(rec.bidOrder);
-  const parsedTricksTaken = parseIntList(rec.tricksTaken);
-  if (!parsedHands || !parsedBids || !parsedBidOrder || !parsedTricksTaken) {
-    if (rec.phase === 'lobby') return emptyLobbyState();
-    throw new BadRequestException('Corrupt live game state');
-  }
-
-  const trumpCard = rec.trumpCard == null ? null : parseCardValue(rec.trumpCard);
-  if (rec.trumpCard != null && !trumpCard) {
-    throw new BadRequestException('Corrupt live game state');
-  }
-
-  const trumpSuit =
-    rec.trumpSuit == null ? null : isSuit(rec.trumpSuit) ? rec.trumpSuit : null;
-  if (rec.trumpSuit != null && !trumpSuit) {
-    throw new BadRequestException('Corrupt live game state');
-  }
-
-  let currentTrick: EngineState['currentTrick'] = null;
-  if (rec.currentTrick != null) {
-    if (!rec.currentTrick || typeof rec.currentTrick !== 'object') {
-      throw new BadRequestException('Corrupt live game state');
+  const parsedCurrent = parseCurrentTrick(current.currentTrick);
+  if (parsedCurrent) {
+    for (const p of parsedCurrent.plays) {
+      played.add(cardKey({ s: p.s, r: p.r }));
     }
-    const trick = rec.currentTrick as { readonly [key: string]: unknown };
-    const leadSeat = trick.leadSeat;
-    const plays = parseTrickPlays(trick.plays);
-    if (typeof leadSeat !== 'number' || !Number.isInteger(leadSeat) || !plays) {
-      throw new BadRequestException('Corrupt live game state');
-    }
-    currentTrick = { leadSeat, plays };
   }
 
-  let lastTrick: EngineState['lastTrick'] = null;
-  if (rec.lastTrick != null) {
-    if (!rec.lastTrick || typeof rec.lastTrick !== 'object') {
-      throw new BadRequestException('Corrupt live game state');
+  const hands: Card[][] = Array.from({ length: playerCount }, (_, seat) => {
+    const dealt = parseCardList(bySeat.get(seat)?.dealtHand);
+    if (!dealt) {
+      throw new BadRequestException('Corrupt dealt hand');
     }
-    const trick = rec.lastTrick as { readonly [key: string]: unknown };
-    const plays = parseTrickPlays(trick.plays);
-    const winnerSeat = trick.winnerSeat;
-    const leadSuit = trick.leadSuit;
-    if (!plays || typeof winnerSeat !== 'number' || !isSuit(leadSuit)) {
-      throw new BadRequestException('Corrupt live game state');
+    return dealt.filter((c) => !played.has(cardKey(c)));
+  });
+
+  const tricksTaken = Array.from({ length: playerCount }, () => 0);
+  for (const trick of sortedTricks) {
+    const prev = tricksTaken[trick.winnerSeat];
+    if (prev == null) {
+      throw new BadRequestException('Corrupt trick winner seat');
     }
-    lastTrick = { plays, winnerSeat, leadSuit };
+    tricksTaken[trick.winnerSeat] = prev + 1;
   }
 
-  const roundNumber = rec.roundNumber;
-  const handSize = rec.handSize;
-  const dealerSeat = rec.dealerSeat;
-  const bidIndex = rec.bidIndex;
-  const forceBurn = rec.forceBurn;
-  const tricksPlayed = rec.tricksPlayed;
-  const playerCount = rec.playerCount;
-  if (
-    typeof roundNumber !== 'number' ||
-    typeof handSize !== 'number' ||
-    typeof dealerSeat !== 'number' ||
-    typeof bidIndex !== 'number' ||
-    typeof forceBurn !== 'boolean' ||
-    typeof tricksPlayed !== 'number' ||
-    typeof playerCount !== 'number'
-  ) {
-    if (rec.phase === 'lobby') return emptyLobbyState();
-    throw new BadRequestException('Corrupt live game state');
+  const lastRow = sortedTricks[sortedTricks.length - 1];
+  const lastTrick: EngineState['lastTrick'] = lastRow
+    ? {
+        plays: [...lastRow.plays]
+          .sort((a, b) => a.playOrder - b.playOrder)
+          .map((p) => {
+            const card = parseCardJson({ s: p.cardSuit, r: p.cardRank });
+            if (!card) {
+              throw new BadRequestException('Corrupt trick play');
+            }
+            return { seat: p.seatIndex, card };
+          }),
+        winnerSeat: lastRow.winnerSeat,
+        leadSuit: lastRow.leadSuit as Suit,
+      }
+    : null;
+
+  const trumpCard =
+    current.trumpCard == null ? null : parseCardJson(current.trumpCard);
+  if (current.trumpCard != null && !trumpCard) {
+    throw new BadRequestException('Corrupt trump card');
+  }
+  const trumpSuit = (current.trumpSuit as Suit | null) ?? trumpCard?.s ?? null;
+
+  if (sessionStatus === 'COMPLETED') {
+    return {
+      phase: 'complete',
+      roundNumber: current.number,
+      handSize: current.handSize,
+      dealerSeat: current.dealerSeat,
+      trumpSuit,
+      trumpCard,
+      hands,
+      bids,
+      bidOrder,
+      bidIndex: bidOrder.length,
+      forceBurn: current.forceBurn,
+      tricksTaken,
+      currentTrick: null,
+      turnSeat: null,
+      tricksPlayed: sortedTricks.length,
+      lastTrick,
+      playerCount,
+    };
   }
 
-  let turnSeat: number | null = null;
-  if (rec.turnSeat != null) {
-    if (typeof rec.turnSeat !== 'number' || !Number.isInteger(rec.turnSeat)) {
-      throw new BadRequestException('Corrupt live game state');
-    }
-    turnSeat = rec.turnSeat;
+  if (!allBidsIn) {
+    return {
+      phase: 'bidding',
+      roundNumber: current.number,
+      handSize: current.handSize,
+      dealerSeat: current.dealerSeat,
+      trumpSuit,
+      trumpCard,
+      hands,
+      bids,
+      bidOrder,
+      bidIndex: openBid,
+      forceBurn: current.forceBurn,
+      tricksTaken,
+      currentTrick: null,
+      turnSeat: null,
+      tricksPlayed: 0,
+      lastTrick: null,
+      playerCount,
+    };
+  }
+
+  let currentTrick: EngineState['currentTrick'];
+  let turnSeat: number | null;
+  if (parsedCurrent && parsedCurrent.plays.length > 0) {
+    currentTrick = {
+      leadSeat: parsedCurrent.leadSeat,
+      plays: enginePlays(parsedCurrent),
+    };
+    const last = currentTrick.plays[currentTrick.plays.length - 1]!;
+    turnSeat = (last.seat + 1) % playerCount;
+  } else if (parsedCurrent) {
+    currentTrick = { leadSeat: parsedCurrent.leadSeat, plays: [] };
+    turnSeat = parsedCurrent.leadSeat;
+  } else if (lastTrick) {
+    currentTrick = { leadSeat: lastTrick.winnerSeat, plays: [] };
+    turnSeat = lastTrick.winnerSeat;
+  } else {
+    const leadSeat = bidOrder[0]!;
+    currentTrick = { leadSeat, plays: [] };
+    turnSeat = leadSeat;
   }
 
   return {
-    phase: rec.phase,
-    roundNumber,
-    handSize,
-    dealerSeat,
+    phase: 'playing',
+    roundNumber: current.number,
+    handSize: current.handSize,
+    dealerSeat: current.dealerSeat,
     trumpSuit,
     trumpCard,
-    hands: parsedHands,
-    bids: parsedBids,
-    bidOrder: parsedBidOrder,
-    bidIndex,
-    forceBurn,
-    tricksTaken: parsedTricksTaken,
+    hands,
+    bids,
+    bidOrder,
+    bidIndex: bidOrder.length,
+    forceBurn: current.forceBurn,
+    tricksTaken,
     currentTrick,
     turnSeat,
-    tricksPlayed,
+    tricksPlayed: sortedTricks.length,
     lastTrick,
     playerCount,
   };
+}
+
+function seatOrder(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const out: number[] = [];
+  for (const item of value) {
+    if (typeof item === 'number' && Number.isInteger(item)) out.push(item);
+  }
+  return out;
 }

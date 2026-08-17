@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legalPlays, winnerOfTrick } from './cards';
-import { dealRound, placeBid, playCard } from './engine';
+import { dealRound, engineFromScorecard, placeBid, playCard } from './engine';
 
 describe('winnerOfTrick', () => {
   it('highest trump wins over higher lead suit', () => {
@@ -140,5 +140,138 @@ describe('playCard follow suit', () => {
     expect(() => playCard(s, 1, { s: 'S', r: '2' })).toThrow(/follow suit/);
     s = playCard(s, 1, { s: 'H', r: 'K' });
     expect(s.lastTrick?.winnerSeat).toBe(0);
+  });
+});
+
+describe('engineFromScorecard', () => {
+  it('rebuilds bidding from RoundEntry bids and dealt hands', () => {
+    const state = engineFromScorecard({
+      sessionStatus: 'PLAYING',
+      players: [
+        { id: 'p0', seatIndex: 0 },
+        { id: 'p1', seatIndex: 1 },
+      ],
+      rounds: [
+        {
+          number: 1,
+          handSize: 2,
+          dealerSeat: 1,
+          forceBurn: false,
+          trumpSuit: 'H',
+          trumpCard: { s: 'H', r: '2' },
+          currentTrick: null,
+          bidOrderSeats: [0, 1],
+          completedAt: null,
+          dealtAt: new Date(),
+          entries: [
+            {
+              playerId: 'p0',
+              bid: 1,
+              dealtHand: [
+                { s: 'S', r: 'A' },
+                { s: 'D', r: '3' },
+              ],
+            },
+            {
+              playerId: 'p1',
+              bid: null,
+              dealtHand: [
+                { s: 'H', r: 'K' },
+                { s: 'C', r: '9' },
+              ],
+            },
+          ],
+          tricks: [],
+        },
+      ],
+    });
+    expect(state.phase).toBe('bidding');
+    expect(state.bids).toEqual([1, null]);
+    expect(state.bidIndex).toBe(1);
+    expect(state.hands[0]).toHaveLength(2);
+  });
+
+  it('subtracts completed and current plays from remaining hands', () => {
+    const state = engineFromScorecard({
+      sessionStatus: 'PLAYING',
+      players: [
+        { id: 'p0', seatIndex: 0 },
+        { id: 'p1', seatIndex: 1 },
+      ],
+      rounds: [
+        {
+          number: 1,
+          handSize: 2,
+          dealerSeat: 1,
+          forceBurn: false,
+          trumpSuit: 'C',
+          trumpCard: { s: 'C', r: '2' },
+          currentTrick: {
+            leadSeat: 1,
+            plays: [
+              {
+                playOrder: 0,
+                seatIndex: 1,
+                playerId: 'p1',
+                s: 'H',
+                r: 'K',
+                key: 'KH',
+                followedSuit: true,
+                playedTrump: false,
+              },
+            ],
+          },
+          bidOrderSeats: [0, 1],
+          completedAt: null,
+          dealtAt: new Date(),
+          entries: [
+            {
+              playerId: 'p0',
+              bid: 1,
+              dealtHand: [
+                { s: 'S', r: 'A' },
+                { s: 'H', r: 'A' },
+              ],
+            },
+            {
+              playerId: 'p1',
+              bid: 0,
+              dealtHand: [
+                { s: 'H', r: 'K' },
+                { s: 'S', r: '2' },
+              ],
+            },
+          ],
+          tricks: [
+            {
+              trickIndex: 0,
+              leadSeat: 0,
+              leadSuit: 'S',
+              winnerSeat: 0,
+              plays: [
+                {
+                  playOrder: 0,
+                  seatIndex: 0,
+                  cardSuit: 'S',
+                  cardRank: 'A',
+                },
+                {
+                  playOrder: 1,
+                  seatIndex: 1,
+                  cardSuit: 'S',
+                  cardRank: '2',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(state.phase).toBe('playing');
+    expect(state.tricksPlayed).toBe(1);
+    expect(state.tricksTaken).toEqual([1, 0]);
+    expect(state.hands[0]).toEqual([{ s: 'H', r: 'A' }]);
+    expect(state.hands[1]).toEqual([]);
+    expect(state.turnSeat).toBe(0);
   });
 });

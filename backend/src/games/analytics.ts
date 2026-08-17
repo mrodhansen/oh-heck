@@ -358,16 +358,23 @@ export function derivedEntryOutcome(
   };
 }
 
-export function eventCreate(
-  gameId: string,
-  type: GameEventType,
-  payload: JsonValue,
-  roundNumber?: number | null,
-): Prisma.GameEventCreateManyInput {
+export function eventCreate(args: {
+  gameId?: string | null;
+  sessionId?: string | null;
+  playerId?: string | null;
+  type: GameEventType;
+  payload: JsonValue;
+  roundNumber?: number | null;
+}): Prisma.GameEventCreateManyInput {
+  if (!args.gameId && !args.sessionId) {
+    throw new Error('Event requires gameId or sessionId');
+  }
   return {
-    gameId,
-    type,
-    roundNumber: roundNumber ?? null,
-    payload: toInputJson(payload),
+    gameId: args.gameId ?? null,
+    sessionId: args.sessionId ?? null,
+    playerId: args.playerId ?? null,
+    type: args.type,
+    roundNumber: args.roundNumber ?? null,
+    payload: toInputJson(args.payload),
   };
 }

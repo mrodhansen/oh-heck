@@ -241,14 +241,13 @@ async function wipe() {
       "RoundEntry",
       "Round",
       "GameEvent",
-      "LiveEvent",
-      "LivePlayer",
+      "GamePlayer",
       "LiveSession",
-      "Player",
-      "Game",
+      "TournamentRoster",
       "TournamentTableSeat",
       "TournamentTable",
-      "TournamentPlayer",
+      "Player",
+      "Game",
       "Tournament",
       "AuthSession",
       "User"
@@ -376,7 +375,23 @@ async function insertGame({
   isHighTable = false,
   tableNumber = null,
 }) {
-  const playerIds = names.map(() => randomUUID());
+  const playerIds = [];
+  for (let i = 0; i < names.length; i++) {
+    const preset = tournamentPlayerIds?.[i];
+    const userId = userIds[i]?.id ?? null;
+    if (preset) {
+      playerIds.push(preset);
+      continue;
+    }
+    if (userId) {
+      const existing = await prisma.player.findUnique({ where: { userId } });
+      if (existing) {
+        playerIds.push(existing.id);
+        continue;
+      }
+    }
+    playerIds.push(randomUUID());
+  }
   const n = names.length;
   const firstDealerSeat = dealerSeat(1, n);
   const skills = names.map((_, i) => {
@@ -421,19 +436,22 @@ async function insertGame({
       finishedAt,
       playerCount: n,
       firstDealerSeat,
-      tournamentId,
       tournamentTableId,
-      isHighTable,
-      tableNumber,
       notes: notes ?? [],
-      players: {
+      seats: {
         create: names.map((name, seatIndex) => ({
-          id: playerIds[seatIndex],
-          name,
           seatIndex,
-          userId: userIds[seatIndex]?.id ?? null,
-          tournamentPlayerId: tournamentPlayerIds?.[seatIndex] ?? null,
-          createdAt,
+          player: {
+            connectOrCreate: {
+              where: { id: playerIds[seatIndex] },
+              create: {
+                id: playerIds[seatIndex],
+                name,
+                userId: userIds[seatIndex]?.id ?? null,
+                createdAt,
+              },
+            },
+          },
         })),
       },
       rounds: {
@@ -668,20 +686,30 @@ async function createTournamentShell({
       startedAt,
       highTableAt,
       finishedAt,
-      players: {
+      roster: {
         create: playerNames.map((n, orderIndex) => ({
-          name: n,
           orderIndex,
           createdAt,
+          player: {
+            create: { name: n, createdAt },
+          },
         })),
       },
     },
-    include: { players: { orderBy: { orderIndex: 'asc' } } },
+    include: {
+      roster: {
+        orderBy: { orderIndex: 'asc' },
+        include: { player: true },
+      },
+    },
   });
 }
 
 async function seatTables(tournament, sizes, rng, stage = TournamentStage.PRELIM) {
-  const shuffled = shuffle(rng, tournament.players);
+  const shuffled = shuffle(
+    rng,
+    tournament.roster.map((r) => ({ id: r.player.id, name: r.player.name })),
+  );
   const tables = [];
   let cursor = 0;
   for (let i = 0; i < sizes.length; i++) {
@@ -703,7 +731,7 @@ async function seatTables(tournament, sizes, rng, stage = TournamentStage.PRELIM
         dealerSeat: ordered.length - 1,
         seats: {
           create: ordered.map((p, seatIndex) => ({
-            tournamentPlayerId: p.id,
+            playerId: p.id,
             seatIndex,
           })),
         },
@@ -711,7 +739,7 @@ async function seatTables(tournament, sizes, rng, stage = TournamentStage.PRELIM
       include: {
         seats: {
           orderBy: { seatIndex: 'asc' },
-          include: { tournamentPlayer: true },
+          include: { player: true },
         },
       },
     });
@@ -721,7 +749,7 @@ async function seatTables(tournament, sizes, rng, stage = TournamentStage.PRELIM
 }
 
 async function startTableGame(table, users, rng, spec, title) {
-  const names = table.seats.map((s) => s.tournamentPlayer.name);
+  const names = table.seats.map((s) => s.player.name);
   const usedUsers = new Set();
   const userIds = names.map((name) => {
     const u = users.find((x) => x.username === name.toLowerCase());
@@ -743,7 +771,7 @@ async function startTableGame(table, users, rng, spec, title) {
     rng,
     tournamentId: table.tournamentId,
     tournamentTableId: table.id,
-    tournamentPlayerIds: table.seats.map((s) => s.tournamentPlayerId),
+    tournamentPlayerIds: table.seats.map((s) => s.playerId),
     isHighTable: table.isHighTable,
     tableNumber: table.tableNumber,
   });
@@ -926,16 +954,16 @@ async function seedTournaments(users) {
     const game = await prisma.game.findUnique({
       where: { tournamentTableId: prelimTables[i].id },
       include: {
-        players: true,
+        seats: { include: { player: true }, orderBy: { seatIndex: 'asc' } },
         rounds: { include: { entries: true } },
       },
     });
-    const totals = game.players.map((p) => ({
-      tpId: p.tournamentPlayerId,
-      name: p.name,
-      total: game.rounds.reduce((s, r) => {
-        const e = r.entries.find((x) => x.playerId === p.id);
-        return s + (e?.points ?? 0);
+    const totals = game.seats.map((s) => ({
+      tpId: s.playerId,
+      name: s.player.name,
+      total: game.rounds.reduce((sum, r) => {
+        const e = r.entries.find((x) => x.playerId === s.playerId);
+        return sum + (e?.points ?? 0);
       }, 0),
     }));
     totals.sort((a, b) => b.total - a.total);
@@ -969,7 +997,7 @@ async function seedTournaments(users) {
       startedAt: daysAgo(rng, 0.8, 1.2),
       seats: {
         create: qualifiers.map((q, seatIndex) => ({
-          tournamentPlayerId: q.tpId,
+          playerId: q.tpId,
           seatIndex,
           sourceTableId: q.tableId,
           sourceTableNumber: q.tableNumber,
@@ -981,7 +1009,7 @@ async function seedTournaments(users) {
     include: {
       seats: {
         orderBy: { seatIndex: 'asc' },
-        include: { tournamentPlayer: true },
+          include: { player: true },
       },
     },
   });
@@ -1047,16 +1075,16 @@ async function seedCompletedTournament(users, rng, name, playerNames, daysBack) 
     const game = await prisma.game.findUnique({
       where: { tournamentTableId: tables[i].id },
       include: {
-        players: true,
+        seats: { include: { player: true }, orderBy: { seatIndex: 'asc' } },
         rounds: { include: { entries: true } },
       },
     });
-    const totals = game.players.map((p) => ({
-      tpId: p.tournamentPlayerId,
-      name: p.name,
-      total: game.rounds.reduce((s, r) => {
-        const e = r.entries.find((x) => x.playerId === p.id);
-        return s + (e?.points ?? 0);
+    const totals = game.seats.map((s) => ({
+      tpId: s.playerId,
+      name: s.player.name,
+      total: game.rounds.reduce((sum, r) => {
+        const e = r.entries.find((x) => x.playerId === s.playerId);
+        return sum + (e?.points ?? 0);
       }, 0),
     }));
     totals.sort((a, b) => b.total - a.total);
@@ -1091,7 +1119,7 @@ async function seedCompletedTournament(users, rng, name, playerNames, daysBack) 
       finishedAt: new Date(startedAt.getTime() + 8 * 3600_000),
       seats: {
         create: qualifiers.map((q, seatIndex) => ({
-          tournamentPlayerId: q.tpId,
+          playerId: q.tpId,
           seatIndex,
           sourceTableId: q.tableId,
           sourceTableNumber: q.tableNumber,
@@ -1103,7 +1131,7 @@ async function seedCompletedTournament(users, rng, name, playerNames, daysBack) 
     include: {
       seats: {
         orderBy: { seatIndex: 'asc' },
-        include: { tournamentPlayer: true },
+          include: { player: true },
       },
     },
   });
