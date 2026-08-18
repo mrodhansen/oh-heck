@@ -1,6 +1,10 @@
 node_modules
 dist
 .env
+.env.sqlite
 *.log
 *.db
 *.db-journal
+.neon-dump.json
+prisma/.neon-dump.json
+prisma/schema.sqlite.prisma

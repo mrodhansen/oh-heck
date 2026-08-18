@@ -7,7 +7,7 @@ Mobile-friendly **PWA** scorekeeper + NestJS API + PostgreSQL.
 - **Frontend:** React + TypeScript (Vite) + Progressive Web App (installable)
 - **Offline:** IndexedDB outbox + local game engine; auto-sync when online
 - **Backend:** NestJS + **Prisma** + TypeScript
-- **DB:** PostgreSQL 16 (Docker locally, Fly/hosted in prod)
+- **DB:** SQLite on the Lightsail box in prod; PostgreSQL 16 or SQLite locally
 - **Rules:** in-app How to Play · `RULES.yaml` / `backend/rules/oh-heck.yaml`
 - **Technical spec:** `docs/RULES.technical.yaml`
 
@@ -29,6 +29,7 @@ Both the browser tab and the installed PWA use the **same backend** (`VITE_API_U
 |------|---------|----|------|
 | **Full Docker** | `docker compose up --build` | Postgres container | Closest to prod, all-in-one |
 | **Postgres local** | `docker compose up db -d` + `npm run start:dev` | Postgres only | App on host, DB in Docker |
+| **SQLite local** | `cd backend && npm run start:dev:sqlite` | `prisma/dev.db` | No Docker — Prisma `db push` builds the file |
 
 ---
 
@@ -89,12 +90,9 @@ Notes:
 
 ## GitHub Pages (frontend PWA)
 
-1. Host the **API** somewhere public (Fly, Railway, VPS, Mac mini + ngrok, etc.) with CORS `*`.
+1. API is `https://oh-heck.mrodhansen.com/api` (Lightsail + Sablier + SQLite).
 2. Repo **Settings → Pages → Source: GitHub Actions**.
-3. Set Actions variable/secret:
-   - `VITE_API_URL` = `https://your-api.example.com` (no trailing slash)
-   - optional `VITE_BASE` = `/oh-heck/` (defaults to `/<repo>/`)
-4. Push to `main` — workflow `.github/workflows/deploy-pages.yml` builds & deploys.
+3. Push `frontend/**` to `main` — workflow hardcodes `VITE_API_URL=https://oh-heck.mrodhansen.com/api`.
 5. Open the Pages URL → **Add to Home Screen** for the PWA.
 
 Refresh on `/stats`, `/account`, `/games/…` works because the build copies `index.html` to `404.html`. GitHub Pages has no rewrite rules; that file is the SPA fallback.
@@ -109,7 +107,8 @@ npx vite preview
 
 ## Prisma / schema notes
 
-- **Postgres:** `backend/prisma/schema.prisma` + `migrations/` → `prisma migrate deploy`
+- **Postgres (source of truth):** `backend/prisma/schema.prisma` + `migrations/` → `prisma migrate deploy`
+- **SQLite (local only):** `npm run start:dev:sqlite` derives `schema.sqlite.prisma` and runs `prisma db push` to `prisma/dev.db`
 - Local default is Postgres (`npm run start:dev`).
 
 ## Game flow

@@ -1,0 +1,111 @@
+name: Deploy API to box
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-box.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: box-oh-heck
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install, generate, test
+        working-directory: backend
+        run: |
+          npm ci
+          npx prisma generate
+          npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.BOX_SSH_KEY }}
+
+      - name: Trust box host key
+        env:
+          BOX_HOST: ${{ secrets.BOX_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "$BOX_HOST" >> ~/.ssh/known_hosts
+
+      - name: Build image
+        working-directory: backend
+        run: docker build --target box -t box-oh-heck:latest -t "box-oh-heck:${GITHUB_SHA}" .
+
+      - name: Sync source
+        env:
+          BOX_HOST: ${{ secrets.BOX_HOST }}
+          BOX_USER: ${{ secrets.BOX_USER }}
+        run: |
+          rsync -az --delete \
+            -e ssh \
+            --exclude '.env' \
+            --exclude '.env.sqlite' \
+            --exclude 'node_modules/' \
+            --exclude 'dist/' \
+            --exclude '*.db' \
+            --exclude '*.db-journal' \
+            --exclude '.neon-dump.json' \
+            --exclude 'prisma/.neon-dump.json' \
+            --exclude 'prisma/schema.sqlite.prisma' \
+            backend/ "${BOX_USER}@${BOX_HOST}:/opt/box/apps/oh-heck/"
+
+      - name: Load image and recreate container
+        env:
+          BOX_HOST: ${{ secrets.BOX_HOST }}
+          BOX_USER: ${{ secrets.BOX_USER }}
+        run: |
+          docker save box-oh-heck:latest | gzip -1 | ssh "${BOX_USER}@${BOX_HOST}" "gunzip | docker load"
+          ssh "${BOX_USER}@${BOX_HOST}" "set -euo pipefail
+            cd /opt/box
+            docker compose stop oh-heck
+            docker compose rm -f oh-heck
+            docker compose up -d --no-deps --no-build oh-heck
+            docker image prune -f
+          "
+
+      - name: Wait for health JSON
+        run: |
+          set -euo pipefail
+          hdr="$(mktemp)"
+          body="$(mktemp)"
+          for i in $(seq 1 40); do
+            if curl -sS -D "$hdr" -o "$body" --max-time 15 https://oh-heck.mrodhansen.com/api/health \
+              && grep -qi '^content-type:[[:space:]]*application/json' "$hdr" \
+              && jq -e '.ok == true' "$body"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not return health JSON" >&2
+          echo "last headers:" >&2
+          cat "$hdr" >&2 || true
+          echo "last body:" >&2
+          head -c 400 "$body" >&2 || true
+          echo >&2
+          exit 1

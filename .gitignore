@@ -1,6 +1,9 @@
 node_modules
 dist
 .env
+.env.sqlite
+backend/prisma/schema.sqlite.prisma
+backend/prisma/.neon-dump.json
 *.log
 .DS_Store
 pgdata

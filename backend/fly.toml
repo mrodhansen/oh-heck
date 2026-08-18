@@ -1,6 +1,5 @@
-# Optional permanent API host (Fly.io).
-# After: fly auth login && fly apps create oh-heck-api
-# Set DATABASE_URL secret, then: cd backend && fly deploy
+# Unused. Prod API is Lightsail + SQLite (oh-heck.mrodhansen.com).
+# Kept only so the old Fly app can be destroyed later.
 
 app = "oh-heck-api"
 primary_region = "sjc"

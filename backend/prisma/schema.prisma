@@ -2,6 +2,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// SQLite local: `npm run start:dev:sqlite` rewrites provider → sqlite and db-pushes prisma/dev.db.
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

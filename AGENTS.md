@@ -5,47 +5,58 @@
 | Piece | Where | URL |
 |-------|--------|-----|
 | Frontend PWA | GitHub Pages (`o-heck.com`) | http://o-heck.com/ |
-| API | Fly.io app `oh-heck-api` region `sjc` | https://oh-heck-api.fly.dev |
-| DB | Neon Postgres (`DATABASE_URL` Fly secret) | not public |
+| API | Lightsail box + Sablier | https://oh-heck.mrodhansen.com/api |
+| DB | SQLite on the box (`/opt/box/data/oh-heck/oh-heck.db`) | not public |
 
-Pages build vars (repo Actions): `VITE_API_URL=https://oh-heck-api.fly.dev`, `VITE_BASE=/`.
+Pages build var: `VITE_API_URL=https://oh-heck.mrodhansen.com/api` (hardcoded in `.github/workflows/deploy-pages.yml`).
 
 ## Deploy order (always)
 
-Push `main` (or `workflow_dispatch` on `Deploy frontend to GitHub Pages`).
-`.github/workflows/deploy-pages.yml` deploys **API first** (Fly `release_command` migrates Neon), then Pages.
+1. API: push `backend/**` (or `workflow_dispatch` on `Deploy API to box`). `.github/workflows/deploy-box.yml` builds `box-oh-heck:latest`, `docker load`s it, recreates **only** `oh-heck`.
+2. Frontend: push `frontend/**` (or `workflow_dispatch` on `Deploy frontend to GitHub Pages`).
 
-Needs repo secret `FLY_API_TOKEN` (Fly deploy token for `oh-heck-api`).
+Needs repo secrets `BOX_SSH_KEY`, `BOX_HOST`, `BOX_USER` (same as mtg-rules).
 
-Never apply schema SQL by hand. Never deploy the API without the new `prisma/migrations/` in the image.
+Never apply schema SQL by hand. Never `docker compose down` the whole box stack (kills Caddy/TLS). Never `down -v` (wipes certs). Never `build --no-cache` on the 1GB box.
 
-## Backend + Neon
+## Backend + box
 
-CI: `flyctl deploy --remote-only` from `backend/` in the Pages workflow.
-
-Manual:
+Manual (after a local `linux/amd64` image build):
 
 ```bash
 cd backend
-fly deploy
+docker build --platform linux/amd64 --target box -t box-oh-heck:latest .
+docker save box-oh-heck:latest | gzip -1 | ssh box "gunzip | docker load"
+rsync -az --delete --exclude node_modules --exclude dist --exclude .env --exclude '*.db' \
+  ./ backend-check 2>/dev/null || true
+rsync -az --delete \
+  --exclude node_modules --exclude dist --exclude .env --exclude .env.sqlite \
+  --exclude '*.db' --exclude '*.db-journal' --exclude prisma/.neon-dump.json \
+  ./ ubuntu@54.225.171.58:/opt/box/apps/oh-heck/
+ssh box "cd /opt/box && sudo docker compose stop oh-heck && sudo docker compose rm -f oh-heck && sudo docker compose up -d --no-deps --no-build oh-heck"
 ```
 
-- Builds `backend/Dockerfile` (target `runner`).
-- `fly.toml` `[deploy] release_command = "npx prisma migrate deploy"` runs against Neon **before** the new machines take traffic.
-- Fly secrets: `DATABASE_URL`, `CORS_ORIGIN`, `COOKIE_SAMESITE`, `COOKIE_SECURE`.
-- Health: `GET https://oh-heck-api.fly.dev/health` → `{ ok: true }`.
+- Compose service `oh-heck` in `/opt/box` (local copy: `~/projects/mrodhansen-box`).
+- `restart: "no"` + Sablier group `oh-heck`. Idle stop 1h. `mem_limit: 256m`.
+- SQLite file is bind-mounted `./data/oh-heck:/data` → `file:/data/oh-heck.db`.
+- Image entrypoint: `prisma db push` (sqlite schema) then `node dist/main.js`.
+- Health: `GET https://oh-heck.mrodhansen.com/api/health` → JSON `{ ok: true }`.
+- Sablier waiting page is HTML `200`. Never treat that as a healthy API.
 
-If migrate fails, Fly aborts the release (old API stays up). Fix the migration; do not `db push` or hand-edit Neon.
+Caddy: `oh-heck.mrodhansen.com` → strip `/api` → `oh-heck:3000`; `/socket.io` proxied as-is. Do not change caddy/sablier services. Do not orange-cloud DNS. Caddy `admin off` — `caddy reload` fails; after a Caddyfile edit, `sudo docker compose restart caddy` only.
 
-Check users / columns after migrate:
+One-time Neon → SQLite (already applied on first box bring-up):
 
 ```bash
-fly ssh console -a oh-heck-api --command "node -e \"const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.user.findMany({select:{username:true,firstName:true,lastName:true,email:true}}).then(u=>{console.log(JSON.stringify(u,null,2));return p.\\\$disconnect()})\""
+cd backend
+# dump.json from a live Postgres (NEON_DATABASE_URL)
+node scripts/neon-to-sqlite.mjs load prisma/.neon-dump.json
+# then scp prisma/box-seed.db → /opt/box/data/oh-heck/oh-heck.db with the container stopped
 ```
 
-## Frontend (GitHub Pages)
+Load **fails** if the SQLite file already has users. Do not re-run against prod.
 
-Same workflow. Pushes to `main`/`master` that touch `frontend/**` or `backend/**` run it.
+## Frontend (GitHub Pages)
 
 ```bash
 git push origin main
@@ -56,12 +67,22 @@ SPA fallback is `dist/404.html` (copy of `index.html`).
 
 ## Local DB
 
+Postgres:
+
 ```bash
 docker compose up db -d
 cd backend && cp -n .env.example .env && npx prisma migrate deploy
 ```
 
 Postgres is `localhost:5433`. Do not commit `.env`.
+
+SQLite (no Docker) — `npm run start:dev:sqlite` rewrites the Prisma provider and `db push`es `backend/prisma/dev.db`:
+
+```bash
+cd backend && npm run start:dev:sqlite
+```
+
+Do not commit `.env.sqlite` or `prisma/dev.db`. Box prod is SQLite; schema source of truth stays `schema.prisma` (Postgres) + `migrations/`.
 
 ## Auth schema (current)
 

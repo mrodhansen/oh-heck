@@ -91,5 +91,11 @@ export async function httpRequest<T>(
   if (!text) {
     return undefined as T;
   }
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) {
+    throw new NetworkError(
+      'API is starting or returned a non-JSON page. Try again in a moment.',
+    );
+  }
   return JSON.parse(text) as T;
 }

@@ -8,7 +8,7 @@ let socket: Socket | null = null;
 function socketBaseUrl(): string | undefined {
   if (!API_URL) return undefined;
   if (API_URL.startsWith('http://') || API_URL.startsWith('https://')) {
-    return API_URL;
+    return new URL(API_URL).origin;
   }
   return undefined;
 }
