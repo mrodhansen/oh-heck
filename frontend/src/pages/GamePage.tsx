@@ -20,6 +20,7 @@ import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 import { useAuth } from '../useAuth';
+import { downloadGameCsv } from '../exportGameCsv';
 
 function navFrom(state: unknown): 'stats' | 'account' | null {
   if (typeof state !== 'object' || state === null || !('from' in state)) {
@@ -401,6 +402,17 @@ export function GamePage() {
                 : (n) => setEditRound(n)
             }
           />
+          {isFinished && (
+            <div className="card">
+              <button
+                type="button"
+                className="btn ghost block"
+                onClick={() => downloadGameCsv(game)}
+              >
+                Export game
+              </button>
+            </div>
+          )}
         </div>
       )}
 
