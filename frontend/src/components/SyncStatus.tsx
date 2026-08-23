@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useApiStatus } from '../useOnline';
 import {
   getLastSyncError,
   getPendingCount,
@@ -8,6 +9,7 @@ import {
 } from '../offline/sync';
 
 export function SyncStatus() {
+  const apiStatus = useApiStatus();
   const [online, setOnline] = useState(isOnline());
   const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -36,23 +38,26 @@ export function SyncStatus() {
     };
   }, []);
 
-  if (online && pending === 0 && !error) return null;
+  const waking = apiStatus === 'waking' || apiStatus === 'unknown';
+  if (online && !waking && pending === 0 && !error) return null;
 
+  const tone = !online ? 'offline' : waking ? 'waking' : 'online';
   const label = !online
     ? pending > 0
       ? `Offline · ${pending} pending`
       : 'Offline · changes saved on this device'
-    : error
-      ? `Sync failed · ${error}`
-      : `Syncing ${pending} change${pending === 1 ? '' : 's'}…`;
+    : waking
+      ? pending > 0
+        ? `Waking server… ${pending} change${pending === 1 ? '' : 's'} saved on this device`
+        : 'Waking server… you can keep playing'
+      : error
+        ? `Sync failed · ${error}`
+        : `Syncing ${pending} change${pending === 1 ? '' : 's'}…`;
 
   return (
-    <div
-      className={`sync-bar ${online ? 'online' : 'offline'}`}
-      role="status"
-    >
+    <div className={`sync-bar ${tone}`} role="status">
       <span className="truncate">{label}</span>
-      {online && (pending > 0 || error) && (
+      {online && !waking && (pending > 0 || error) && (
         <button
           type="button"
           className="btn ghost sm"

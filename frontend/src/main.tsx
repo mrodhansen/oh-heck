@@ -3,17 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './useAuth';
-import { startSyncListeners, syncNow } from './offline/sync';
+import { startApiStatusWatcher } from './api/health';
+import { startSyncListeners } from './offline/sync';
 import './styles.css';
 
 const baseraw = import.meta.env.BASE_URL || '/';
 const basename = baseraw.endsWith('/') ? baseraw.slice(0, -1) : baseraw;
 
-// Silent background sync — no UI popups
+startApiStatusWatcher();
 startSyncListeners();
-void syncNow().catch(() => {
-  /* best-effort */
-});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -7,7 +7,6 @@ import {
   TournamentTable,
 } from '../api';
 import { toUserMessage } from '../api/errors';
-import { SyncStatus } from '../components/SyncStatus';
 import { SuperScorerToggle } from '../components/SuperScorerToggle';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
@@ -155,7 +154,6 @@ export function TournamentPage() {
         <p className="lede">{statusLabel(t.status)}</p>
       </div>
 
-      <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
       {t.highTableError && (
         <div className="banner banner-inline" role="alert">

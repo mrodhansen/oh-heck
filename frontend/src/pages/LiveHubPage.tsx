@@ -6,11 +6,12 @@ import { saveLiveAuth } from '../live/session';
 import type { LiveGoneSeat, LiveLookup } from '../live/types';
 import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
-import { useOnline } from '../useOnline';
+import { useApiStatus, useOnline } from '../useOnline';
 
 export function LiveHubPage() {
   const nav = useNavigate();
   const online = useOnline();
+  const apiStatus = useApiStatus();
   const { user } = useAuth();
   const [params] = useSearchParams();
   const [code, setCode] = useState('');
@@ -29,8 +30,10 @@ export function LiveHubPage() {
     setJoinName((n) => n || display);
   }, [user]);
 
+  const apiReady = apiStatus === 'ready';
+
   useEffect(() => {
-    if (!online) return;
+    if (!apiReady) return;
     const q = params.get('code');
     if (!q) return;
     setCode(q.replace(/\D/g, '').slice(0, 4));
@@ -47,10 +50,28 @@ export function LiveHubPage() {
     return () => {
       alive = false;
     };
-  }, [params, online]);
+  }, [params, apiReady]);
 
   if (!online) {
     return <Navigate to="/" replace />;
+  }
+
+  if (!apiReady) {
+    return (
+      <div className="page-fit">
+        <div className="page-fit-header">
+          <h2 className="page-title">Play</h2>
+        </div>
+        <div className="page-fit-body">
+          <p className="lede">Waking server… live play will unlock when it is up.</p>
+        </div>
+        <div className="action-bar">
+          <Link to="/" className="btn primary block">
+            Back
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   function applyLookup(res: LiveLookup) {

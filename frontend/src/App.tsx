@@ -11,6 +11,7 @@ import { TournamentsPage } from './pages/TournamentsPage';
 import { TournamentPage } from './pages/TournamentPage';
 import { LiveHubPage } from './pages/LiveHubPage';
 import { LiveSessionPage } from './pages/LiveSessionPage';
+import { SyncStatus } from './components/SyncStatus';
 import { useAuth } from './useAuth';
 
 export function App() {
@@ -42,6 +43,7 @@ export function App() {
           </nav>
         </header>
       )}
+      <SyncStatus />
       <main className="app-main">
         <Routes>
           <Route path="/" element={<PlayModePage />} />

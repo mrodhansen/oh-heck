@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ApiErrorCode,
+  ApiStartingError,
   HttpError,
+  isApiStarting,
+  isNetworkFailure,
   NetworkError,
   parseApiErrorBody,
   toUserMessage,
@@ -60,5 +63,19 @@ describe('toUserMessage', () => {
       ),
     ).toBe('No account with that username');
     expect(toUserMessage(new NetworkError(), 'Failed')).toMatch(/connection/i);
+    expect(toUserMessage(new ApiStartingError(), 'Failed')).toMatch(/starting/i);
+  });
+});
+
+describe('isNetworkFailure', () => {
+  it('treats a starting API as a fallback-to-local failure', () => {
+    expect(isNetworkFailure(new NetworkError())).toBe(true);
+    expect(isNetworkFailure(new ApiStartingError())).toBe(true);
+    expect(isApiStarting(new ApiStartingError())).toBe(true);
+    expect(
+      isNetworkFailure(
+        new HttpError('Nope', 404, ApiErrorCode.NOT_FOUND),
+      ),
+    ).toBe(false);
   });
 });

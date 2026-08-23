@@ -1,14 +1,16 @@
 import {
+  ApiStartingError,
   HttpError,
   NetworkError,
   parseApiErrorBody,
 } from './errors';
+import { isHoldingPage, noteApiReady, noteApiStarting } from './health';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const TOKEN_KEY = 'oh_heck_session';
 
-export { HttpError, NetworkError } from './errors';
+export { ApiStartingError, HttpError, NetworkError } from './errors';
 export { toUserMessage, isNetworkFailure as isNetworkError } from './errors';
 
 export function getAuthToken(): string | null {
@@ -70,6 +72,11 @@ export async function httpRequest<T>(
     throw e instanceof Error ? e : new NetworkError();
   }
 
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    noteApiStarting();
+    throw new ApiStartingError();
+  }
+
   if (!res.ok) {
     let parsedBody: unknown = null;
     const text = await res.text();
@@ -85,17 +92,19 @@ export async function httpRequest<T>(
   }
 
   if (res.status === 204) {
+    noteApiReady();
     return undefined as T;
   }
   const text = await res.text();
   if (!text) {
+    noteApiReady();
     return undefined as T;
   }
   const ct = res.headers.get('content-type') ?? '';
-  if (!ct.includes('application/json')) {
-    throw new NetworkError(
-      'API is starting or returned a non-JSON page. Try again in a moment.',
-    );
+  if (isHoldingPage(ct, text) || !ct.includes('application/json')) {
+    noteApiStarting();
+    throw new ApiStartingError();
   }
+  noteApiReady();
   return JSON.parse(text) as T;
 }

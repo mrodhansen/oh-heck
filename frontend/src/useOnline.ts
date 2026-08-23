@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getApiStatus, onApiStatusChange, type ApiStatus } from './api/health';
 import { isOnline } from './offline/sync';
 
 /** Reactive navigator.onLine for gating online-only UI. */
@@ -16,4 +17,11 @@ export function useOnline(): boolean {
   }, []);
 
   return online;
+}
+
+/** Reactive API reachability: offline / waking / ready. */
+export function useApiStatus(): ApiStatus {
+  const [status, setStatus] = useState(getApiStatus);
+  useEffect(() => onApiStatusChange(setStatus), []);
+  return status;
 }

@@ -1,5 +1,6 @@
 export const ApiErrorCode = {
   NETWORK: 'NETWORK',
+  API_STARTING: 'API_STARTING',
   USER_NOT_FOUND: 'USER_NOT_FOUND',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   USERNAME_TAKEN: 'USERNAME_TAKEN',
@@ -32,6 +33,17 @@ export class NetworkError extends Error {
   ) {
     super(message);
     this.name = 'NetworkError';
+  }
+}
+
+export class ApiStartingError extends Error {
+  readonly code = ApiErrorCode.API_STARTING;
+
+  constructor(
+    message = 'Server is starting. You can keep playing on this device.',
+  ) {
+    super(message);
+    this.name = 'ApiStartingError';
   }
 }
 
@@ -101,13 +113,18 @@ export function parseApiErrorBody(body: unknown, status: number): ParsedApiError
 
 export function toUserMessage(err: unknown, fallback: string): string {
   if (err instanceof HttpError) return err.message;
+  if (err instanceof ApiStartingError) return err.message;
   if (err instanceof NetworkError) return err.message;
   if (err instanceof Error && err.message.trim()) return err.message;
   return fallback;
 }
 
 export function isNetworkFailure(err: unknown): boolean {
-  return err instanceof NetworkError;
+  return err instanceof NetworkError || err instanceof ApiStartingError;
+}
+
+export function isApiStarting(err: unknown): boolean {
+  return err instanceof ApiStartingError;
 }
 
 function codeFromStatus(status: number, message = ''): ApiErrorCode {

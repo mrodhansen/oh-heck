@@ -1,3 +1,4 @@
+import { isApiReady, onApiStatusChange } from '../api/health';
 import { httpRequest } from '../api/http';
 import type {
   GameDetail,
@@ -48,6 +49,8 @@ export async function getPendingCount(): Promise<number> {
 export function isOnline(): boolean {
   return typeof navigator !== 'undefined' ? navigator.onLine : true;
 }
+
+export { isApiReady } from '../api/health';
 
 export async function gameIdsWithPendingOps(): Promise<Set<string>> {
   const ops = await outboxAll();
@@ -171,7 +174,7 @@ export async function flushOutbox(): Promise<{
 }> {
   // Serialize flushes so onlineWrite never races the outbox.
   const run = async (): Promise<{ flushed: number; error?: string }> => {
-    if (!isOnline()) return { flushed: 0 };
+    if (!isApiReady()) return { flushed: 0 };
 
     const ops = await outboxAll();
     if (ops.length === 0) return { flushed: 0 };
@@ -258,7 +261,7 @@ export async function flushOutbox(): Promise<{
 }
 
 export async function pullFromServer(): Promise<void> {
-  if (!isOnline()) return;
+  if (!isApiReady()) return;
   const pendingGames = await gameIdsWithPendingOps();
   const pendingTourneys = await tournamentIdsWithPendingOps();
   try {
@@ -365,12 +368,13 @@ export async function syncNow(): Promise<void> {
 
 export function startSyncListeners(): void {
   if (typeof window === 'undefined') return;
-  window.addEventListener('online', () => {
-    void syncNow().catch(() => undefined);
+  onApiStatusChange((status) => {
+    if (status === 'ready') void syncNow().catch(() => undefined);
   });
+  if (isApiReady()) void syncNow().catch(() => undefined);
   // Quiet background retry — no UI
   setInterval(() => {
-    if (isOnline()) void syncNow().catch(() => undefined);
+    if (isApiReady()) void syncNow().catch(() => undefined);
   }, 20_000);
 }
 

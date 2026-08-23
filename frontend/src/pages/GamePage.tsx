@@ -11,7 +11,6 @@ import { SuperScorerPlay } from '../components/SuperScorerPlay';
 import { SuperScorerTrump } from '../components/SuperScorerTrump';
 import { suitGlyph } from '../live/cards';
 import { hasTrumpCard } from '../offline/superPlay';
-import { SyncStatus } from '../components/SyncStatus';
 import {
   forbiddenLastBid as computeForbiddenLast,
   TOTAL_ROUNDS,
@@ -367,7 +366,6 @@ export function GamePage() {
         <div className="icon-btn spacer" aria-hidden />
       </header>
 
-      <SyncStatus />
       {error && <div className="banner banner-inline">{error}</div>}
       {claimMessage && (
         <div className="banner banner-ok banner-inline">{claimMessage}</div>

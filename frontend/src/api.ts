@@ -40,6 +40,7 @@ import {
   enqueue,
   flushOutbox,
   gameIdsWithPendingOps,
+  isApiReady,
   isOnline,
   tournamentIdsWithPendingOps,
 } from './offline/sync';
@@ -615,7 +616,7 @@ function shouldGoOffline(err: unknown): boolean {
 
 export const api = {
   listGames: async (): Promise<GameSummary[]> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         const flush = await flushOutbox();
         if (flush.error) {
@@ -637,7 +638,7 @@ export const api = {
 
   getGame: async (id: string): Promise<GameDetail> => {
     const pending = await gameIdsWithPendingOps();
-    if (isOnline() && !pending.has(id)) {
+    if (isApiReady() && !pending.has(id)) {
       try {
         const flush = await flushOutbox();
         if (!flush.error) {
@@ -663,7 +664,7 @@ export const api = {
     const playerUserIds = opts?.playerUserIds;
     const superScorer = opts?.superScorer === true;
 
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>('/games', {
@@ -711,7 +712,7 @@ export const api = {
     bids: { playerId: string; bid: number }[],
     forceBurn = false,
   ): Promise<GameDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>(
@@ -748,7 +749,7 @@ export const api = {
     roundNumber: number,
     tricks: { playerId: string; tricksTaken: number }[],
   ): Promise<GameDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>(
@@ -788,7 +789,7 @@ export const api = {
       plays: { playerId: string; card: CardJson }[];
     },
   ): Promise<GameDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>(
@@ -834,7 +835,7 @@ export const api = {
       forceBurn?: boolean;
     },
   ): Promise<GameDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>(
@@ -873,8 +874,12 @@ export const api = {
   },
 
   claimSeat: async (gameId: string, playerId: string): Promise<GameDetail> => {
-    if (!isOnline()) {
-      throw new Error('Sign in and go online to claim a seat');
+    if (!isApiReady()) {
+      throw new Error(
+        isOnline()
+          ? 'Server is starting — try again in a moment'
+          : 'Sign in and go online to claim a seat',
+      );
     }
     const game = await httpRequest<GameDetail>(`/games/${gameId}/claim`, {
       method: 'POST',
@@ -887,7 +892,7 @@ export const api = {
     gameId: string,
     notes: GameNote[],
   ): Promise<GameDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const game = await httpRequest<GameDetail>(`/games/${gameId}/notes`, {
@@ -913,7 +918,7 @@ export const api = {
   },
 
   getStats: async (): Promise<StatsResponse> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         const flush = await flushOutbox();
         if (flush.error) {
@@ -934,7 +939,7 @@ export const api = {
   },
 
   getRules: async (): Promise<OhHeckRules> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         const rules = await httpRequest<OhHeckRules>('/rules');
         await kvSet('rules', rules);
@@ -952,7 +957,7 @@ export const api = {
     all?: boolean;
   }): Promise<TournamentSummary[]> => {
     const q = opts?.all ? '?all=1' : '';
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         const flush = await flushOutbox();
         if (flush.error) {
@@ -974,7 +979,7 @@ export const api = {
 
   getTournament: async (id: string): Promise<TournamentDetail> => {
     const pending = await tournamentIdsWithPendingOps();
-    if (isOnline() && !pending.has(id)) {
+    if (isApiReady() && !pending.has(id)) {
       try {
         const flush = await flushOutbox();
         if (!flush.error) {
@@ -995,7 +1000,7 @@ export const api = {
     id: string;
     name?: string;
   }): Promise<TournamentDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const t = await httpRequest<TournamentDetail>('/tournaments', {
@@ -1031,7 +1036,7 @@ export const api = {
     name: string,
   ): Promise<TournamentDetail> => {
     const playerId = newId();
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const t = await httpRequest<TournamentDetail>(
@@ -1063,7 +1068,7 @@ export const api = {
     tournamentId: string,
     playerId: string,
   ): Promise<TournamentDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const t = await httpRequest<TournamentDetail>(
@@ -1089,7 +1094,7 @@ export const api = {
   },
 
   seatTournament: async (tournamentId: string): Promise<TournamentDetail> => {
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const t = await httpRequest<TournamentDetail>(
@@ -1120,7 +1125,7 @@ export const api = {
     opts?: { superScorer?: boolean },
   ): Promise<{ tournament: TournamentDetail; game: GameDetail }> => {
     const superScorer = opts?.superScorer === true;
-    if (isOnline()) {
+    if (isApiReady()) {
       try {
         return await onlineWrite(async () => {
           const res = await httpRequest<{

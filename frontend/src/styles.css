@@ -224,6 +224,12 @@ h3,
   color: #2f6b4f;
 }
 
+.sync-bar.waking {
+  background: #f3ead8;
+  border-color: #e0d0b0;
+  color: #6b5428;
+}
+
 .nav-links {
   display: flex;
   gap: 2px;

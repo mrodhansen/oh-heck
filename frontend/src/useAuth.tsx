@@ -7,6 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { onApiStatusChange } from './api/health';
+import { isNetworkFailure } from './api/errors';
 import { authApi, type AuthUser } from './auth';
 
 type AuthContextValue = {
@@ -26,8 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authApi.me();
       setUser(res.user);
-    } catch {
-      setUser(null);
+    } catch (e) {
+      if (!isNetworkFailure(e)) setUser(null);
     } finally {
       setLoading(false);
     }
@@ -35,6 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    return onApiStatusChange((status) => {
+      if (status === 'ready') void refresh();
+    });
   }, [refresh]);
 
   const value = useMemo(

@@ -1,13 +1,14 @@
 import { Link } from 'react-router-dom';
-import { useOnline } from '../useOnline';
+import { useApiStatus, useOnline } from '../useOnline';
 
 export function PlayModePage() {
   const online = useOnline();
+  const apiReady = useApiStatus() === 'ready';
 
   return (
     <div className="page-fit">
       <div className="page-fit-body stack play-mode-actions">
-        {online ? (
+        {online && apiReady ? (
           <Link className="btn mode-card" to="/play/live">
             <span className="mode-card-title">Play</span>
             <span className="mode-card-meta">

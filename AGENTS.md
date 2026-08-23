@@ -41,7 +41,7 @@ ssh box "cd /opt/box && sudo docker compose stop oh-heck && sudo docker compose 
 - SQLite file is bind-mounted `./data/oh-heck:/data` → `file:/data/oh-heck.db`.
 - Image entrypoint: `prisma db push` (sqlite schema) then `node dist/main.js`.
 - Health: `GET https://oh-heck.mrodhansen.com/api/health` → JSON `{ ok: true }`.
-- Sablier waiting page is HTML `200`. Never treat that as a healthy API.
+- Sablier uses `blocking` (2m) for `/api` and `/socket.io` — no HTML waiting page. Frontend still treats non-JSON / 502–504 as waking and keeps local play.
 
 Caddy: `oh-heck.mrodhansen.com` → strip `/api` → `oh-heck:3000`; `/socket.io` proxied as-is. Do not change caddy/sablier services. Do not orange-cloud DNS. Caddy `admin off` — `caddy reload` fails; after a Caddyfile edit, `sudo docker compose restart caddy` only.
 
