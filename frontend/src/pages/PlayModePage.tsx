@@ -10,16 +10,14 @@ export function PlayModePage() {
       <div className="page-fit-body stack play-mode-actions">
         {online && apiReady ? (
           <Link className="btn mode-card" to="/play/live">
-            <span className="mode-card-title">Play</span>
-            <span className="mode-card-meta">
-              Join or host a live online game
-            </span>
+            <span className="mode-card-title">Play Online</span>
+            <span className="mode-card-meta">Play Oh Heck online</span>
           </Link>
         ) : null}
         <Link className="btn mode-card" to="/play/score">
           <span className="mode-card-title">Score Game</span>
           <span className="mode-card-meta">
-            Single table or tournament scorekeeper
+            Keep score of an in-person game
           </span>
         </Link>
       </div>
