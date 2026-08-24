@@ -9,13 +9,17 @@ import { EditRoundModal } from '../components/EditRoundModal';
 import { GameNotes } from '../components/GameNotes';
 import { SuperScorerPlay } from '../components/SuperScorerPlay';
 import { SuperScorerTrump } from '../components/SuperScorerTrump';
+import { BidReadyScreen } from '../components/BidReadyScreen';
 import { suitGlyph } from '../live/cards';
 import { hasTrumpCard } from '../offline/superPlay';
-import {
-  forbiddenLastBid as computeForbiddenLast,
-  TOTAL_ROUNDS,
-} from '../offline/rules';
+import { forbiddenLastBid as computeForbiddenLast } from '../offline/rules';
 import { buildBidPayload, buildTrickPayload } from '../offline/payloads';
+import {
+  allLocked,
+  applyTurnContinue,
+  lastBidBlocked,
+  trickSumBlocked,
+} from '../offline/turnContinue';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 import { useAuth } from '../useAuth';
@@ -84,23 +88,29 @@ export function GamePage() {
   }, [game]);
 
   const [lockedBids, setLockedBids] = useState<Record<string, number>>({});
-  const [bidStep, setBidStep] = useState(0);
+  const [expandedBidId, setExpandedBidId] = useState<string | null>(null);
   const [currentBid, setCurrentBid] = useState(0);
   const [forceBurn, setForceBurn] = useState(false);
-  const [trickStep, setTrickStep] = useState(0);
-  const [currentTricks, setCurrentTricks] = useState(0);
+  const [showBidRecap, setShowBidRecap] = useState(false);
   const [lockedTricks, setLockedTricks] = useState<Record<string, number>>({});
+  const [expandedTrickId, setExpandedTrickId] = useState<string | null>(null);
+  const [currentTricks, setCurrentTricks] = useState(0);
 
   useEffect(() => {
     if (!current || !game) return;
+    const first = current.bidOrderPlayerIds[0] ?? null;
     setLockedBids({});
-    setBidStep(0);
+    setExpandedBidId(first);
     setCurrentBid(0);
     setForceBurn(false);
     setLockedTricks({});
-    setTrickStep(0);
+    setExpandedTrickId(first);
     setCurrentTricks(0);
   }, [current?.id, game?.phase, game?.currentRound]);
+
+  useEffect(() => {
+    setShowBidRecap(false);
+  }, [current?.id, game?.currentRound]);
 
   useEffect(() => {
     if (game?.phase === 'completed' || game?.status === 'COMPLETED') {
@@ -110,29 +120,58 @@ export function GamePage() {
 
   const bidOrder = current?.bidOrderPlayerIds ?? [];
   const handSize = current?.handSize ?? 0;
-  const isLastBidder = bidStep >= bidOrder.length - 1 && bidOrder.length > 0;
-  const currentBidderId = bidOrder[bidStep];
-  const currentBidder = game?.players.find((p) => p.id === currentBidderId);
+  const lastBidderId = bidOrder[bidOrder.length - 1];
+  const lastBidValue =
+    expandedBidId === lastBidderId
+      ? currentBid
+      : lastBidderId
+        ? lockedBids[lastBidderId]
+        : undefined;
 
   const priorBidSum = useMemo(() => {
     let sum = 0;
-    for (let i = 0; i < bidStep; i++) {
-      sum += lockedBids[bidOrder[i]] ?? 0;
+    for (let i = 0; i < bidOrder.length - 1; i++) {
+      const pid = bidOrder[i];
+      if (pid === expandedBidId) {
+        sum += currentBid;
+      } else {
+        sum += lockedBids[pid] ?? 0;
+      }
     }
     return sum;
-  }, [lockedBids, bidOrder, bidStep]);
+  }, [lockedBids, bidOrder, expandedBidId, currentBid]);
 
   const forbiddenLast = useMemo(() => {
-    if (!current || !isLastBidder) return null;
+    if (!current || bidOrder.length === 0) return null;
     return computeForbiddenLast(priorBidSum, current.handSize);
-  }, [current, isLastBidder, priorBidSum]);
+  }, [current, bidOrder.length, priorBidSum]);
+
+  const liveBidSum = useMemo(() => {
+    return bidOrder.reduce((sum, pid) => {
+      if (pid === expandedBidId) return sum + currentBid;
+      return sum + (lockedBids[pid] ?? 0);
+    }, 0);
+  }, [bidOrder, expandedBidId, currentBid, lockedBids]);
 
   const lockedTrickSum = useMemo(
-    () => Object.values(lockedTricks).reduce((a, b) => a + b, 0),
-    [lockedTricks],
+    () =>
+      bidOrder.reduce((sum, pid) => {
+        if (pid === expandedTrickId) return sum + currentTricks;
+        return sum + (lockedTricks[pid] ?? 0);
+      }, 0),
+    [bidOrder, expandedTrickId, currentTricks, lockedTricks],
   );
 
-  const totalBidsLocked = priorBidSum;
+  const othersTrickSum = useMemo(
+    () =>
+      bidOrder.reduce((sum, pid) => {
+        if (pid === expandedTrickId) return sum;
+        return sum + (lockedTricks[pid] ?? 0);
+      }, 0),
+    [bidOrder, expandedTrickId, lockedTricks],
+  );
+
+  const remainingTricks = handSize - othersTrickSum;
 
   const totalBidsForRound = useMemo(() => {
     if (!current) return 0;
@@ -146,46 +185,113 @@ export function GamePage() {
   const phase = game.phase;
   const isFinished = phase === 'completed' || game.status === 'COMPLETED';
   const canTakeNotes = game.playMode !== 'ONLINE';
+  const bidIllegal =
+    lastBidValue !== undefined &&
+    forbiddenLast !== null &&
+    lastBidValue === forbiddenLast;
+  const trickSumOk = lockedTrickSum === handSize;
+  const bidsReady = allLocked(bidOrder, lockedBids) && expandedBidId == null;
+  const tricksReady =
+    allLocked(bidOrder, lockedTricks) && expandedTrickId == null;
 
-  async function confirmBid() {
-    if (!game || !current || !currentBidderId) return;
+  function setBidValue(n: number) {
+    setCurrentBid(n);
+    if (expandedBidId) {
+      setLockedBids((prev) => ({ ...prev, [expandedBidId]: n }));
+    }
+  }
+
+  function setTrickValue(n: number) {
+    setCurrentTricks(n);
+    if (expandedTrickId) {
+      setLockedTricks((prev) => ({ ...prev, [expandedTrickId]: n }));
+    }
+  }
+
+  function expandBid(pid: string) {
     setError(null);
+    setExpandedBidId(pid);
+    setCurrentBid(lockedBids[pid] ?? 0);
+  }
 
-    if (
-      isLastBidder &&
-      forbiddenLast !== null &&
-      currentBid === forbiddenLast
-    ) {
-      setError(`Can't bid ${forbiddenLast} — total would be ${handSize}`);
+  function expandTrick(pid: string) {
+    setError(null);
+    setExpandedTrickId(pid);
+    setCurrentTricks(lockedTricks[pid] ?? 0);
+  }
+
+  function continueBid() {
+    if (!expandedBidId || !current) return;
+    setError(null);
+    const { locked, nextId } = applyTurnContinue(
+      bidOrder,
+      lockedBids,
+      expandedBidId,
+      currentBid,
+    );
+    setLockedBids(locked);
+    if (nextId == null) {
+      setExpandedBidId(null);
+      const blocked = lastBidBlocked(
+        bidOrder,
+        locked,
+        current.handSize,
+        computeForbiddenLast,
+      );
+      if (blocked) setError(blocked);
       return;
     }
+    setExpandedBidId(nextId);
+    setCurrentBid(locked[nextId] ?? 0);
+  }
 
-    const nextLocked = { ...lockedBids, [currentBidderId]: currentBid };
-
-    if (!isLastBidder) {
-      setLockedBids(nextLocked);
-      setBidStep((s) => s + 1);
-      setCurrentBid(0);
+  function continueTricks() {
+    if (!expandedTrickId) return;
+    setError(null);
+    const { locked, nextId } = applyTurnContinue(
+      bidOrder,
+      lockedTricks,
+      expandedTrickId,
+      currentTricks,
+    );
+    setLockedTricks(locked);
+    if (nextId == null) {
+      setExpandedTrickId(null);
+      const blocked = trickSumBlocked(bidOrder, locked, handSize);
+      if (blocked) setError(blocked);
       return;
     }
+    setExpandedTrickId(nextId);
+    setCurrentTricks(locked[nextId] ?? 0);
+  }
 
-    // FB only applies when last bidder still has a forbidden value
-    // (not when already overbid — they may bid anything).
+  async function submitBids() {
+    if (!game || !current) return;
+    setError(null);
+    const blocked = lastBidBlocked(
+      bidOrder,
+      lockedBids,
+      current.handSize,
+      computeForbiddenLast,
+    );
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     const applyForceBurn = forceBurn && forbiddenLast !== null;
-
     setSaving(true);
     try {
       const updated = await api.setBids(
         game.id,
         current.number,
-        buildBidPayload(game.players, nextLocked),
+        buildBidPayload(game.players, lockedBids),
         applyForceBurn,
       );
       setGame(updated);
       setLockedBids({});
-      setBidStep(0);
       setCurrentBid(0);
       setForceBurn(false);
+      setShowBidRecap(true);
     } catch (e) {
       setError(toUserMessage(e, 'Failed to save bids'));
     } finally {
@@ -193,39 +299,23 @@ export function GamePage() {
     }
   }
 
-  async function confirmTricks() {
+  async function submitTricks() {
     if (!game || !current) return;
     setError(null);
-    const order = bidOrder;
-    const pid = order[trickStep];
-    if (!pid) return;
-
-    const nextLocked = { ...lockedTricks, [pid]: currentTricks };
-    const isLast = trickStep >= order.length - 1;
-
-    if (!isLast) {
-      setLockedTricks(nextLocked);
-      setTrickStep((s) => s + 1);
-      setCurrentTricks(0);
+    const blocked = trickSumBlocked(bidOrder, lockedTricks, handSize);
+    if (blocked) {
+      setError(blocked);
       return;
     }
-
-    const sum = Object.values(nextLocked).reduce((a, b) => a + b, 0);
-    if (sum !== handSize) {
-      setError(`Tricks must sum to ${handSize} (got ${sum})`);
-      return;
-    }
-
     setSaving(true);
     try {
       const updated = await api.setTricks(
         game.id,
         current.number,
-        buildTrickPayload(order, nextLocked),
+        buildTrickPayload(bidOrder, lockedTricks),
       );
       setGame(updated);
       setLockedTricks({});
-      setTrickStep(0);
       setCurrentTricks(0);
     } catch (e) {
       setError(toUserMessage(e, 'Failed to save tricks'));
@@ -233,38 +323,6 @@ export function GamePage() {
       setSaving(false);
     }
   }
-
-  function undoLastBid() {
-    if (bidStep === 0) return;
-    const prevId = bidOrder[bidStep - 1];
-    const prevValue = lockedBids[prevId] ?? 0;
-    const next = { ...lockedBids };
-    delete next[prevId];
-    setLockedBids(next);
-    setBidStep((s) => s - 1);
-    setCurrentBid(prevValue);
-    setForceBurn(false);
-    setError(null);
-  }
-
-  function undoLastTrick() {
-    if (!game || trickStep === 0) return;
-    const order = bidOrder;
-    const prevId = order[trickStep - 1];
-    const prevValue = lockedTricks[prevId] ?? 0;
-    const next = { ...lockedTricks };
-    delete next[prevId];
-    setLockedTricks(next);
-    setTrickStep((s) => s - 1);
-    setCurrentTricks(prevValue);
-    setError(null);
-  }
-
-  const trickPlayerId = bidOrder[trickStep];
-  const trickPlayer = game.players.find((p) => p.id === trickPlayerId);
-  const remainingTricks = handSize - lockedTrickSum;
-  const isLastTrickEntry =
-    trickStep >= bidOrder.length - 1 && bidOrder.length > 0;
 
   const alreadyClaimed = user
     ? game.players.some((p) => p.userId === user.id)
@@ -366,7 +424,9 @@ export function GamePage() {
         <div className="icon-btn spacer" aria-hidden />
       </header>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && (isFinished || tab !== 'play') && (
+        <div className="banner banner-inline">{error}</div>
+      )}
       {claimMessage && (
         <div className="banner banner-ok banner-inline">{claimMessage}</div>
       )}
@@ -424,7 +484,37 @@ export function GamePage() {
         />
       )}
 
-      {!isFinished && tab === 'play' && current && (
+      {!isFinished &&
+        tab === 'play' &&
+        current &&
+        showBidRecap &&
+        phase === 'tricks' && (
+          <BidReadyScreen
+            roundNumber={current.number}
+            handSize={handSize}
+            firstPlayName={requireFirstPlayName(game, current)}
+            forceBurn={current.forceBurn}
+            bids={bidOrder.map((pid) => {
+              const e = current.entries.find((x) => x.playerId === pid);
+              if (!e || e.bid === null) {
+                throw new Error('Missing bid on recap');
+              }
+              return {
+                id: pid,
+                name: e.playerName,
+                bid: e.bid,
+                last: pid === lastBidderId,
+              };
+            })}
+            buttonLabel={game.superScorer ? 'Go to play' : 'Go to scoring'}
+            onGoToScoring={() => setShowBidRecap(false)}
+          />
+        )}
+
+      {!isFinished &&
+        tab === 'play' &&
+        current &&
+        !(showBidRecap && phase === 'tricks') && (
         <div className="play-layout">
           <header className="phase-header">
             <h2 className="phase-title">
@@ -453,14 +543,20 @@ export function GamePage() {
                 </>
               ) : null}
             </p>
-            <p className="phase-dealer">
-              {game.players.find(
-                (p) =>
-                  p.id === current.dealerPlayerId ||
-                  p.seatIndex === current.dealerSeat,
-              )?.name}{' '}
-              is Dealer
-            </p>
+            {phase === 'bidding' ? (
+              <>
+                <p className="phase-dealer">
+                  {requireDealerName(game, current)} is dealer
+                </p>
+                <p className="phase-dealer">
+                  {requireFirstPlayName(game, current)} is first bid
+                </p>
+              </>
+            ) : (
+              <p className="phase-dealer">
+                {requireFirstPlayName(game, current)} is first play
+              </p>
+            )}
             {!(
               game.superScorer &&
               !hasTrumpCard(current.trumpCard) &&
@@ -468,9 +564,9 @@ export function GamePage() {
             ) && (
               <p className="phase-total">
                 <strong>
-                  {phase === 'bidding' ? totalBidsLocked : totalBidsForRound}
+                  {phase === 'bidding' ? liveBidSum : totalBidsForRound}
                 </strong>{' '}
-                {(phase === 'bidding' ? totalBidsLocked : totalBidsForRound) <= 1
+                {(phase === 'bidding' ? liveBidSum : totalBidsForRound) <= 1
                   ? 'has been bid'
                   : 'have been bid'}
               </p>
@@ -502,18 +598,17 @@ export function GamePage() {
             )}
 
           {phase === 'bidding' &&
-            currentBidder &&
             !(game.superScorer && !hasTrumpCard(current.trumpCard)) && (
             <>
               <div className="play-middle">
                 <div className="turn-list">
-                  {bidOrder.map((pid, idx) => {
-                    const p = game.players.find((x) => x.id === pid)!;
-                    const isActive = idx === bidStep;
-                    const isDone = idx < bidStep;
-                    const isPending = idx > bidStep;
-                    const isLast = idx === bidOrder.length - 1;
-                    const value = isDone ? lockedBids[pid] : undefined;
+                  {bidOrder.map((pid) => {
+                    const p = game.players.find((x) => x.id === pid);
+                    if (!p) throw new Error(`Missing player ${pid}`);
+                    const isActive = pid === expandedBidId;
+                    const locked = lockedBids[pid];
+                    const isLast = pid === lastBidderId;
+                    const display = isActive ? currentBid : locked;
 
                     return (
                       <div
@@ -521,14 +616,19 @@ export function GamePage() {
                         className={[
                           'turn-card',
                           isActive ? 'expanded' : 'collapsed',
-                          isDone ? 'done' : '',
-                          isPending ? 'pending' : '',
+                          !isActive && locked !== undefined ? 'done' : '',
+                          !isActive && locked === undefined ? 'pending' : '',
                           isLast && isActive ? 'dealer' : '',
                         ]
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        <div className="turn-card-head">
+                        <button
+                          type="button"
+                          className="turn-card-head"
+                          aria-expanded={isActive}
+                          onClick={() => expandBid(pid)}
+                        >
                           <div className="turn-card-who">
                             <span className="turn-card-name truncate">
                               {p.name}
@@ -538,12 +638,13 @@ export function GamePage() {
                             )}
                           </div>
                           <div className="turn-card-value">
-                            {isDone && <strong>{value}</strong>}
-                            {(isPending || isActive) && (
+                            {display !== undefined ? (
+                              <strong>{display}</strong>
+                            ) : (
                               <span className="muted">—</span>
                             )}
                           </div>
-                        </div>
+                        </button>
 
                         {isActive && (
                           <div className="turn-card-body">
@@ -557,7 +658,7 @@ export function GamePage() {
                               min={0}
                               max={handSize}
                               forbidden={isLast ? forbiddenLast : null}
-                              onChange={setCurrentBid}
+                              onChange={setBidValue}
                             />
                             {isLast && forbiddenLast !== null && (
                               <button
@@ -578,30 +679,23 @@ export function GamePage() {
                 </div>
               </div>
 
-              <div className="action-bar">
-                {bidStep > 0 && (
+              <div className="action-stack">
+                {error ? (
+                  <div className="banner banner-inline">{error}</div>
+                ) : null}
+                <div className="action-bar">
                   <button
                     type="button"
-                    className="btn ghost"
-                    disabled={saving}
-                    onClick={undoLastBid}
+                    className="btn primary block"
+                    disabled={
+                      saving ||
+                      (bidsReady ? bidIllegal : !expandedBidId)
+                    }
+                    onClick={bidsReady ? submitBids : continueBid}
                   >
-                    Undo
+                    {saving ? '…' : bidsReady ? 'Confirm bids' : 'Continue'}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="btn primary block"
-                  disabled={
-                    saving ||
-                    (isLastBidder &&
-                      forbiddenLast !== null &&
-                      currentBid === forbiddenLast)
-                  }
-                  onClick={confirmBid}
-                >
-                  {saving ? '…' : 'Confirm bid'}
-                </button>
+                </div>
               </div>
             </>
           )}
@@ -630,20 +724,19 @@ export function GamePage() {
             />
           )}
 
-          {phase === 'tricks' && !game.superScorer && trickPlayer && (
+          {phase === 'tricks' && !game.superScorer && (
             <>
               <div className="play-middle">
                 <div className="turn-list">
-                  {bidOrder.map((pid, idx) => {
-                    const e = current.entries.find((x) => x.playerId === pid)!;
-                    const isActive = idx === trickStep;
-                    const isDone = idx < trickStep;
-                    const isPending = idx > trickStep;
-                    const taken = isDone
-                      ? lockedTricks[pid]
-                      : isActive
-                        ? currentTricks
-                        : undefined;
+                  {bidOrder.map((pid) => {
+                    const e = current.entries.find((x) => x.playerId === pid);
+                    if (!e) throw new Error(`Missing entry ${pid}`);
+                    if (e.bid === null) {
+                      throw new Error(`Missing bid for ${e.playerName}`);
+                    }
+                    const isActive = pid === expandedTrickId;
+                    const locked = lockedTricks[pid];
+                    const display = isActive ? currentTricks : locked;
 
                     return (
                       <div
@@ -651,22 +744,27 @@ export function GamePage() {
                         className={[
                           'turn-card',
                           isActive ? 'expanded' : 'collapsed',
-                          isDone ? 'done' : '',
-                          isPending ? 'pending' : '',
+                          !isActive && locked !== undefined ? 'done' : '',
+                          !isActive && locked === undefined ? 'pending' : '',
                         ]
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        <div className="turn-card-head">
+                        <button
+                          type="button"
+                          className="turn-card-head"
+                          aria-expanded={isActive}
+                          onClick={() => expandTrick(pid)}
+                        >
                           <div className="turn-card-who">
                             <span className="turn-card-name truncate">
                               {e.playerName}
                             </span>
                           </div>
                           <div className="turn-card-value">
-                            {isDone ? (
+                            {display !== undefined ? (
                               <strong>
-                                {taken}
+                                {display}
                                 <span className="value-of">/{e.bid}</span>
                               </strong>
                             ) : (
@@ -676,7 +774,7 @@ export function GamePage() {
                               </span>
                             )}
                           </div>
-                        </div>
+                        </button>
 
                         {isActive && (
                           <div className="turn-card-body">
@@ -690,8 +788,8 @@ export function GamePage() {
                               value={currentTricks}
                               min={0}
                               max={remainingTricks}
-                              ofTotal={e.bid ?? 0}
-                              onChange={setCurrentTricks}
+                              ofTotal={e.bid}
+                              onChange={setTrickValue}
                             />
                           </div>
                         )}
@@ -701,35 +799,23 @@ export function GamePage() {
                 </div>
               </div>
 
-              <div className="action-bar">
-                {trickStep > 0 && (
+              <div className="action-stack">
+                {error ? (
+                  <div className="banner banner-inline">{error}</div>
+                ) : null}
+                <div className="action-bar">
                   <button
                     type="button"
-                    className="btn ghost"
-                    disabled={saving}
-                    onClick={undoLastTrick}
+                    className="btn primary block"
+                    disabled={
+                      saving ||
+                      (tricksReady ? !trickSumOk : !expandedTrickId)
+                    }
+                    onClick={tricksReady ? submitTricks : continueTricks}
                   >
-                    Undo
+                    {saving ? '…' : tricksReady ? 'Confirm tricks' : 'Continue'}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="btn primary block"
-                  disabled={
-                    saving ||
-                    (isLastTrickEntry &&
-                      lockedTrickSum + currentTricks !== handSize)
-                  }
-                  onClick={confirmTricks}
-                >
-                  {saving
-                    ? '…'
-                    : isLastTrickEntry
-                      ? current.number === TOTAL_ROUNDS
-                        ? 'Finish game'
-                        : 'Score round'
-                      : 'Confirm tricks'}
-                </button>
+                </div>
               </div>
             </>
           )}
@@ -853,4 +939,30 @@ function ClaimGameScreen({
 
 function possessive(name: string): string {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
+function requireFirstPlayName(
+  game: GameDetail,
+  round: NonNullable<GameDetail['rounds'][number]>,
+): string {
+  const name =
+    game.players.find((p) => p.id === round.firstBidderPlayerId)?.name ??
+    round.entries.find((e) => e.isFirstBidder)?.playerName;
+  if (!name) {
+    throw new Error('Missing first play player');
+  }
+  return name;
+}
+
+function requireDealerName(
+  game: GameDetail,
+  round: NonNullable<GameDetail['rounds'][number]>,
+): string {
+  const name = game.players.find(
+    (p) => p.id === round.dealerPlayerId || p.seatIndex === round.dealerSeat,
+  )?.name;
+  if (!name) {
+    throw new Error('Missing dealer');
+  }
+  return name;
 }
