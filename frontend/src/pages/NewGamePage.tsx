@@ -5,6 +5,7 @@ import { toUserMessage } from '../api/errors';
 import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
 import { SuperScorerToggle } from '../components/SuperScorerToggle';
+import { DealerSeatList } from '../components/DealerSeatList';
 
 const MIN = 2;
 const MAX = 7;
@@ -66,8 +67,29 @@ export function NewGamePage() {
       setError('Names must be unique');
       return;
     }
-    setDealerIndex(cleaned.length - 1);
+    const seated = names.map((n) => n.trim()).filter(Boolean);
+    const selfName =
+      selfSlot != null && names[selfSlot]?.trim()
+        ? names[selfSlot].trim()
+        : null;
+    setNames(seated);
+    setSelfSlot(selfName ? seated.indexOf(selfName) : null);
+    setDealerIndex(seated.length - 1);
     setStep('dealer');
+  }
+
+  function movePlayer(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return;
+    setNames((prev) => {
+      if (from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      if (item === undefined) return prev;
+      next.splice(to, 0, item);
+      return next;
+    });
+    setSelfSlot((s) => shiftIndex(s, from, to));
+    setDealerIndex((d) => shiftIndex(d, from, to) ?? d);
   }
 
   async function startGame() {
@@ -108,34 +130,20 @@ export function NewGamePage() {
       <div className="page-fit">
         <div className="page-fit-header">
           <h2 className="page-title">Who deals first?</h2>
-          <p className="lede">Tap the round-1 dealer. Seating order stays the same.</p>
+          <p className="lede">
+            Tap the round-1 dealer. Drag players so they match sitting order.
+          </p>
         </div>
 
         {error && <div className="banner banner-inline">{error}</div>}
 
         <div className="page-fit-body">
-          <div className="dealer-pick" role="radiogroup" aria-label="First dealer">
-            {cleaned.map((name, i) => {
-              const selected = dealerIndex === i;
-              return (
-                <button
-                  key={`${name}-${i}`}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  className={`dealer-option ${selected ? 'selected' : ''}`}
-                  onClick={() => setDealerIndex(i)}
-                >
-                  <span className="dealer-radio" aria-hidden>
-                    {selected ? (
-                      <span className="dealer-radio-dot" />
-                    ) : null}
-                  </span>
-                  <span className="dealer-name truncate">{name}</span>
-                </button>
-              );
-            })}
-          </div>
+          <DealerSeatList
+            names={cleaned}
+            dealerIndex={dealerIndex}
+            onDealer={setDealerIndex}
+            onReorder={movePlayer}
+          />
 
           <SuperScorerToggle
             on={superScorer}
@@ -192,12 +200,12 @@ export function NewGamePage() {
           <h3 className="section-title" style={{ marginTop: 4 }}>
             Players
           </h3>
-          <p className="hint" style={{ margin: '0 0 4px' }}>
-            Enter names in the order everyone is sitting.
-            {user
-              ? ' Your seat is pre-filled — you can change the name; your account still links to that seat.'
-              : ''}
-          </p>
+          {user ? (
+            <p className="hint" style={{ margin: '0 0 4px' }}>
+              Your seat is pre-filled — you can change the name; your account
+              still links to that seat.
+            </p>
+          ) : null}
 
           <div className="stack-sm">
             {names.map((name, i) => (
@@ -248,4 +256,16 @@ export function NewGamePage() {
       </div>
     </form>
   );
+}
+
+function shiftIndex(
+  current: number | null,
+  from: number,
+  to: number,
+): number | null {
+  if (current == null) return current;
+  if (current === from) return to;
+  if (from < current && to >= current) return current - 1;
+  if (from > current && to <= current) return current + 1;
+  return current;
 }

@@ -8,7 +8,6 @@ import {
   cardKey,
   playsFromRound,
 } from '../offline/superPlay';
-import { TOTAL_ROUNDS } from '../offline/rules';
 import type { CardJson, Rank, Suit } from '../types/cards';
 
 type Props = {
@@ -50,29 +49,15 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
     ? game.players.find((p) => p.id === lastCompleted.winnerPlayerId)
     : null;
 
-  const selectedCard: CardJson | null =
-    suit && rank ? { s: suit, r: rank } : null;
-  const selectedUsed =
-    selectedCard != null && usedKeys.has(cardKey(selectedCard));
-
-  const remainingInTrick =
-    game.players.length - (view.current?.plays.length ?? 0);
-  const lastCardOfRound =
-    !needTrump &&
-    view.completed.length === current.handSize - 1 &&
-    remainingInTrick === 1;
-
   function pickSuit(next: Suit) {
     setSuit(next);
-    if (rank && usedKeys.has(cardKey({ s: next, r: rank }))) {
-      setRank(null);
-    }
+    setRank(null);
   }
 
-  async function confirm() {
-    if (!selectedCard || selectedUsed) return;
+  async function playCard(card: CardJson) {
+    if (saving || usedKeys.has(cardKey(card))) return;
     if (needTrump) {
-      await onSave({ trumpCard: selectedCard, plays: [] });
+      await onSave({ trumpCard: card, plays: [] });
     } else {
       if (!view.turnPlayerId) return;
       await onSave({
@@ -82,12 +67,20 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
             playerId: p.playerId,
             card: { s: p.s, r: p.r },
           })),
-          { playerId: view.turnPlayerId, card: selectedCard },
+          { playerId: view.turnPlayerId, card },
         ],
       });
     }
     setSuit(null);
     setRank(null);
+  }
+
+  function pickRank(next: Rank) {
+    if (!suit) return;
+    const card = { s: suit, r: next };
+    if (usedKeys.has(cardKey(card))) return;
+    setRank(next);
+    void playCard(card);
   }
 
   async function undo() {
@@ -102,7 +95,6 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
   }
 
   const canUndo = storedPlays.length > 0;
-  const canConfirm = selectedCard != null && !selectedUsed && !saving;
 
   return (
     <>
@@ -181,40 +173,25 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
             selectedSuit={suit}
             selectedRank={rank}
             usedKeys={usedKeys}
+            disabled={saving}
             onSelectSuit={pickSuit}
-            onSelectRank={setRank}
+            onSelectRank={pickRank}
           />
         </div>
       </div>
 
-      <div className="action-bar">
-        {canUndo && (
+      {canUndo && (
+        <div className="action-bar">
           <button
             type="button"
-            className="btn ghost"
+            className="btn ghost block"
             disabled={saving}
             onClick={() => void undo()}
           >
             Undo
           </button>
-        )}
-        <button
-          type="button"
-          className="btn primary block"
-          disabled={!canConfirm}
-          onClick={() => void confirm()}
-        >
-          {saving
-            ? '…'
-            : needTrump
-              ? 'Confirm trump'
-              : lastCardOfRound
-                ? current.number === TOTAL_ROUNDS
-                  ? 'Finish game'
-                  : 'Score round'
-                : 'Confirm card'}
-        </button>
-      </div>
+        </div>
+      )}
     </>
   );
 }

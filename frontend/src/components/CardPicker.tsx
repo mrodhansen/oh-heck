@@ -6,6 +6,7 @@ type Props = {
   selectedSuit: Suit | null;
   selectedRank: Rank | null;
   usedKeys: ReadonlySet<string>;
+  disabled?: boolean;
   onSelectSuit: (suit: Suit) => void;
   onSelectRank: (rank: Rank) => void;
 };
@@ -14,6 +15,7 @@ export function CardPicker({
   selectedSuit,
   selectedRank,
   usedKeys,
+  disabled,
   onSelectSuit,
   onSelectRank,
 }: Props) {
@@ -31,6 +33,7 @@ export function CardPicker({
               className={`card-picker-suit ${red ? 'red' : 'black'} ${
                 selectedSuit === suit ? 'selected' : ''
               }`}
+              disabled={disabled}
               onClick={() => onSelectSuit(suit)}
             >
               {suitGlyph(suit)}
@@ -49,7 +52,7 @@ export function CardPicker({
               type="button"
               role="radio"
               aria-checked={selectedRank === rank}
-              disabled={!selectedSuit || used}
+              disabled={disabled || !selectedSuit || used}
               className={`card-picker-rank ${red ? 'red' : 'black'} ${
                 selectedRank === rank ? 'selected' : ''
               }`}

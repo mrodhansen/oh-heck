@@ -78,7 +78,7 @@ export function Scoreboard({ game, onEditRound }: Props) {
                     }
                     const made = e.bid === e.tricksTaken;
                     return (
-                      <td key={p.id}>
+                      <td key={p.id} className={made ? undefined : 'score-miss'}>
                         <span className={made ? 'score pos' : 'score neg'}>
                           {e.points > 0 ? `+${e.points}` : e.points}
                         </span>
@@ -106,7 +106,10 @@ export function Scoreboard({ game, onEditRound }: Props) {
                 {game.players.map((p) => {
                   const s = game.standings.find((x) => x.playerId === p.id);
                   return (
-                    <td key={p.id}>
+                    <td
+                      key={p.id}
+                      className={s && s.total < 0 ? 'score-miss' : undefined}
+                    >
                       <span
                         className={
                           s && s.total >= 0 ? 'score pos' : 'score neg'

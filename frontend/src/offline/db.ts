@@ -266,6 +266,29 @@ export async function getAllCachedGames<T>(): Promise<T[]> {
   });
 }
 
+export async function clearGameCache(): Promise<void> {
+  const pending = await outboxAll();
+  const gamePending = pending.filter((op) =>
+    GAME_OUTBOX_TYPES.has(op.type as GameOutboxType),
+  );
+  if (gamePending.length > 0) {
+    throw new Error(
+      `Can't clear game cache while ${gamePending.length} change${
+        gamePending.length === 1 ? '' : 's'
+      } are waiting to sync`,
+    );
+  }
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['games', 'kv'], 'readwrite');
+    tx.objectStore('games').clear();
+    tx.objectStore('kv').delete('gameList');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () =>
+      reject(tx.error ?? new Error('Failed to clear game cache'));
+  });
+}
+
 export async function cacheTournament(t: { id: string }): Promise<void> {
   await withStore('tournaments', 'readwrite', (store) => store.put(t));
 }

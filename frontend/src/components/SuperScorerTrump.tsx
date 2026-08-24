@@ -11,40 +11,34 @@ export function SuperScorerTrump({ saving, onSave }: Props) {
   const [suit, setSuit] = useState<Suit | null>(null);
   const [rank, setRank] = useState<Rank | null>(null);
 
-  const selectedCard: CardJson | null =
-    suit && rank ? { s: suit, r: rank } : null;
-
-  async function confirm() {
-    if (!selectedCard) return;
-    await onSave(selectedCard);
-    setSuit(null);
+  function pickSuit(next: Suit) {
+    setSuit(next);
     setRank(null);
   }
 
+  function pickRank(next: Rank) {
+    if (!suit || saving) return;
+    const card = { s: suit, r: next };
+    setRank(next);
+    void onSave(card).then(() => {
+      setSuit(null);
+      setRank(null);
+    });
+  }
+
   return (
-    <>
-      <div className="play-middle">
-        <div className="super-play">
-          <p className="super-play-who">Choose trump</p>
-          <CardPicker
-            selectedSuit={suit}
-            selectedRank={rank}
-            usedKeys={new Set()}
-            onSelectSuit={setSuit}
-            onSelectRank={setRank}
-          />
-        </div>
+    <div className="play-middle">
+      <div className="super-play">
+        <p className="super-play-who">Choose trump</p>
+        <CardPicker
+          selectedSuit={suit}
+          selectedRank={rank}
+          usedKeys={new Set()}
+          disabled={saving}
+          onSelectSuit={pickSuit}
+          onSelectRank={pickRank}
+        />
       </div>
-      <div className="action-bar">
-        <button
-          type="button"
-          className="btn primary block"
-          disabled={!selectedCard || saving}
-          onClick={() => void confirm()}
-        >
-          {saving ? '…' : 'Confirm trump'}
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

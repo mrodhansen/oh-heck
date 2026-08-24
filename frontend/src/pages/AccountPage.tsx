@@ -1,9 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { accountNameNeedles, authApi, type ClaimableGame } from '../auth';
+import { authApi, type ClaimableGame } from '../auth';
 import type { StatsPlayer } from '../api';
 import { toUserMessage } from '../api/errors';
+import { ClaimableGameCard } from '../components/ClaimableGameCard';
 import { useAuth } from '../useAuth';
+import { clearLocalGameCache } from '../offline/sync';
+
+const CLAIM_PREVIEW = 3;
 
 type Mode = 'signin' | 'register';
 
@@ -23,6 +27,8 @@ export function AccountPage() {
   const [claimable, setClaimable] = useState<ClaimableGame[]>([]);
   const [claimableError, setClaimableError] = useState<string | null>(null);
   const [claimableLoading, setClaimableLoading] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -95,6 +101,20 @@ export function AccountPage() {
     }
   }
 
+  async function onClearGameCache() {
+    setError(null);
+    setMessage(null);
+    setBusy(true);
+    try {
+      await clearLocalGameCache();
+      setMessage('Local game cache cleared.');
+    } catch (err) {
+      setError(toUserMessage(err, 'Could not clear game cache'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onLogout() {
     setError(null);
     setMessage(null);
@@ -110,24 +130,38 @@ export function AccountPage() {
     }
   }
 
+  function openPassword() {
+    setPasswordError(null);
+    setNewPassword('');
+    setPasswordOpen(true);
+  }
+
+  function closePassword() {
+    if (busy) return;
+    setPasswordOpen(false);
+    setPasswordError(null);
+    setNewPassword('');
+  }
+
   async function onSave(e: FormEvent) {
     e.preventDefault();
     if (!user) return;
-    setError(null);
+    setPasswordError(null);
     setMessage(null);
+    if (!newPassword.length) {
+      setPasswordError('Enter a new password');
+      return;
+    }
     setBusy(true);
     try {
-      if (!newPassword.length) {
-        setError('Enter a new password');
-        return;
-      }
       const res = await authApi.update({ password: newPassword });
       setUser(res.user);
       setNewPassword('');
+      setPasswordOpen(false);
       setMessage('Password updated.');
       await refresh();
     } catch (err) {
-      setError(toUserMessage(err, 'Could not update'));
+      setPasswordError(toUserMessage(err, 'Could not update'));
     } finally {
       setBusy(false);
     }
@@ -250,6 +284,14 @@ export function AccountPage() {
               {busy ? '…' : mode === 'register' ? 'Register' : 'Sign in'}
             </button>
           </form>
+          <button
+            type="button"
+            className="btn danger"
+            disabled={busy}
+            onClick={() => void onClearGameCache()}
+          >
+            Clear local game cache
+          </button>
         </div>
       </div>
     );
@@ -261,29 +303,18 @@ export function AccountPage() {
         {error && <div className="banner">{error}</div>}
         {message && <div className="banner banner-ok">{message}</div>}
 
-        {(claimableLoading || claimableError || claimable.length > 0) && (
-          <section className="stack-sm">
-            <h3 className="section-title">Claim your games</h3>
-            <p className="hint" style={{ margin: 0 }}>
-              You might have played in these games. Don’t forget to claim them.
+        <section className="card stack">
+          <h3 className="section-title">Profile</h3>
+          <div className="profile-identity">
+            <p className="profile-name">
+              {user.firstName} {user.lastName}
             </p>
-            {claimableLoading && <div className="empty">Looking for games…</div>}
-            {claimableError && (
-              <div className="banner banner-inline">{claimableError}</div>
-            )}
-            {!claimableLoading && claimable.length > 0 && (
-              <div className="list">
-                {claimable.map((g) => (
-                  <ClaimableGameCard
-                    key={g.id}
-                    game={g}
-                    user={user}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
+            <p className="profile-username">{user.username}</p>
+            {user.email ? (
+              <p className="profile-email">{user.email}</p>
+            ) : null}
+          </div>
+        </section>
 
         <section className="card stack">
           <h3 className="section-title">Your stats</h3>
@@ -314,45 +345,104 @@ export function AccountPage() {
           </Link>
         </section>
 
-        <section className="card stack">
-          <h3 className="section-title">Profile</h3>
-          <div className="profile-identity">
-            <p className="profile-name">
-              {user.firstName} {user.lastName}
-            </p>
-            <p className="profile-username">{user.username}</p>
-            {user.email ? (
-              <p className="profile-email">{user.email}</p>
-            ) : null}
-          </div>
-        </section>
+        {(claimableLoading || claimableError || claimable.length > 0) && (
+          <section className="card stack">
+            <div>
+              <h3 className="section-title section-title-plain">
+                Claim your games
+              </h3>
+              <p className="hint" style={{ margin: 0 }}>
+                You might have played in these games. Don’t forget to claim
+                them.
+              </p>
+            </div>
+            {claimableLoading && <div className="empty">Looking for games…</div>}
+            {claimableError && (
+              <div className="banner banner-inline">{claimableError}</div>
+            )}
+            {!claimableLoading && claimable.length > 0 && (
+              <div className="list claim-list">
+                {claimable.slice(0, CLAIM_PREVIEW).map((g) => (
+                  <ClaimableGameCard key={g.id} game={g} user={user} />
+                ))}
+              </div>
+            )}
+            {!claimableLoading && claimable.length > CLAIM_PREVIEW && (
+              <Link to="/account/claimable" className="btn ghost">
+                See all
+              </Link>
+            )}
+          </section>
+        )}
 
-        <section className="card stack">
-          <h3 className="section-title">Password</h3>
-          <form className="stack" onSubmit={onSave}>
-            <label className="field">
-              New password
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                maxLength={200}
-                autoComplete="new-password"
-              />
-            </label>
-            <button
-              type="submit"
-              className="btn primary"
-              disabled={busy || !newPassword}
-            >
-              Update password
-            </button>
-          </form>
-        </section>
+        {passwordOpen && (
+          <div
+            className="modal-backdrop"
+            onClick={busy ? undefined : closePassword}
+          >
+            <div className="modal stack" onClick={(e) => e.stopPropagation()}>
+              <p className="section-title" style={{ margin: 0 }}>
+                Change password
+              </p>
+              {passwordError ? (
+                <div className="banner banner-inline">{passwordError}</div>
+              ) : null}
+              <form className="stack" onSubmit={onSave}>
+                <label className="field">
+                  New password
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    maxLength={200}
+                    autoComplete="new-password"
+                    autoFocus
+                  />
+                </label>
+                <div className="row" style={{ gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    disabled={busy}
+                    onClick={closePassword}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={busy || !newPassword}
+                    style={{ flex: 1 }}
+                  >
+                    {busy ? '…' : 'Update password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
-          className="btn ghost"
+          className="btn"
+          disabled={busy}
+          onClick={() => void onClearGameCache()}
+        >
+          Clear local game cache
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={openPassword}
+        >
+          Change password
+        </button>
+
+        <button
+          type="button"
+          className="btn danger"
           disabled={busy}
           onClick={() => void onLogout()}
         >
@@ -361,71 +451,6 @@ export function AccountPage() {
       </div>
     </div>
   );
-}
-
-function ClaimableGameCard({
-  game,
-  user,
-}: {
-  game: ClaimableGame;
-  user: { username: string; firstName: string; lastName: string };
-}) {
-  const needles = accountNameNeedles(user);
-  const matchNames = game.players
-    .filter(
-      (p) => p.claimable && needles.includes(p.name.trim().toLowerCase()),
-    )
-    .map((p) => p.name);
-  const status = formatGameStatus(game.status);
-  const when = formatDate(game.finishedAt ?? game.createdAt);
-
-  return (
-    <Link
-      to={`/games/${game.id}`}
-      state={{ from: 'account' }}
-      className="list-item"
-    >
-      <div className="min-w-0">
-        <p className="list-item-title truncate">{game.name ?? 'Game'}</p>
-        <p className="list-item-meta truncate">
-          {game.players.map((p) => p.name).join(', ')}
-        </p>
-        <p className="list-item-status">
-          {status}
-          {when ? ` · ${when}` : ''}
-          {matchNames.length > 0
-            ? ` · Unclaimed seat ${matchNames.join(', ')}`
-            : ''}
-        </p>
-      </div>
-      <span className="list-item-chevron" aria-hidden>
-        ›
-      </span>
-    </Link>
-  );
-}
-
-function formatGameStatus(status: ClaimableGame['status']): string {
-  switch (status) {
-    case 'COMPLETED':
-      return 'Completed';
-    case 'PLAYING':
-      return 'Playing';
-    case 'BIDDING':
-      return 'Bidding';
-    case 'SETUP':
-      return 'Setup';
-  }
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
 }
 
 function Metric({

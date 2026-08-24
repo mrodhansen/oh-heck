@@ -8,6 +8,7 @@ import { config as loadEnv } from 'dotenv';
 import {
   GameEventType,
   GameStatus,
+  LiveSessionStatus,
   PlayMode,
   PrismaClient,
   TournamentStage,
@@ -138,6 +139,140 @@ function forbiddenLast(prior, hand) {
 
 function scoreRound(bid, tricks) {
   return bid === tricks ? 5 + tricks : -Math.abs(bid - tricks);
+}
+
+const SUITS = ['C', 'D', 'H', 'S'];
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+const RANK_VALUE = {
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 5,
+  6: 6,
+  7: 7,
+  8: 8,
+  9: 9,
+  T: 10,
+  J: 11,
+  Q: 12,
+  K: 13,
+  A: 14,
+};
+
+function cardKey(c) {
+  return `${c.r}${c.s}`;
+}
+
+function makeDeck() {
+  const deck = [];
+  for (const s of SUITS) {
+    for (const r of RANKS) {
+      deck.push({ s, r });
+    }
+  }
+  return deck;
+}
+
+function sortHand(hand) {
+  const suitOrder = { C: 0, D: 1, H: 2, S: 3 };
+  return [...hand].sort((a, b) => {
+    if (a.s !== b.s) return suitOrder[a.s] - suitOrder[b.s];
+    return RANK_VALUE[a.r] - RANK_VALUE[b.r];
+  });
+}
+
+function dealHands(playerCount, handSize, dealerSeat, rng) {
+  const deck = shuffle(rng, makeDeck());
+  const hands = Array.from({ length: playerCount }, () => []);
+  let cursor = 0;
+  for (let c = 0; c < handSize; c++) {
+    for (let s = 0; s < playerCount; s++) {
+      const seat = (dealerSeat + 1 + s) % playerCount;
+      hands[seat].push(deck[cursor++]);
+    }
+  }
+  for (let s = 0; s < playerCount; s++) {
+    hands[s] = sortHand(hands[s]);
+  }
+  const trumpCard = deck[cursor] ?? null;
+  return { hands, trumpCard, trumpSuit: trumpCard?.s ?? null };
+}
+
+function legalFrom(hand, leadSuit) {
+  if (!leadSuit) return hand;
+  const follow = hand.filter((c) => c.s === leadSuit);
+  return follow.length > 0 ? follow : hand;
+}
+
+function beats(a, b, leadSuit, trump) {
+  const aTrump = a.s === trump;
+  const bTrump = b.s === trump;
+  if (aTrump && !bTrump) return true;
+  if (!aTrump && bTrump) return false;
+  if (aTrump && bTrump) return RANK_VALUE[a.r] > RANK_VALUE[b.r];
+  const aLead = a.s === leadSuit;
+  const bLead = b.s === leadSuit;
+  if (aLead && !bLead) return true;
+  if (!aLead && bLead) return false;
+  if (aLead && bLead) return RANK_VALUE[a.r] > RANK_VALUE[b.r];
+  return false;
+}
+
+function winnerOfTrick(plays, leadSuit, trump) {
+  let best = plays[0];
+  for (let i = 1; i < plays.length; i++) {
+    if (beats(plays[i].card, best.card, leadSuit, trump)) best = plays[i];
+  }
+  return best.seat;
+}
+
+function playTricks({
+  hands,
+  trumpSuit,
+  leadSeat,
+  playerCount,
+  completeTricks,
+  midPlays,
+  rng,
+}) {
+  const remaining = hands.map((h) => [...h]);
+  const completed = [];
+  let lead = leadSeat;
+  for (let t = 0; t < completeTricks; t++) {
+    const plays = [];
+    for (let i = 0; i < playerCount; i++) {
+      const seat = (lead + i) % playerCount;
+      const leadSuit = plays[0]?.card.s ?? null;
+      const options = legalFrom(remaining[seat], leadSuit);
+      const card = options[Math.floor(rng() * options.length)];
+      remaining[seat] = remaining[seat].filter(
+        (c) => !(c.s === card.s && c.r === card.r),
+      );
+      plays.push({ seat, card });
+    }
+    const leadSuit = plays[0].card.s;
+    const winnerSeat = winnerOfTrick(plays, leadSuit, trumpSuit);
+    completed.push({
+      trickIndex: t,
+      leadSeat: lead,
+      leadSuit,
+      winnerSeat,
+      plays,
+    });
+    lead = winnerSeat;
+  }
+  const currentPlays = [];
+  for (let i = 0; i < midPlays; i++) {
+    const seat = (lead + i) % playerCount;
+    const leadSuit = currentPlays[0]?.card.s ?? null;
+    const options = legalFrom(remaining[seat], leadSuit);
+    const card = options[Math.floor(rng() * options.length)];
+    remaining[seat] = remaining[seat].filter(
+      (c) => !(c.s === card.s && c.r === card.r),
+    );
+    currentPlays.push({ seat, card });
+  }
+  return { completed, current: { leadSeat: lead, plays: currentPlays } };
 }
 
 function genBids(order, hand, skills, rng) {
@@ -390,7 +525,14 @@ async function insertGame({
         continue;
       }
     }
-    playerIds.push(randomUUID());
+    const created = await prisma.player.create({
+      data: {
+        name: names[i],
+        userId,
+        createdAt,
+      },
+    });
+    playerIds.push(created.id);
   }
   const n = names.length;
   const firstDealerSeat = dealerSeat(1, n);
@@ -439,19 +581,9 @@ async function insertGame({
       tournamentTableId,
       notes: notes ?? [],
       seats: {
-        create: names.map((name, seatIndex) => ({
+        create: names.map((_, seatIndex) => ({
           seatIndex,
-          player: {
-            connectOrCreate: {
-              where: { id: playerIds[seatIndex] },
-              create: {
-                id: playerIds[seatIndex],
-                name,
-                userId: userIds[seatIndex]?.id ?? null,
-                createdAt,
-              },
-            },
-          },
+          player: { connect: { id: playerIds[seatIndex] } },
         })),
       },
       rounds: {
@@ -555,8 +687,79 @@ async function seedStandalone(users) {
   let completed = 0;
   let active = 0;
 
+  const namedScore = [
+    {
+      title: 'Heads-up mid-hand',
+      n: 2,
+      throughRound: 6,
+      throughPhase: 'tricks',
+      claimRate: 0.5,
+    },
+    {
+      title: 'Heads-up bidding now',
+      n: 2,
+      throughRound: 7,
+      throughPhase: 'bids',
+      claimRate: 0,
+    },
+    {
+      title: 'Heads-up finished',
+      n: 2,
+      throughRound: 13,
+      throughPhase: 'tricks',
+      claimRate: 0.4,
+    },
+    {
+      title: 'Seven-handed mid-hand',
+      n: 7,
+      throughRound: 6,
+      throughPhase: 'tricks',
+      claimRate: 0.45,
+    },
+    {
+      title: 'Seven-handed bidding now',
+      n: 7,
+      throughRound: 8,
+      throughPhase: 'bids',
+      claimRate: 0.3,
+    },
+    {
+      title: 'Seven-handed finished',
+      n: 7,
+      throughRound: 13,
+      throughPhase: 'tricks',
+      claimRate: 0.5,
+    },
+    {
+      title: 'All-guest kitchen',
+      n: 4,
+      throughRound: 13,
+      throughPhase: 'tricks',
+      claimRate: 0,
+    },
+  ];
+  for (const spec of namedScore) {
+    const { names, userIds } = pickUniqueNames(rng, users, spec.n, {
+      claimRate: spec.claimRate,
+      forceUnclaimedMatch: spec.claimRate === 0,
+    });
+    await insertGame({
+      title: spec.title,
+      names,
+      userIds,
+      createdAt: daysAgo(rng, 0.3, 12),
+      throughRound: spec.throughRound,
+      throughPhase: spec.throughPhase,
+      forceBurnRounds: new Set(),
+      notes: [],
+      rng,
+    });
+    if (spec.throughRound >= 13) completed += 1;
+    else active += 1;
+  }
+
   for (let i = 0; i < 48; i++) {
-    const n = [3, 3, 4, 4, 4, 5, 5, 6, 7][i % 9];
+    const n = [2, 2, 3, 4, 4, 5, 5, 6, 7][i % 9];
     const { names, userIds } = pickUniqueNames(rng, users, n, {
       claimRate: 0.72,
       forceUnclaimedMatch: false,
@@ -623,22 +826,22 @@ async function seedStandalone(users) {
   }
 
   const activeSpecs = [
-    { throughRound: 1, throughPhase: 'none' },
-    { throughRound: 1, throughPhase: 'bids' },
-    { throughRound: 2, throughPhase: 'none' },
-    { throughRound: 3, throughPhase: 'bids' },
-    { throughRound: 5, throughPhase: 'tricks' },
-    { throughRound: 6, throughPhase: 'none' },
-    { throughRound: 7, throughPhase: 'bids' },
-    { throughRound: 8, throughPhase: 'tricks' },
-    { throughRound: 10, throughPhase: 'none' },
-    { throughRound: 11, throughPhase: 'bids' },
-    { throughRound: 12, throughPhase: 'tricks' },
-    { throughRound: 12, throughPhase: 'none' },
+    { throughRound: 1, throughPhase: 'none', n: 2 },
+    { throughRound: 1, throughPhase: 'bids', n: 2 },
+    { throughRound: 2, throughPhase: 'none', n: 3 },
+    { throughRound: 3, throughPhase: 'bids', n: 4 },
+    { throughRound: 5, throughPhase: 'tricks', n: 5 },
+    { throughRound: 6, throughPhase: 'none', n: 6 },
+    { throughRound: 7, throughPhase: 'bids', n: 7 },
+    { throughRound: 8, throughPhase: 'tricks', n: 7 },
+    { throughRound: 10, throughPhase: 'none', n: 2 },
+    { throughRound: 11, throughPhase: 'bids', n: 4 },
+    { throughRound: 12, throughPhase: 'tricks', n: 7 },
+    { throughRound: 12, throughPhase: 'none', n: 3 },
   ];
   for (let i = 0; i < activeSpecs.length; i++) {
     const spec = activeSpecs[i];
-    const n = 3 + (i % 5);
+    const n = spec.n;
     const { names, userIds } = pickUniqueNames(rng, users, n, {
       claimRate: 0.6,
       forceUnclaimedMatch: false,
@@ -1148,6 +1351,451 @@ async function seedCompletedTournament(users, rng, name, playerNames, daysBack) 
   );
 }
 
+function liveToken(code, seat) {
+  return `seed-${code}-seat-${seat}`;
+}
+
+async function seedLobby({ code, names, userIds, createdAt }) {
+  const seats = names.map((name, seatIndex) => ({
+    id: randomBytes(16).toString('hex'),
+    name,
+    token: liveToken(code, seatIndex),
+    seatIndex,
+    isHost: seatIndex === 0,
+    gone: false,
+    userId: userIds[seatIndex]?.id ?? null,
+  }));
+  const session = await prisma.liveSession.create({
+    data: {
+      code,
+      status: LiveSessionStatus.LOBBY,
+      hostPlayerId: seats[0].id,
+      lobby: seats,
+      createdAt,
+      updatedAt: createdAt,
+    },
+  });
+  await prisma.gameEvent.create({
+    data: {
+      sessionId: session.id,
+      type: GameEventType.SESSION_CREATED,
+      payload: { code, hostName: names[0] },
+      createdAt,
+    },
+  });
+}
+
+async function hydrateLiveRound({
+  gameId,
+  sessionId,
+  phase,
+  completeTricks,
+  midPlays,
+  bidsToKeep,
+  rng,
+}) {
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    include: {
+      seats: { include: { player: true }, orderBy: { seatIndex: 'asc' } },
+      rounds: {
+        include: { entries: true },
+        orderBy: { number: 'asc' },
+      },
+    },
+  });
+  const open = game.rounds.find((r) => r.completedAt == null);
+  if (!open) return;
+  const n = game.seats.length;
+  const bySeat = new Map(game.seats.map((s) => [s.seatIndex, s]));
+  const { hands, trumpCard, trumpSuit } = dealHands(
+    n,
+    open.handSize,
+    open.dealerSeat,
+    rng,
+  );
+  const order = Array.isArray(open.bidOrderSeats)
+    ? open.bidOrderSeats
+    : bidOrderSeats(open.number, n);
+
+  const existingBids = open.entries.map((e) => {
+    const seat = game.seats.find((s) => s.playerId === e.playerId)?.seatIndex;
+    return { seat, bid: e.bid, entry: e };
+  });
+  const haveAllBids = existingBids.every((x) => x.bid != null);
+  let bidBySeat = Object.fromEntries(
+    existingBids.filter((x) => x.bid != null).map((x) => [x.seat, x.bid]),
+  );
+  if (!haveAllBids && (phase === 'playing' || bidsToKeep == null)) {
+    const skills = game.seats.map(() => 0.55);
+    const generated = genBids(order, open.handSize, skills, rng);
+    const keep =
+      phase === 'bidding'
+        ? Math.max(1, Math.min(n - 1, Math.floor(n / 2)))
+        : n;
+    for (let i = 0; i < keep; i++) {
+      bidBySeat[order[i]] = generated[i];
+    }
+  }
+
+  let running = 0;
+  for (const seat of order) {
+    const entry = existingBids.find((x) => x.seat === seat)?.entry;
+    if (!entry) continue;
+    const bid = bidBySeat[seat];
+    await prisma.roundEntry.update({
+      where: { id: entry.id },
+      data: {
+        dealtHand: hands[seat],
+        bid: bid ?? null,
+        bidPlacedAt: bid != null ? new Date() : null,
+        runningBidBefore: bid != null ? running : null,
+      },
+    });
+    if (bid != null) running += bid;
+  }
+
+  const leadSeat = (open.dealerSeat + 1) % n;
+  const played =
+    phase === 'playing'
+      ? playTricks({
+          hands,
+          trumpSuit,
+          leadSeat,
+          playerCount: n,
+          completeTricks,
+          midPlays,
+          rng,
+        })
+      : { completed: [], current: { leadSeat, plays: [] } };
+
+  const currentTrick =
+    phase === 'playing'
+      ? {
+          leadSeat: played.current.leadSeat,
+          plays: played.current.plays.map((p, playOrder) => ({
+            playOrder,
+            seatIndex: p.seat,
+            playerId: bySeat.get(p.seat).playerId,
+            s: p.card.s,
+            r: p.card.r,
+            key: cardKey(p.card),
+            followedSuit:
+              playOrder === 0 || p.card.s === played.current.plays[0].card.s,
+            playedTrump: p.card.s === trumpSuit,
+          })),
+        }
+      : null;
+
+  await prisma.round.update({
+    where: { id: open.id },
+    data: {
+      trumpSuit,
+      trumpCard,
+      dealtAt: new Date(),
+      currentTrick,
+    },
+  });
+
+  for (const trick of played.completed) {
+    await prisma.trick.create({
+      data: {
+        gameId,
+        roundId: open.id,
+        trickIndex: trick.trickIndex,
+        leadSeat: trick.leadSeat,
+        leadSuit: trick.leadSuit,
+        winnerSeat: trick.winnerSeat,
+        winnerPlayerId: bySeat.get(trick.winnerSeat).playerId,
+        plays: {
+          create: trick.plays.map((p, playOrder) => ({
+            playOrder,
+            seatIndex: p.seat,
+            playerId: bySeat.get(p.seat).playerId,
+            cardSuit: p.card.s,
+            cardRank: p.card.r,
+            cardKey: cardKey(p.card),
+            followedSuit: playOrder === 0 || p.card.s === trick.leadSuit,
+            playedTrump: p.card.s === trumpSuit,
+          })),
+        },
+      },
+    });
+  }
+
+  if (phase === 'playing') {
+    await prisma.game.update({
+      where: { id: gameId },
+      data: { status: GameStatus.PLAYING },
+    });
+  }
+
+  await prisma.gameEvent.create({
+    data: {
+      gameId,
+      sessionId,
+      type: GameEventType.ROUND_DEALT,
+      roundNumber: open.number,
+      payload: {
+        roundNumber: open.number,
+        handSize: open.handSize,
+        dealerSeat: open.dealerSeat,
+        trumpSuit,
+        trumpCard,
+      },
+    },
+  });
+}
+
+async function attachLive({
+  game,
+  code,
+  goneSeats,
+  createdAt,
+  finishedAt = null,
+  status,
+  phase,
+  completeTricks = 0,
+  midPlays = 0,
+  rng,
+}) {
+  const seats = await prisma.gamePlayer.findMany({
+    where: { gameId: game.id },
+    include: { player: true },
+    orderBy: { seatIndex: 'asc' },
+  });
+  const host = seats[seats.length - 1];
+  for (const seat of seats) {
+    await prisma.gamePlayer.update({
+      where: { id: seat.id },
+      data: {
+        token: liveToken(code, seat.seatIndex),
+        isHost: seat.seatIndex === host.seatIndex,
+        gone: goneSeats.has(seat.seatIndex),
+      },
+    });
+  }
+  const session = await prisma.liveSession.create({
+    data: {
+      code,
+      status,
+      hostPlayerId: host.playerId,
+      gameId: game.id,
+      lobby: [],
+      createdAt,
+      updatedAt: finishedAt ?? createdAt,
+      startedAt: createdAt,
+      finishedAt,
+    },
+  });
+  await prisma.gameEvent.create({
+    data: {
+      sessionId: session.id,
+      gameId: game.id,
+      type: GameEventType.GAME_STARTED_LIVE,
+      payload: { code, playerCount: seats.length },
+      createdAt,
+    },
+  });
+  if (status === LiveSessionStatus.PLAYING) {
+    await hydrateLiveRound({
+      gameId: game.id,
+      sessionId: session.id,
+      phase,
+      completeTricks,
+      midPlays,
+      rng,
+    });
+  }
+  return session;
+}
+
+async function seedLive(users) {
+  const rng = mulberry32(424242);
+  const tables = [];
+
+  await seedLobby({
+    code: '1000',
+    names: ['Demo', 'Alex', 'Dad'],
+    userIds: [users[0], users[1], null],
+    createdAt: daysAgo(rng, 0.05, 0.2),
+  });
+  tables.push({ code: '1000', kind: 'lobby', note: '3 seated, not started' });
+
+  await seedLobby({
+    code: '1001',
+    names: ['Riley'],
+    userIds: [users.find((u) => u.username === 'riley') ?? users[3]],
+    createdAt: daysAgo(rng, 0.01, 0.1),
+  });
+  tables.push({ code: '1001', kind: 'lobby', note: 'host only — joinable' });
+
+  const twoOther = pickUniqueNames(
+    rng,
+    users.filter((u) => u.username !== 'demo'),
+    1,
+    { claimRate: 0.4, forceUnclaimedMatch: false },
+  );
+  const twoGame = await insertGame({
+    title: 'Live heads-up',
+    names: ['Demo', twoOther.names[0]],
+    userIds: [users[0], twoOther.userIds[0]],
+    createdAt: daysAgo(rng, 0.2, 1.5),
+    throughRound: 10,
+    throughPhase: 'bids',
+    forceBurnRounds: new Set(),
+    notes: [],
+    rng,
+    playMode: PlayMode.ONLINE,
+  });
+  await attachLive({
+    game: twoGame,
+    code: '2202',
+    goneSeats: new Set([1]),
+    createdAt: twoGame.createdAt,
+    status: LiveSessionStatus.PLAYING,
+    phase: 'playing',
+    completeTricks: 1,
+    midPlays: 1,
+    rng,
+  });
+  tables.push({
+    code: '2202',
+    kind: '2p mid-trick',
+    note: `claim gone seat (${twoOther.names[0]}) — demo is seated`,
+  });
+
+  const twoBid = pickUniqueNames(rng, users, 2, {
+    claimRate: 0,
+    forceUnclaimedMatch: true,
+  });
+  const twoBidGame = await insertGame({
+    title: 'Live heads-up bidding',
+    names: twoBid.names,
+    userIds: twoBid.userIds,
+    createdAt: daysAgo(rng, 0.1, 0.8),
+    throughRound: 10,
+    throughPhase: 'none',
+    forceBurnRounds: new Set(),
+    notes: [],
+    rng,
+    playMode: PlayMode.ONLINE,
+  });
+  await attachLive({
+    game: twoBidGame,
+    code: '2201',
+    goneSeats: new Set([0, 1]),
+    createdAt: twoBidGame.createdAt,
+    status: LiveSessionStatus.PLAYING,
+    phase: 'bidding',
+    rng,
+  });
+  tables.push({
+    code: '2201',
+    kind: '2p bidding',
+    note: 'both seats gone — claim either',
+  });
+
+  const sevenRest = pickUniqueNames(
+    rng,
+    users.filter((u) => u.username !== 'alex'),
+    6,
+    { claimRate: 0.4, forceUnclaimedMatch: false },
+  );
+  const sevenGame = await insertGame({
+    title: 'Live full table',
+    names: ['Alex', ...sevenRest.names],
+    userIds: [users[1], ...sevenRest.userIds],
+    createdAt: daysAgo(rng, 0.4, 2),
+    throughRound: 10,
+    throughPhase: 'bids',
+    forceBurnRounds: new Set(),
+    notes: [],
+    rng,
+    playMode: PlayMode.ONLINE,
+  });
+  await attachLive({
+    game: sevenGame,
+    code: '7707',
+    goneSeats: new Set([6]),
+    createdAt: sevenGame.createdAt,
+    status: LiveSessionStatus.PLAYING,
+    phase: 'playing',
+    completeTricks: 1,
+    midPlays: 3,
+    rng,
+  });
+  tables.push({
+    code: '7707',
+    kind: '7p mid-trick',
+    note: `claim gone seat (${sevenRest.names[5]}) — alex is seated`,
+  });
+
+  const sevenBid = pickUniqueNames(rng, users, 7, {
+    claimRate: 0.25,
+    forceUnclaimedMatch: false,
+  });
+  const sevenBidGame = await insertGame({
+    title: 'Live seven bidding',
+    names: sevenBid.names,
+    userIds: sevenBid.userIds,
+    createdAt: daysAgo(rng, 0.2, 1),
+    throughRound: 5,
+    throughPhase: 'none',
+    forceBurnRounds: new Set(),
+    notes: [],
+    rng,
+    playMode: PlayMode.ONLINE,
+  });
+  await attachLive({
+    game: sevenBidGame,
+    code: '7701',
+    goneSeats: new Set([2]),
+    createdAt: sevenBidGame.createdAt,
+    status: LiveSessionStatus.PLAYING,
+    phase: 'bidding',
+    rng,
+  });
+  tables.push({
+    code: '7701',
+    kind: '7p bidding',
+    note: `claim gone seat (${sevenBid.names[2]})`,
+  });
+
+  for (let i = 0; i < 8; i++) {
+    const n = [2, 3, 4, 4, 5, 6, 7, 7][i];
+    const { names, userIds } = pickUniqueNames(rng, users, n, {
+      claimRate: i % 3 === 0 ? 0 : 0.55,
+      forceUnclaimedMatch: i % 3 === 0,
+    });
+    const createdAt = daysAgo(rng, 3, 40);
+    const game = await insertGame({
+      title: `Live finished ${i + 1}`,
+      names,
+      userIds,
+      createdAt,
+      throughRound: 13,
+      throughPhase: 'tricks',
+      forceBurnRounds: new Set(),
+      notes: [],
+      rng,
+      playMode: PlayMode.ONLINE,
+    });
+    await attachLive({
+      game,
+      code: String(3300 + i),
+      goneSeats: new Set(),
+      createdAt,
+      finishedAt: new Date(createdAt.getTime() + 90 * 60 * 1000),
+      status: LiveSessionStatus.COMPLETED,
+      phase: 'playing',
+      rng,
+    });
+  }
+
+  return tables;
+}
+
 async function main() {
   console.log('Wiping existing rows…');
   await wipe();
@@ -1161,11 +1809,14 @@ async function main() {
   );
   console.log('Seeding tournaments…');
   await seedTournaments(users);
+  console.log('Seeding live tables…');
+  const liveTables = await seedLive(users);
 
-  const [gameCount, tourneyCount, userCount] = await Promise.all([
+  const [gameCount, tourneyCount, userCount, liveCount] = await Promise.all([
     prisma.game.count(),
     prisma.tournament.count(),
     prisma.user.count(),
+    prisma.liveSession.count(),
   ]);
   const byStatus = await prisma.game.groupBy({
     by: ['status'],
@@ -1175,11 +1826,24 @@ async function main() {
     by: ['status'],
     _count: true,
   });
+  const liveByStatus = await prisma.liveSession.groupBy({
+    by: ['status'],
+    _count: true,
+  });
+  const claimedSeats = await prisma.player.count({
+    where: { userId: { not: null } },
+  });
   console.log('\nDone.');
   console.log(`  users: ${userCount}  (password for all: ${PASSWORD})`);
   console.log(`  games: ${gameCount}  ${JSON.stringify(Object.fromEntries(byStatus.map((r) => [r.status, r._count])))}`);
   console.log(`  tournaments: ${tourneyCount}  ${JSON.stringify(Object.fromEntries(tByStatus.map((r) => [r.status, r._count])))}`);
+  console.log(`  live sessions: ${liveCount}  ${JSON.stringify(Object.fromEntries(liveByStatus.map((r) => [r.status, r._count])))}`);
+  console.log(`  claimed player identities: ${claimedSeats}`);
   console.log('  sign in as demo, alex, priya, sam, …');
+  console.log('  live codes:');
+  for (const t of liveTables) {
+    console.log(`    ${t.code}  ${t.kind}  — ${t.note}`);
+  }
 }
 
 main()

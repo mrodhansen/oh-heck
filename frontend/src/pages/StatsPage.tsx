@@ -4,6 +4,9 @@ import { api, StatsGame, StatsPlayer, StatsResponse, StatsLeader } from '../api'
 import { toUserMessage } from '../api/errors';
 import { filterStatsGames } from './statsGamesFilter';
 import { filterStatsPlayers } from './statsPlayersFilter';
+import { paginate } from './statsPaginate';
+
+const TABLE_PAGE_SIZE = 20;
 
 type Tab = 'overview' | 'games' | 'players';
 
@@ -160,11 +163,17 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
+  const [page, setPage] = useState(1);
   const filtered = useMemo(
     () => filterStatsGames(games, { name, from, to }),
     [games, name, from, to],
   );
+  const paged = paginate(filtered, page, TABLE_PAGE_SIZE);
   const filtering = Boolean(name.trim() || from || to);
+
+  useEffect(() => {
+    setPage(1);
+  }, [name, from, to]);
 
   if (games.length === 0) {
     return (
@@ -242,7 +251,7 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((g) => (
+                {paged.items.map((g) => (
                   <tr key={g.id}>
                     <td>
                       <Link
@@ -279,6 +288,14 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
               </tbody>
             </table>
           </div>
+          <TablePager
+            page={paged.page}
+            pages={paged.pages}
+            from={paged.from}
+            to={paged.to}
+            total={paged.total}
+            onPage={setPage}
+          />
         </div>
       )}
     </div>
@@ -293,8 +310,14 @@ function PlayersList({
   onSelect: (key: string) => void;
 }) {
   const [name, setName] = useState('');
+  const [page, setPage] = useState(1);
   const filtered = useMemo(() => filterStatsPlayers(players, name), [players, name]);
+  const paged = paginate(filtered, page, TABLE_PAGE_SIZE);
   const filtering = Boolean(name.trim());
+
+  useEffect(() => {
+    setPage(1);
+  }, [name]);
 
   if (players.length === 0) {
     return (
@@ -349,7 +372,7 @@ function PlayersList({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {paged.items.map((p) => (
                   <tr key={p.key ?? p.name}>
                     <td>
                       <button
@@ -372,6 +395,14 @@ function PlayersList({
               </tbody>
             </table>
           </div>
+          <TablePager
+            page={paged.page}
+            pages={paged.pages}
+            from={paged.from}
+            to={paged.to}
+            total={paged.total}
+            onPage={setPage}
+          />
         </div>
       )}
     </div>
@@ -434,6 +465,47 @@ function LeaderRow({ label, leader }: { label: string; leader: StatsLeader }) {
       ) : (
         <span className="muted">—</span>
       )}
+    </div>
+  );
+}
+
+function TablePager({
+  page,
+  pages,
+  from,
+  to,
+  total,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  from: number;
+  to: number;
+  total: number;
+  onPage: (page: number) => void;
+}) {
+  if (total === 0) return null;
+  return (
+    <div className="table-pager">
+      <button
+        type="button"
+        className="btn sm"
+        disabled={page <= 1}
+        onClick={() => onPage(page - 1)}
+      >
+        Prev
+      </button>
+      <span className="muted">
+        {from}–{to} of {total}
+      </span>
+      <button
+        type="button"
+        className="btn sm"
+        disabled={page >= pages}
+        onClick={() => onPage(page + 1)}
+      >
+        Next
+      </button>
     </div>
   );
 }

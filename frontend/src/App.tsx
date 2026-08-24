@@ -7,6 +7,7 @@ import { GamePage } from './pages/GamePage';
 import { StatsPage } from './pages/StatsPage';
 import { RulesPage } from './pages/RulesPage';
 import { AccountPage } from './pages/AccountPage';
+import { ClaimableGamesPage } from './pages/ClaimableGamesPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { TournamentPage } from './pages/TournamentPage';
 import { LiveHubPage } from './pages/LiveHubPage';
@@ -57,6 +58,7 @@ export function App() {
           <Route path="/games/:id" element={<GamePage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/account/claimable" element={<ClaimableGamesPage />} />
           <Route path="/rules" element={<RulesPage />} />
         </Routes>
       </main>

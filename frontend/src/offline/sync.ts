@@ -10,6 +10,7 @@ import type {
 import {
   cacheGame,
   cacheTournament,
+  clearGameCache,
   GAME_OUTBOX_TYPES,
   getAllCachedGames,
   getAllCachedTournaments,
@@ -44,6 +45,11 @@ export function getLastSyncError(): string | null {
 
 export async function getPendingCount(): Promise<number> {
   return outboxCount();
+}
+
+export async function clearLocalGameCache(): Promise<void> {
+  await clearGameCache();
+  emit();
 }
 
 export function isOnline(): boolean {

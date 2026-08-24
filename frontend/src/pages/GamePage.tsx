@@ -291,7 +291,7 @@ export function GamePage() {
       setLockedBids({});
       setCurrentBid(0);
       setForceBurn(false);
-      setShowBidRecap(true);
+      setShowBidRecap(!game.superScorer);
     } catch (e) {
       setError(toUserMessage(e, 'Failed to save bids'));
     } finally {
@@ -488,7 +488,8 @@ export function GamePage() {
         tab === 'play' &&
         current &&
         showBidRecap &&
-        phase === 'tricks' && (
+        phase === 'tricks' &&
+        !game.superScorer && (
           <BidReadyScreen
             roundNumber={current.number}
             handSize={handSize}
@@ -506,7 +507,7 @@ export function GamePage() {
                 last: pid === lastBidderId,
               };
             })}
-            buttonLabel={game.superScorer ? 'Go to play' : 'Go to scoring'}
+            buttonLabel="Go to scoring"
             onGoToScoring={() => setShowBidRecap(false)}
           />
         )}
@@ -514,7 +515,7 @@ export function GamePage() {
       {!isFinished &&
         tab === 'play' &&
         current &&
-        !(showBidRecap && phase === 'tricks') && (
+        !(showBidRecap && phase === 'tricks' && !game.superScorer) && (
         <div className="play-layout">
           <header className="phase-header">
             <h2 className="phase-title">

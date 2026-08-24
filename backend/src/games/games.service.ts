@@ -47,7 +47,12 @@ import {
   roundSetupFields,
 } from './analytics';
 import { asNotes, hasNotes } from './notes';
-import { ApiErrorCode, exceptionMessage, notFound } from '../common/api-error';
+import {
+  ApiErrorCode,
+  conflict,
+  exceptionMessage,
+  notFound,
+} from '../common/api-error';
 import { assertUsersExist } from '../common/users';
 import {
   gameSeatInclude,
@@ -209,26 +214,11 @@ export class GamesService {
         const name = names[seatIndex]!;
         const givenId = dto.playerIds?.[seatIndex];
         const userId = playerUserIds?.[seatIndex] ?? null;
-        let player =
-          givenId != null
-            ? await tx.player.findUnique({ where: { id: givenId } })
-            : userId
-              ? await tx.player.findUnique({ where: { userId } })
-              : null;
-        if (givenId != null && !player) {
-          player = await tx.player.create({
-            data: { id: givenId, name, ...(userId ? { userId } : {}) },
-          });
-        } else if (!player) {
-          player = await tx.player.create({
-            data: { name, ...(userId ? { userId } : {}) },
-          });
-        } else if (userId && !player.userId) {
-          player = await tx.player.update({
-            where: { id: player.id },
-            data: { userId },
-          });
-        }
+        const player = await resolveSeatedPlayer(tx, {
+          givenId,
+          name,
+          userId,
+        });
         await tx.gamePlayer.create({
           data: {
             gameId: created.id,
@@ -1767,6 +1757,40 @@ export class GamesService {
 
     return assignPlacesByTotal(totals).sort((a, b) => a.seatIndex - b.seatIndex);
   }
+}
+
+async function resolveSeatedPlayer(
+  tx: Prisma.TransactionClient,
+  args: { givenId?: string; name: string; userId: string | null },
+): Promise<{ id: string; name: string; userId: string | null }> {
+  const { givenId, name, userId } = args;
+  const byId =
+    givenId != null
+      ? await tx.player.findUnique({ where: { id: givenId } })
+      : null;
+  if (byId) {
+    if (userId && byId.userId && byId.userId !== userId) {
+      throw conflict('Player id is already bound to a different user');
+    }
+    if (userId && !byId.userId) {
+      return tx.player.update({
+        where: { id: byId.id },
+        data: { userId },
+      });
+    }
+    return byId;
+  }
+  if (userId) {
+    const byUser = await tx.player.findUnique({ where: { userId } });
+    if (byUser) return byUser;
+  }
+  return tx.player.create({
+    data: {
+      ...(givenId != null ? { id: givenId } : {}),
+      name,
+      ...(userId ? { userId } : {}),
+    },
+  });
 }
 
 function sanitizePlayerUserIds(
