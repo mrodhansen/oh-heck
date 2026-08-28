@@ -5,6 +5,7 @@ import { toUserMessage } from '../api/errors';
 import { filterStatsGames } from './statsGamesFilter';
 import { filterStatsPlayers } from './statsPlayersFilter';
 import { paginate } from './statsPaginate';
+import { statsView } from './statsView';
 import {
   dayEndMs,
   dayStartMs,
@@ -34,6 +35,7 @@ export function StatsPage() {
     return from === 'games' || from === 'players' ? from : 'overview';
   });
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
 
   const playerKey = (p: StatsPlayer) => p.key ?? p.name;
 
@@ -65,15 +67,33 @@ export function StatsPage() {
   if (error) return <div className="banner">{error}</div>;
   if (!stats) return <div className="empty">Stats unavailable.</div>;
 
+  const view = statsView(stats, showAllPlayers);
   const player =
     selectedPlayer != null
-      ? stats.players.find((p) => playerKey(p) === selectedPlayer) ?? null
+      ? view.players.find((p) => playerKey(p) === selectedPlayer) ?? null
       : null;
 
   return (
     <div className="page-fit">
       <div className="page-fit-header">
-        <h2 className="page-title">Stats</h2>
+        <div className="page-header stats-title-row">
+          <h2 className="page-title">Stats</h2>
+          <button
+            type="button"
+            className={`stats-all-toggle${showAllPlayers ? ' on' : ''}`}
+            role="switch"
+            aria-checked={showAllPlayers}
+            onClick={() => {
+              setShowAllPlayers((v) => !v);
+              setSelectedPlayer(null);
+            }}
+          >
+            Show All Players
+            <span className="stats-all-switch" aria-hidden>
+              <span className="stats-all-knob" />
+            </span>
+          </button>
+        </div>
         <div className="stats-tabs" role="tablist">
           <button
             type="button"
@@ -106,11 +126,14 @@ export function StatsPage() {
       </div>
 
       <div className="page-fit-body stack">
-        {tab === 'overview' && <OverviewPanel stats={stats} />}
-        {tab === 'games' && <GamesPanel games={stats.games} />}
+        {tab === 'overview' && (
+          <OverviewPanel stats={view} showAllPlayers={showAllPlayers} />
+        )}
+        {tab === 'games' && <GamesPanel games={view.games} />}
         {tab === 'players' && !player && (
           <PlayersList
-            players={stats.players}
+            players={view.players}
+            showAllPlayers={showAllPlayers}
             onSelect={(key) => setSelectedPlayer(key)}
           />
         )}
@@ -125,7 +148,13 @@ export function StatsPage() {
   );
 }
 
-function OverviewPanel({ stats }: { stats: StatsResponse }) {
+function OverviewPanel({
+  stats,
+  showAllPlayers,
+}: {
+  stats: StatsResponse;
+  showAllPlayers: boolean;
+}) {
   const { overview, leaders } = {
     overview: stats.overview,
     leaders: stats.overview.leaders,
@@ -146,7 +175,9 @@ function OverviewPanel({ stats }: { stats: StatsResponse }) {
         <h3 className="section-title">Leaders</h3>
         {stats.players.length === 0 ? (
           <p className="empty" style={{ padding: 12 }}>
-            Claim a completed game to unlock leaders.
+            {showAllPlayers
+              ? 'No player stats yet.'
+              : 'Claim a completed game to unlock leaders.'}
           </p>
         ) : (
           <div className="leader-list">
@@ -313,9 +344,11 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
 
 function PlayersList({
   players,
+  showAllPlayers,
   onSelect,
 }: {
   players: StatsPlayer[];
+  showAllPlayers: boolean;
   onSelect: (key: string) => void;
 }) {
   const [name, setName] = useState('');
@@ -331,7 +364,9 @@ function PlayersList({
   if (players.length === 0) {
     return (
       <div className="card empty">
-        No registered players yet. Claim a seat on a completed game.
+        {showAllPlayers
+          ? 'No players in completed games yet.'
+          : 'No registered players yet. Claim a seat on a completed game.'}
       </div>
     );
   }

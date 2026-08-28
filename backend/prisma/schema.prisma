@@ -124,6 +124,9 @@ model Game {
   /// IN_PERSON scorekeeper records every card and auto-fills tricks
   superScorer Boolean @default(false)
 
+  /// True when imported from a scorecard photo (LLM). False for file import. Null for live/scored games.
+  aiImport Boolean?
+
   /// When set, this game belongs to a tournament table
   tournamentTableId String? @unique
 

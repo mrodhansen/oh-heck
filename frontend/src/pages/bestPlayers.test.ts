@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { StatsPlayer } from '../api';
+import type { StatsGame, StatsPlayer } from '../api';
 import {
   playersForRange,
   playersForWindow,
   playerScore,
   rangeSince,
   rankBestPlayers,
+  recencyWeight,
+  RECENCY_PER_YEAR,
 } from './bestPlayers';
 
 function player(over: Partial<StatsPlayer> & { name: string }): StatsPlayer {
@@ -262,6 +264,115 @@ describe('time range', () => {
   });
 });
 
+function game(over: {
+  id: string;
+  at: string;
+  standings: { name: string; total: number; place: number }[];
+}): StatsGame {
+  const winner = over.standings.find((s) => s.place === 1);
+  const totals = over.standings.map((s) => s.total);
+  return {
+    id: over.id,
+    name: over.id,
+    status: 'COMPLETED',
+    createdAt: over.at,
+    finishedAt: over.at,
+    playerCount: over.standings.length,
+    players: over.standings.map((s) => s.name),
+    winner: winner?.name ?? null,
+    winnerScore: winner?.total ?? null,
+    highScore: Math.max(...totals),
+    lowScore: Math.min(...totals),
+    avgScore: totals.reduce((a, b) => a + b, 0) / totals.length,
+    roundsCompleted: 13,
+    forceBurns: 0,
+    standings: over.standings,
+  };
+}
+
+describe('recency weighting', () => {
+  const now = new Date('2026-08-01T00:00:00.000Z');
+  const nowMs = now.getTime();
+
+  it('decays 20% per year', () => {
+    expect(recencyWeight(nowMs, nowMs)).toBeCloseTo(1);
+    const yearMs = 365 * 86_400_000;
+    expect(recencyWeight(nowMs - yearMs, nowMs)).toBeCloseTo(0.8);
+    expect(recencyWeight(nowMs - 2 * yearMs, nowMs)).toBeCloseTo(0.64);
+    expect(RECENCY_PER_YEAR).toBe(0.8);
+  });
+
+  it('pulls avg score and win rate toward newer games', () => {
+    const games = [
+      game({
+        id: 'old',
+        at: '2024-08-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 20, place: 2 },
+          { name: 'Typical', total: 60, place: 1 },
+        ],
+      }),
+      game({
+        id: 'new',
+        at: '2026-08-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 60, place: 1 },
+          { name: 'Typical', total: 20, place: 2 },
+        ],
+      }),
+    ];
+    const windowed = playersForWindow(
+      [regular, filler],
+      games,
+      null,
+      null,
+      now,
+    );
+    const abe = windowed.find((p) => p.name === 'Abe');
+    const typical = windowed.find((p) => p.name === 'Typical');
+    expect(abe?.gamesCompleted).toBe(2);
+    expect(typical?.gamesCompleted).toBe(2);
+    expect(abe?.winRate).toBeGreaterThan(50);
+    expect(typical?.winRate).toBeLessThan(50);
+    expect(abe?.avgScore).toBeGreaterThan(40);
+    expect(typical?.avgScore).toBeLessThan(40);
+  });
+
+  it('ranks recent form above the same record run in reverse', () => {
+    const even = (name: string) =>
+      player({ name, bidAccuracy: 70, gamesCompleted: 2 });
+    const games = [
+      game({
+        id: 'old',
+        at: '2024-08-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 20, place: 2 },
+          { name: 'Typical', total: 60, place: 1 },
+        ],
+      }),
+      game({
+        id: 'new',
+        at: '2026-08-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 60, place: 1 },
+          { name: 'Typical', total: 20, place: 2 },
+        ],
+      }),
+    ];
+    const top = rankBestPlayers(
+      playersForWindow(
+        [even('Abe'), even('Typical')],
+        games,
+        null,
+        null,
+        now,
+      ),
+    );
+    expect(top[0]?.player.name).toBe('Abe');
+    expect(top[0]!.rating).toBeGreaterThan(top[1]!.rating);
+  });
+});
+
 describe('playerScore', () => {
   it('weights placement, made bids, and score, minus a small force-burn hit', () => {
     expect(
@@ -273,7 +384,20 @@ describe('playerScore', () => {
         secondThirdRate: 20,
         forceBurnRate: 10,
       }),
-    ).toBe(196);
+    ).toBe(321);
+  });
+
+  it('uses 90% of the score by 20 games', () => {
+    const metrics = {
+      winRate: 20,
+      avgScore: 40,
+      bidAccuracy: 80,
+      secondThirdRate: 20,
+      forceBurnRate: 10,
+    };
+    const at20 = playerScore({ ...metrics, n: 20 });
+    const full = playerScore({ ...metrics, n: 10_000 });
+    expect(at20 / full).toBeCloseTo(0.9, 2);
   });
 
   it('lowers the score slightly when force-burn rate is higher', () => {

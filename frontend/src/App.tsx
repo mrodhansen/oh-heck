@@ -9,6 +9,7 @@ import { RulesPage } from './pages/RulesPage';
 import { AccountPage } from './pages/AccountPage';
 import { ClaimableGamesPage } from './pages/ClaimableGamesPage';
 import { TournamentsPage } from './pages/TournamentsPage';
+import { UploadGamePage } from './pages/UploadGamePage';
 import { TournamentPage } from './pages/TournamentPage';
 import { LiveHubPage } from './pages/LiveHubPage';
 import { LiveSessionPage } from './pages/LiveSessionPage';
@@ -25,10 +26,12 @@ export function App() {
     pathname !== '/play/tournaments';
   const hideChrome = inGame || inLive || inTournamentDeep;
   const onStats = pathname === '/stats';
+  const onUpload = pathname === '/play/upload';
+  const wideDesktop = onStats || onUpload;
 
   return (
     <div
-      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${onStats ? ' app-shell-stats' : ''}`}
+      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${wideDesktop ? ' app-shell-stats' : ''}`}
     >
       {!hideChrome && (
         <header className="topbar">
@@ -56,6 +59,7 @@ export function App() {
           <Route path="/play/score" element={<ScoreModePage />} />
           <Route path="/play/single" element={<HomePage />} />
           <Route path="/new" element={<NewGamePage />} />
+          <Route path="/play/upload" element={<UploadGamePage />} />
           <Route path="/play/tournaments" element={<TournamentsPage />} />
           <Route path="/play/tournaments/:id" element={<TournamentPage />} />
           <Route path="/games/:id" element={<GamePage />} />

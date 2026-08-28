@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { accountDisplayName, authApi, type ClaimableGame } from '../auth';
 import { api, type StatsPlayer } from '../api';
-import { rankBestPlayers } from './bestPlayers';
+import { playersForRange, rankBestPlayers } from './bestPlayers';
 import { toUserMessage } from '../api/errors';
 import { ClaimableGameCard } from '../components/ClaimableGameCard';
 import { useAuth } from '../useAuth';
@@ -59,7 +59,9 @@ export function AccountPage() {
       .getStats()
       .then((s) => {
         if (!alive) return;
-        const ranked = rankBestPlayers(s.players);
+        const ranked = rankBestPlayers(
+          playersForRange(s.players, s.games, 'all'),
+        );
         const display = accountDisplayName(user);
         const idx = ranked.findIndex(
           (r) =>

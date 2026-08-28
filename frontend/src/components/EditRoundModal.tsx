@@ -8,6 +8,7 @@ type Props = {
   game: GameDetail;
   roundNumber: number;
   onClose: () => void;
+  allowIncomplete?: boolean;
   onSave: (payload: {
     bids: { playerId: string; bid: number }[];
     tricks: { playerId: string; tricksTaken: number }[];
@@ -15,7 +16,13 @@ type Props = {
   }) => Promise<void>;
 };
 
-export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
+export function EditRoundModal({
+  game,
+  roundNumber,
+  onClose,
+  onSave,
+  allowIncomplete = false,
+}: Props) {
   const round = game.rounds.find((r) => r.number === roundNumber);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -23,24 +30,20 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
 
   const [bids, setBids] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    if (!round?.complete) return init;
+    if (!round) return init;
+    if (!round.complete && !allowIncomplete) return init;
     for (const e of round.entries) {
-      if (e.bid === null || e.tricksTaken === null) {
-        throw new Error('Cannot edit incomplete round');
-      }
-      init[e.playerId] = e.bid;
+      init[e.playerId] = e.bid ?? 0;
     }
     return init;
   });
 
   const [tricks, setTricks] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    if (!round?.complete) return init;
+    if (!round) return init;
+    if (!round.complete && !allowIncomplete) return init;
     for (const e of round.entries) {
-      if (e.tricksTaken === null) {
-        throw new Error('Cannot edit incomplete round');
-      }
-      init[e.playerId] = e.tricksTaken;
+      init[e.playerId] = e.tricksTaken ?? 0;
     }
     return init;
   });
@@ -49,7 +52,7 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
   const bidOrder = round?.bidOrderPlayerIds ?? [];
 
   const forbiddenLast = useMemo(() => {
-    if (!round?.complete) return null;
+    if (!round) return null;
     let sum = 0;
     for (let i = 0; i < bidOrder.length - 1; i++) {
       const v = bids[bidOrder[i]!];
@@ -63,7 +66,7 @@ export function EditRoundModal({ game, roundNumber, onClose, onSave }: Props) {
   const tricksLeft = Math.max(0, handSize - trickSum);
   const lastId = bidOrder[bidOrder.length - 1];
 
-  if (!round?.complete) {
+  if (!round || (!round.complete && !allowIncomplete)) {
     return (
       <div className="modal-backdrop" onClick={onClose}>
         <div className="modal stack" onClick={(e) => e.stopPropagation()}>

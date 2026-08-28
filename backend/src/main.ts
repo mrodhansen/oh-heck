@@ -1,13 +1,14 @@
 import { config as loadEnv } from 'dotenv';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/http-exception.filter';
 
 loadEnv();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // GitHub Pages (and any origin) can call the API.
   // Note: CORS_ORIGIN="*" as a string-array breaks the cors package — use true to reflect Origin.
@@ -37,6 +38,7 @@ async function bootstrap() {
   }
 
   app.useGlobalFilters(new ApiExceptionFilter());
+  app.useBodyParser('json', { limit: '8mb' });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -223,4 +224,108 @@ export class UpdateRoundDto {
 export class ClaimSeatDto {
   @IsUUID()
   playerId!: string;
+}
+
+export class ImportPlayerDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  name!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  seatIndex!: number;
+}
+
+export class ImportRoundEntryDto {
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  seatIndex!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(7)
+  bid!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(7)
+  tricksTaken!: number;
+}
+
+export class ImportRoundDto {
+  @IsInt()
+  @Min(1)
+  @Max(13)
+  number!: number;
+
+  @IsBoolean()
+  forceBurn!: boolean;
+
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => ImportRoundEntryDto)
+  entries!: ImportRoundEntryDto[];
+}
+
+export class ImportGameDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  name?: string;
+
+  /** Local calendar day YYYY-MM-DD when the game was played. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  gameDate?: string;
+
+  @IsBoolean()
+  aiImport!: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(7)
+  @IsUUID('4', { each: true })
+  playerIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_NOTES_PER_GAME)
+  @ValidateNested({ each: true })
+  @Type(() => GameNoteDto)
+  notes?: GameNoteDto[];
+
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(7)
+  @ValidateNested({ each: true })
+  @Type(() => ImportPlayerDto)
+  players!: ImportPlayerDto[];
+
+  @IsArray()
+  @ArrayMinSize(13)
+  @ArrayMaxSize(13)
+  @ValidateNested({ each: true })
+  @Type(() => ImportRoundDto)
+  rounds!: ImportRoundDto[];
+}
+
+export class ParseScorecardImageDto {
+  /** Raw base64 or a data URL (data:image/jpeg;base64,...). */
+  @IsString()
+  @MinLength(32)
+  imageBase64!: string;
+
+  @IsOptional()
+  @IsIn(['image/jpeg', 'image/png', 'image/webp'])
+  mimeType?: 'image/jpeg' | 'image/png' | 'image/webp';
 }

@@ -15,6 +15,10 @@ export function ScoreModePage() {
           <span className="mode-card-title">Tournament</span>
           <span className="mode-card-meta">Multiple tables · high table</span>
         </Link>
+        <Link className="btn mode-card" to="/play/upload">
+          <span className="mode-card-title">Upload game</span>
+          <span className="mode-card-meta">Import a file or scorecard photo</span>
+        </Link>
       </div>
       <div className="action-bar">
         <Link to="/" className="btn primary block">

@@ -11,6 +11,20 @@ const W_AVG = 0.18;
 /** Small subtract — a regular burn already hits made-bid % harder. */
 const W_FORCE_BURN = 0.04;
 
+const DAY_MS = 86_400_000;
+const YEAR_MS = 365 * DAY_MS;
+/** Each year multiplies a game's weight by this (1y → 80%, 2y → 64%). */
+export const RECENCY_PER_YEAR = 0.8;
+
+/** 1 today, ×0.8 per year of age. */
+export function recencyWeight(gameMs: number, t0Ms: number): number {
+  const ageMs = Math.max(0, t0Ms - gameMs);
+  return RECENCY_PER_YEAR ** (ageMs / YEAR_MS);
+}
+
+/** n/(n+k) hits 90% of the score at 20 games. */
+const SCORE_SHRINK = 20 / 9;
+
 export type RankedPlayer = {
   player: StatsPlayer;
   rating: number;
@@ -40,14 +54,20 @@ export function dayEndMs(ymd: string): number {
   return new Date(`${ymd}T23:59:59.999`).getTime();
 }
 
-/** Career stats when unbounded; otherwise standings inside [fromMs, toMs]. */
+/**
+ * Standings inside [fromMs, toMs] (unbounded = all games).
+ * Win rate, 2nd/3rd rate, and avg score are recency-weighted so newer
+ * games count more; game counts stay raw for display.
+ */
 export function playersForWindow(
   players: StatsPlayer[],
   games: StatsGame[],
   fromMs: number | null,
   toMs: number | null,
+  now = new Date(),
 ): StatsPlayer[] {
-  if (fromMs == null && toMs == null) return players;
+  const t0 = toMs ?? now.getTime();
+  const unbounded = fromMs == null && toMs == null;
   const windowed = games.filter((g) => {
     const t = gameTime(g);
     if (fromMs != null && t < fromMs) return false;
@@ -61,30 +81,46 @@ export function playersForWindow(
     let seconds = 0;
     let thirds = 0;
     let total = 0;
+    let wSum = 0;
+    let wWins = 0;
+    let wSeconds = 0;
+    let wThirds = 0;
+    let wTotal = 0;
     for (const g of windowed) {
       const row = g.standings.find((s) => s.name === p.name);
       if (!row) continue;
+      const w = recencyWeight(gameTime(g), t0);
       n += 1;
       total += row.total;
-      if (row.place === 1) wins += 1;
-      else if (row.place === 2) seconds += 1;
-      else if (row.place === 3) thirds += 1;
+      wSum += w;
+      wTotal += w * row.total;
+      if (row.place === 1) {
+        wins += 1;
+        wWins += w;
+      } else if (row.place === 2) {
+        seconds += 1;
+        wSeconds += w;
+      } else if (row.place === 3) {
+        thirds += 1;
+        wThirds += w;
+      }
     }
-    if (n === 0) continue;
+    if (n === 0 || wSum <= 0) continue;
     out.push({
       ...p,
       gamesPlayed: n,
       gamesCompleted: n,
       wins,
-      seconds,
-      thirds,
+      // Scaled so (seconds+thirds)/n is the recency-weighted 2nd/3rd rate.
+      seconds: (wSeconds / wSum) * n,
+      thirds: (wThirds / wSum) * n,
       podium: wins + seconds + thirds,
       totalScore: total,
-      avgScore: Math.round((total / n) * 100) / 100,
-      winRate: Math.round((wins / n) * 10000) / 100,
-      bidAccuracy: null,
-      forceBurns: 0,
-      roundsPlayed: 0,
+      avgScore: Math.round((wTotal / wSum) * 100) / 100,
+      winRate: Math.round((wWins / wSum) * 10000) / 100,
+      bidAccuracy: unbounded ? p.bidAccuracy : null,
+      forceBurns: unbounded ? p.forceBurns : 0,
+      roundsPlayed: unbounded ? p.roundsPlayed : 0,
     });
   }
   return out;
@@ -97,7 +133,13 @@ export function playersForRange(
   now = new Date(),
 ): StatsPlayer[] {
   const since = rangeSince(range, now);
-  return playersForWindow(players, games, since ? since.getTime() : null, null);
+  return playersForWindow(
+    players,
+    games,
+    since ? since.getTime() : null,
+    null,
+    now,
+  );
 }
 
 type League = {
@@ -186,7 +228,7 @@ export function metricParts(
 /**
  * Placement (1sts + 2nd/3rd) first, then made-bid %, then avg score.
  * Force-burn rate subtracts a little — a normal miss already hits made-bid %.
- * Then × games/(games+10).
+ * Then × games/(games+20/9) — 90% of the score is in by 20 games.
  */
 export function playerScore(parts: MetricParts): number {
   const weighted =
@@ -195,7 +237,7 @@ export function playerScore(parts: MetricParts): number {
     W_BID * parts.bidAccuracy +
     W_AVG * parts.avgScore -
     W_FORCE_BURN * parts.forceBurnRate;
-  return Math.round(weighted * (parts.n / (parts.n + SHRINK)) * 10);
+  return Math.round(weighted * (parts.n / (parts.n + SCORE_SHRINK)) * 10);
 }
 
 export function rankBestPlayers(

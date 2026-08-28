@@ -221,6 +221,7 @@ export function createLocalGame(
     status: 'BIDDING',
     playMode: 'IN_PERSON',
     superScorer: ids?.superScorer === true,
+    aiImport: null,
     liveCode: null,
     phase: 'bidding',
     currentRound: 1,

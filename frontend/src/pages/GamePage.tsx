@@ -23,7 +23,11 @@ import {
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
 import { useAuth } from '../useAuth';
-import { downloadGameCsv } from '../exportGameCsv';
+import {
+  downloadGameCsv,
+  downloadGameJson,
+  downloadGameXml,
+} from '../exportGameCsv';
 
 function navFrom(state: unknown): 'stats' | 'account' | null {
   if (typeof state !== 'object' || state === null || !('from' in state)) {
@@ -461,13 +465,27 @@ export function GamePage() {
             }
           />
           {isFinished && (
-            <div className="card">
+            <div className="card stack-sm">
               <button
                 type="button"
                 className="btn ghost block"
                 onClick={() => downloadGameCsv(game)}
               >
-                Export game
+                Export CSV
+              </button>
+              <button
+                type="button"
+                className="btn ghost block"
+                onClick={() => downloadGameXml(game)}
+              >
+                Export XML
+              </button>
+              <button
+                type="button"
+                className="btn ghost block"
+                onClick={() => downloadGameJson(game)}
+              >
+                Export JSON
               </button>
             </div>
           )}

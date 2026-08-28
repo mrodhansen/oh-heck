@@ -3,9 +3,15 @@ import { GameDetail } from '../api';
 type Props = {
   game: GameDetail;
   onEditRound?: (roundNumber: number) => void;
+  /** Show Edit even when the round is not complete (import preview). */
+  allowIncompleteEdit?: boolean;
 };
 
-export function Scoreboard({ game, onEditRound }: Props) {
+export function Scoreboard({
+  game,
+  onEditRound,
+  allowIncompleteEdit = false,
+}: Props) {
   const orderedStandings = [...game.standings].sort((a, b) => a.place - b.place);
 
   return (
@@ -89,7 +95,7 @@ export function Scoreboard({ game, onEditRound }: Props) {
                     );
                   })}
                   <td>
-                    {onEditRound && r.complete && (
+                    {onEditRound && (r.complete || allowIncompleteEdit) && (
                       <button
                         type="button"
                         className="btn ghost sm"

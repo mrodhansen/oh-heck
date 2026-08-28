@@ -13,6 +13,8 @@ import { GamesService } from './games.service';
 import {
   ClaimSeatDto,
   CreateGameDto,
+  ImportGameDto,
+  ParseScorecardImageDto,
   SetBidsDto,
   SetSuperPlayDto,
   SetTricksDto,
@@ -35,6 +37,16 @@ export class GamesController {
   @Post('sync')
   sync(@Body() dto: SyncDto) {
     return this.games.syncOperations(dto.operations);
+  }
+
+  @Post('import/parse-image')
+  parseScorecardImage(@Body() dto: ParseScorecardImageDto) {
+    return this.games.parseScorecardImage(dto);
+  }
+
+  @Post('import')
+  importGame(@Body() dto: ImportGameDto) {
+    return this.games.importGame(dto);
   }
 
   @Post()

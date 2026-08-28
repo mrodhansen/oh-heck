@@ -53,6 +53,7 @@ import {
   hydrateRoundOrder,
 } from './offline/analytics';
 import { parseGameNotes, type GameNote } from './offline/notes';
+import type { ImportGameBody, ParsedImportPayload } from './importDraft';
 
 export type { GameNote };
 
@@ -65,6 +66,7 @@ export type GameSummary = {
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
   superScorer?: boolean;
+  aiImport?: boolean | null;
   liveCode?: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -204,6 +206,7 @@ export type GameDetail = {
   status: 'SETUP' | 'BIDDING' | 'PLAYING' | 'COMPLETED';
   playMode?: PlayMode;
   superScorer?: boolean;
+  aiImport?: boolean | null;
   liveCode?: string | null;
   phase: 'bidding' | 'tricks' | 'completed';
   currentRound: number | null;
@@ -333,9 +336,10 @@ export type TournamentDetail = {
 export type StatsLeader = { name: string; value: number | string } | null;
 
 export type StatsPlayer = {
-  /** Stable identity: user:<id> */
+  /** Stable identity: user:<id> or player:<id> */
   key?: string;
   userId?: string | null;
+  playerId?: string | null;
   name: string;
   gamesPlayed: number;
   gamesCompleted: number;
@@ -380,29 +384,36 @@ export type StatsGame = {
   standings: { name: string; total: number; place: number }[];
 };
 
-export type StatsResponse = {
-  overview: {
-    totalGames: number;
-    completedGames: number;
-    uniquePlayers: number;
-    totalForceBurns: number;
-    totalRoundsPlayed: number;
-    leaders: {
-      mostWins: StatsLeader;
-      highestAvg: StatsLeader;
-      bestSingleGame: StatsLeader;
-      worstSingleGame: StatsLeader;
-      bestBidAccuracy: StatsLeader;
-      mostNils: StatsLeader;
-      biggestRound: StatsLeader;
-      mostPodiums: StatsLeader;
-      mostForceBurns: StatsLeader;
-      perfectGames: StatsLeader;
-      biggestMargin: StatsLeader;
-    };
+export type StatsOverview = {
+  totalGames: number;
+  completedGames: number;
+  uniquePlayers: number;
+  totalForceBurns: number;
+  totalRoundsPlayed: number;
+  leaders: {
+    mostWins: StatsLeader;
+    highestAvg: StatsLeader;
+    bestSingleGame: StatsLeader;
+    worstSingleGame: StatsLeader;
+    bestBidAccuracy: StatsLeader;
+    mostNils: StatsLeader;
+    biggestRound: StatsLeader;
+    mostPodiums: StatsLeader;
+    mostForceBurns: StatsLeader;
+    perfectGames: StatsLeader;
+    biggestMargin: StatsLeader;
   };
+};
+
+export type StatsBundle = {
+  overview: StatsOverview;
   games: StatsGame[];
   players: StatsPlayer[];
+};
+
+export type StatsResponse = StatsBundle & {
+  /** Present after API deploy — aggregations keyed by Player identity. */
+  allPlayers?: StatsBundle;
 };
 
 /** Fill defaults and recompute derived fields from raw bids / tricks / points. */
@@ -512,6 +523,7 @@ function normalizeGame(raw: GameDetail): GameDetail {
   return {
     ...raw,
     superScorer: raw.superScorer === true,
+    aiImport: raw.aiImport ?? null,
     notes: parseGameNotes(raw.notes),
     startedAt: raw.startedAt ?? null,
     durationMs:
@@ -704,6 +716,34 @@ export const api = {
       },
     });
     return local;
+  },
+
+  parseScorecardImage: async (args: {
+    imageBase64: string;
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  }): Promise<ParsedImportPayload> => {
+    if (!isApiReady()) {
+      throw new Error('Photo import needs a connection');
+    }
+    return httpRequest<ParsedImportPayload>('/games/import/parse-image', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+  },
+
+  importGame: async (
+    body: ImportGameBody & { id?: string; playerIds?: string[] },
+  ): Promise<GameDetail> => {
+    if (!isApiReady()) {
+      throw new Error('Upload needs a connection');
+    }
+    return onlineWrite(async () => {
+      const game = await httpRequest<GameDetail>('/games/import', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return rememberGame(game);
+    });
   },
 
   setBids: async (

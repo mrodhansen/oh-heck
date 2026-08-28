@@ -13,6 +13,8 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import {
   CreateGameDto,
+  ImportGameDto,
+  ParseScorecardImageDto,
   SetBidsDto,
   SetSuperPlayDto,
   SetTricksDto,
@@ -48,6 +50,13 @@ import {
 } from './analytics';
 import { bindUserToGameSeat } from './claim-seat';
 import { asNotes, hasNotes } from './notes';
+import { extractJsonObject, parseUnknownImport } from './import-draft';
+import {
+  assertImageSize,
+  grokConfig,
+  readScorecardWithGrok,
+  splitImagePayload,
+} from './grok-vision';
 import {
   ApiErrorCode,
   conflict,
@@ -284,6 +293,281 @@ export class GamesService {
               name: p.name,
               seatIndex: p.seatIndex,
             })),
+          },
+        }),
+      });
+
+      return tx.game.findUniqueOrThrow({
+        where: { id: created.id },
+        include: gameInclude,
+      });
+    });
+
+    return this.emitGame(await this.toDetail(withSeatedPlayers(game)));
+  }
+
+  async parseScorecardImage(dto: ParseScorecardImageDto) {
+    const split = splitImagePayload(dto.imageBase64);
+    const mimeType = dto.mimeType ?? split.mimeType;
+    assertImageSize(split.base64);
+    const { apiKey, model } = await grokConfig();
+    const text = await readScorecardWithGrok({
+      base64: split.base64,
+      mimeType,
+      apiKey,
+      model,
+    });
+    const draft = parseUnknownImport(extractJsonObject(text), {
+      requireComplete: false,
+    });
+    return {
+      name: draft.name,
+      gameDate: draft.gameDate,
+      aiImport: true as const,
+      notes: draft.noteTexts.map((text) => ({ text })),
+      players: draft.players,
+      rounds: draft.rounds,
+    };
+  }
+
+  async importGame(dto: ImportGameDto) {
+    const names = dto.players
+      .slice()
+      .sort((a, b) => a.seatIndex - b.seatIndex)
+      .map((p) => p.name.trim());
+    parseUnknownImport({
+      name: dto.name,
+      gameDate: dto.gameDate,
+      notes: dto.notes?.map((n) => n.text) ?? [],
+      players: dto.players,
+      rounds: dto.rounds,
+    });
+
+    const limits = this.rules.getPlayerLimits();
+    if (names.length < limits.min || names.length > limits.max) {
+      throw new BadRequestException(
+        `Need ${limits.min}–${limits.max} players`,
+      );
+    }
+    const totalRounds = this.rules.getTotalRounds();
+    if (dto.rounds.length !== totalRounds) {
+      throw new BadRequestException(`Import must include all ${totalRounds} rounds`);
+    }
+    const playerCount = names.length;
+    const firstDealerSeat = this.rules.dealerSeat(1, playerCount);
+
+    if (dto.playerIds && dto.playerIds.length !== names.length) {
+      throw new BadRequestException('playerIds must match players length');
+    }
+    if (dto.playerIds && new Set(dto.playerIds).size !== dto.playerIds.length) {
+      throw new BadRequestException('playerIds must be unique');
+    }
+
+    if (dto.id) {
+      const existing = await this.prisma.game.findUnique({
+        where: { id: dto.id },
+      });
+      if (existing) {
+        throw conflict('Game id already exists');
+      }
+    }
+
+    const playedAt = parseGameDate(dto.gameDate);
+    const now = new Date();
+    const startedAt = playedAt ?? now;
+    const finishedAt = playedAt ?? now;
+    const nowIso = now.toISOString();
+    const notes = (dto.notes ?? []).map((n) => {
+      const text = n.text.trim();
+      if (!text) {
+        throw new BadRequestException('Note text cannot be empty');
+      }
+      return {
+        id: n.id,
+        text,
+        createdAt: n.createdAt || nowIso,
+        updatedAt: n.updatedAt || nowIso,
+      };
+    });
+    const noteIds = new Set(notes.map((n) => n.id));
+    if (noteIds.size !== notes.length) {
+      throw new BadRequestException('Note ids must be unique');
+    }
+
+    const game = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.game.create({
+        data: {
+          ...(dto.id ? { id: dto.id } : {}),
+          name: dto.name?.trim() || defaultGameName(names),
+          status: GameStatus.COMPLETED,
+          playMode: PlayMode.IN_PERSON,
+          superScorer: false,
+          aiImport: dto.aiImport,
+          playerCount,
+          firstDealerSeat,
+          notes,
+          startedAt,
+          finishedAt,
+          createdAt: startedAt,
+        },
+      });
+
+      const players: SeatedPlayer[] = [];
+      const sortedPlayers = dto.players
+        .slice()
+        .sort((a, b) => a.seatIndex - b.seatIndex);
+      for (let seatIndex = 0; seatIndex < sortedPlayers.length; seatIndex++) {
+        const row = sortedPlayers[seatIndex]!;
+        if (row.seatIndex !== seatIndex) {
+          throw new BadRequestException('Player seats must be 0..n-1 with no gaps');
+        }
+        const givenId = dto.playerIds?.[seatIndex];
+        const player = await resolveSeatedPlayer(tx, {
+          givenId,
+          name: row.name.trim(),
+          userId: null,
+        });
+        await tx.gamePlayer.create({
+          data: {
+            gameId: created.id,
+            playerId: player.id,
+            seatIndex,
+          },
+        });
+        players.push({
+          id: player.id,
+          name: player.name,
+          seatIndex,
+          userId: player.userId,
+        });
+      }
+
+      const roundsSnap: {
+        number: number;
+        forceBurn: boolean;
+        entries: { playerId: string; points: number | null }[];
+      }[] = [];
+
+      for (const roundDto of dto.rounds.slice().sort((a, b) => a.number - b.number)) {
+        const handSize = this.rules.getHandSize(roundDto.number);
+        const dealerSeat = this.rules.dealerSeat(roundDto.number, playerCount);
+        const setup = roundSetupFields(players, dealerSeat);
+        const order = setup.bidOrderSeats;
+        const bids = roundDto.entries.map((e) => {
+          const seated = players.find((p) => p.seatIndex === e.seatIndex);
+          if (!seated) {
+            throw new BadRequestException(
+              `Round ${roundDto.number}: unknown seat ${e.seatIndex}`,
+            );
+          }
+          return { playerId: seated.id, bid: e.bid };
+        });
+        const analytics = computeBidAnalytics(
+          players,
+          dealerSeat,
+          handSize,
+          bids,
+          (prior, hand) => this.rules.forbiddenLastBid(prior, hand),
+        );
+        const entryData = players.map((p) => {
+          const row = roundDto.entries.find((e) => e.seatIndex === p.seatIndex);
+          if (!row) {
+            throw new BadRequestException(
+              `Round ${roundDto.number}: missing seat ${p.seatIndex}`,
+            );
+          }
+          const a = analytics.perPlayer.get(p.id);
+          if (!a) {
+            throw new BadRequestException(
+              `Round ${roundDto.number}: missing bid analytics`,
+            );
+          }
+          const outcome = computeOutcome(row.bid, row.tricksTaken, (b, tr) =>
+            this.rules.scoreRound(b, tr),
+          );
+          return {
+            playerId: p.id,
+            bid: row.bid,
+            tricksTaken: row.tricksTaken,
+            points: outcome.points,
+            bidPosition: a.bidPosition,
+            isDealer: a.isDealer,
+            isFirstBidder: a.isFirstBidder,
+            isLastBidder: a.isLastBidder,
+            runningBidBefore: a.runningBidBefore,
+          };
+        });
+        roundsSnap.push({
+          number: roundDto.number,
+          forceBurn: roundDto.forceBurn,
+          entries: entryData.map((e) => ({
+            playerId: e.playerId,
+            points: e.points,
+          })),
+        });
+
+        await tx.round.create({
+          data: {
+            gameId: created.id,
+            number: roundDto.number,
+            handSize,
+            dealerSeat,
+            forceBurn: roundDto.forceBurn,
+            firstBidderSeat: setup.firstBidderSeat,
+            dealerPlayerId: setup.dealerPlayerId,
+            firstBidderPlayerId: setup.firstBidderPlayerId,
+            bidOrderSeats: order,
+            bidsCompletedAt: startedAt,
+            tricksCompletedAt: finishedAt,
+            completedAt: finishedAt,
+            entries: {
+              create: entryData,
+            },
+          },
+        });
+      }
+
+      const finish = computeGameFinishStats(
+        players,
+        roundsSnap,
+        startedAt,
+        finishedAt,
+      );
+
+      await tx.gameEvent.create({
+        data: eventCreate({
+          gameId: created.id,
+          type: GameEventType.GAME_CREATED,
+          payload: {
+            name: created.name,
+            playMode: PlayMode.IN_PERSON,
+            superScorer: false,
+            aiImport: dto.aiImport,
+            imported: true,
+            playerCount,
+            firstDealerSeat,
+            playerNames: names,
+            playerIds: players.map((p) => p.id),
+            seatOrder: players.map((p) => ({
+              playerId: p.id,
+              name: p.name,
+              seatIndex: p.seatIndex,
+            })),
+          },
+        }),
+      });
+      await tx.gameEvent.create({
+        data: eventCreate({
+          gameId: created.id,
+          type: GameEventType.GAME_COMPLETED,
+          payload: {
+            imported: true,
+            aiImport: dto.aiImport,
+            winnerPlayerId: finish.winnerPlayerId,
+            winnerScore: finish.winnerScore,
+            runnerUpScore: finish.runnerUpScore,
+            winMargin: finish.winMargin,
+            durationMs: finish.durationMs,
           },
         }),
       });
@@ -1334,6 +1618,7 @@ export class GamesService {
       status: GameStatus;
       playMode: PlayMode;
       superScorer: boolean;
+      aiImport?: boolean | null;
       liveCode?: string | null;
       createdAt: Date;
       finishedAt: Date | null;
@@ -1347,6 +1632,7 @@ export class GamesService {
       status: game.status,
       playMode: game.playMode,
       superScorer: game.superScorer,
+      aiImport: game.aiImport ?? null,
       liveCode: null,
       createdAt: game.createdAt,
       finishedAt: game.finishedAt,
@@ -1610,6 +1896,7 @@ export class GamesService {
       status: game.status,
       playMode: game.playMode,
       superScorer: game.superScorer,
+      aiImport: game.aiImport ?? null,
       // Never expose join code on public Board API (seat-stealing)
       liveCode: null,
       phase,
@@ -1798,6 +2085,26 @@ function fieldString(obj: object, key: string): string {
 function fieldNumber(obj: object, key: string): number {
   const v = fieldValue(obj, key);
   return typeof v === 'number' ? v : Number.NaN;
+}
+
+function parseGameDate(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) {
+    throw new BadRequestException('gameDate must be YYYY-MM-DD');
+  }
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== m - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    throw new BadRequestException(`Invalid gameDate ${raw}`);
+  }
+  return dt;
 }
 
 function defaultGameName(names: string[]): string {
