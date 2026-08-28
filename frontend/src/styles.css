@@ -559,10 +559,43 @@ label.field {
   min-width: 0;
 }
 
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .profile-identity {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+}
+
+.profile-rank {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 0;
+}
+
+.profile-rank-place {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.profile-rank-score {
+  font-family: var(--font);
+  font-size: 1.35rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-900);
+  line-height: 1.15;
 }
 
 .profile-name {
@@ -706,6 +739,36 @@ a.list-item:active {
 
 .claim-list a.list-item:active {
   background: var(--sand-100);
+}
+
+.claim-list .list-item-btn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.claim-list .list-item-btn:active {
+  background: var(--sand-100);
+}
+
+.claim-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  border: 2px solid var(--line-strong);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--surface);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.claim-check.is-on {
+  border-color: var(--ok);
+  background: var(--ok);
 }
 
 .status {
@@ -1124,6 +1187,98 @@ table.scoreboard tbody tr:last-child td.score-miss {
   color: var(--grey-900);
 }
 
+.top-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.top-player-head .section-title {
+  margin: 0;
+}
+
+.top-player-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.top-player-range {
+  flex-shrink: 0;
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.top-player-tools .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.top-player-tools .icon-btn.is-on {
+  border-color: var(--grey-800);
+  background: var(--sand-100);
+}
+
+.top-player-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-player-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.top-player-row:first-child {
+  padding-top: 0;
+}
+
+.top-player-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.top-player-name {
+  margin: 0;
+  font-weight: 650;
+  color: var(--grey-900);
+}
+
+.top-player-meta {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.top-player-expand {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.top-player-rating {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--font);
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--grey-900);
+  line-height: 1.2;
+}
+
 .data-table {
   width: max-content;
   min-width: 100%;
@@ -1507,22 +1662,11 @@ button.table-link {
   line-height: 1.4;
 }
 
-.notes-item-foot,
 .notes-item-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.notes-item-actions {
   justify-content: flex-end;
-}
-
-.notes-item-when {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
+  gap: 8px;
 }
 
 .panel-scroll {
@@ -2872,6 +3016,15 @@ button.playing-card:disabled {
   .app-shell-game {
     max-width: 720px;
   }
+  .app-shell-stats {
+    max-width: 720px;
+  }
+  .app-shell-stats .data-table {
+    width: 100%;
+  }
+  .app-shell-stats .table-primary {
+    max-width: none;
+  }
 }
 
 /* Desktop: roomy game table */
@@ -2883,6 +3036,15 @@ button.playing-card:disabled {
     max-width: 980px;
     padding-left: 20px;
     padding-right: 20px;
+  }
+  .app-shell-stats {
+    max-width: 980px;
+  }
+  .app-shell-stats .data-table {
+    width: 100%;
+  }
+  .app-shell-stats .table-primary {
+    max-width: none;
   }
   .modal {
     max-width: 520px;

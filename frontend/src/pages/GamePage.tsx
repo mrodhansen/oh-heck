@@ -477,6 +477,7 @@ export function GamePage() {
       {tab === 'notes' && canTakeNotes && (
         <GameNotes
           notes={game.notes ?? []}
+          readOnly={isFinished}
           onSave={async (notes) => {
             const updated = await api.updateNotes(game.id, notes);
             setGame(updated);

@@ -5,6 +5,14 @@ import { toUserMessage } from '../api/errors';
 import { filterStatsGames } from './statsGamesFilter';
 import { filterStatsPlayers } from './statsPlayersFilter';
 import { paginate } from './statsPaginate';
+import {
+  dayEndMs,
+  dayStartMs,
+  playersForRange,
+  playersForWindow,
+  rankBestPlayers,
+  type TopRange,
+} from './bestPlayers';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -132,6 +140,8 @@ function OverviewPanel({ stats }: { stats: StatsResponse }) {
         <Metric label="Force burns" value={overview.totalForceBurns} />
       </div>
 
+      <TopPlayers players={stats.players} games={stats.games} />
+
       <section className="card">
         <h3 className="section-title">Leaders</h3>
         {stats.players.length === 0 ? (
@@ -145,7 +155,6 @@ function OverviewPanel({ stats }: { stats: StatsResponse }) {
             <LeaderRow label="Best single game" leader={leaders.bestSingleGame} />
             <LeaderRow label="Worst single game" leader={leaders.worstSingleGame} />
             <LeaderRow label="Best bid %" leader={leaders.bestBidAccuracy} />
-            <LeaderRow label="Most nils made" leader={leaders.mostNils} />
             <LeaderRow label="Biggest round" leader={leaders.biggestRound} />
             <LeaderRow label="Most podiums" leader={leaders.mostPodiums} />
             <LeaderRow label="Most force burns" leader={leaders.mostForceBurns} />
@@ -440,8 +449,6 @@ function PlayerDetail({
         <Metric label="Podiums" value={player.podium} />
         <Metric label="Bid accuracy" value={pct(player.bidAccuracy)} />
         <Metric label="Bids made" value={`${player.bidsMade}/${player.roundsPlayed}`} />
-        <Metric label="Nils made" value={`${player.nilsMade}/${player.nilBids}`} />
-        <Metric label="Nil rate" value={pct(player.nilSuccessRate)} />
         <Metric label="Overtricks" value={player.overtricks} />
         <Metric label="Undertricks" value={player.undertricks} />
         <Metric label="Best round" value={fmt(player.biggestRound)} />
@@ -450,6 +457,220 @@ function PlayerDetail({
         <Metric label="Perfect games" value={player.perfectGames} />
       </div>
     </div>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 3v4" />
+      <path d="M16 3v4" />
+    </svg>
+  );
+}
+
+function TopPlayers({
+  players,
+  games,
+}: {
+  players: StatsPlayer[];
+  games: StatsGame[];
+}) {
+  const [range, setRange] = useState<TopRange>('all');
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(
+    null,
+  );
+  const [calOpen, setCalOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const [calError, setCalError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  const top = useMemo(() => {
+    const pool = custom
+      ? playersForWindow(
+          players,
+          games,
+          dayStartMs(custom.from),
+          dayEndMs(custom.to),
+        )
+      : playersForRange(players, games, range);
+    return rankBestPlayers(pool, 10);
+  }, [players, games, range, custom]);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [range, custom]);
+
+  function openCalendar() {
+    setDraftFrom(custom?.from ?? '');
+    setDraftTo(custom?.to ?? '');
+    setCalError(null);
+    setCalOpen(true);
+  }
+
+  function applyCustom() {
+    if (!draftFrom || !draftTo) {
+      setCalError('Choose a start and end date');
+      return;
+    }
+    if (draftFrom > draftTo) {
+      setCalError('Start date must be on or before end date');
+      return;
+    }
+    setCustom({ from: draftFrom, to: draftTo });
+    setCalOpen(false);
+    setCalError(null);
+  }
+
+  return (
+    <section className="card">
+      <div className="top-player-head">
+        <h3 className="section-title section-title-plain">Top players</h3>
+        <div className="top-player-tools">
+          <select
+            className="top-player-range"
+            value={custom ? 'custom' : range}
+            aria-label="Time range"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'custom') return;
+              setCustom(null);
+              setRange(v as TopRange);
+            }}
+          >
+            <option value="all">All time</option>
+            <option value="5y">Last 5 years</option>
+            <option value="1y">Last year</option>
+            <option value="6m">Last 6 months</option>
+            <option value="1m">Last month</option>
+            {custom ? <option value="custom">Custom</option> : null}
+          </select>
+          <button
+            type="button"
+            className={`icon-btn${custom ? ' is-on' : ''}`}
+            aria-label="Custom date range"
+            aria-pressed={custom != null}
+            onClick={openCalendar}
+          >
+            <CalendarIcon />
+          </button>
+        </div>
+      </div>
+      {calOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setCalOpen(false);
+            setCalError(null);
+          }}
+        >
+          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
+            <p className="section-title" style={{ margin: 0 }}>
+              Date range
+            </p>
+            {calError ? (
+              <div className="banner banner-inline">{calError}</div>
+            ) : null}
+            <div className="game-list-dates">
+              <label className="field">
+                From
+                <input
+                  type="date"
+                  value={draftFrom}
+                  max={draftTo || undefined}
+                  onChange={(e) => {
+                    setDraftFrom(e.target.value);
+                    setCalError(null);
+                  }}
+                />
+              </label>
+              <label className="field">
+                To
+                <input
+                  type="date"
+                  value={draftTo}
+                  min={draftFrom || undefined}
+                  onChange={(e) => {
+                    setDraftTo(e.target.value);
+                    setCalError(null);
+                  }}
+                />
+              </label>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  setCalOpen(false);
+                  setCalError(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                style={{ flex: 1 }}
+                onClick={applyCustom}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {top.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>
+          No games in this range.
+        </p>
+      ) : (
+        <div className="top-player-list">
+          {(expanded ? top : top.slice(0, 3)).map((row, i) => {
+            const p = row.player;
+            const placeClass =
+              i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+            return (
+              <div key={p.key ?? p.name} className="top-player-row">
+                <span className={`place ${placeClass}`.trim()}>{i + 1}</span>
+                <div className="min-w-0">
+                  <p className="top-player-name truncate">{p.name}</p>
+                  <p className="top-player-meta truncate">
+                    {p.gamesCompleted} game{p.gamesCompleted === 1 ? '' : 's'}
+                    {p.winRate != null ? ` · ${p.winRate}% wins` : ''}
+                    {p.avgScore != null ? ` · ${fmt(p.avgScore)} avg` : ''}
+                    {p.bidAccuracy != null ? ` · ${p.bidAccuracy}% bids` : ''}
+                  </p>
+                </div>
+                <span className="top-player-rating">{row.rating}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {top.length > 3 && (
+        <button
+          type="button"
+          className="btn ghost sm top-player-expand"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Show top 3' : 'Show top 10'}
+        </button>
+      )}
+    </section>
   );
 }
 

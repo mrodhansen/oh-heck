@@ -24,9 +24,12 @@ export function App() {
     pathname.startsWith('/play/tournaments/') &&
     pathname !== '/play/tournaments';
   const hideChrome = inGame || inLive || inTournamentDeep;
+  const onStats = pathname === '/stats';
 
   return (
-    <div className={`app-shell ${hideChrome ? 'app-shell-game' : ''}`}>
+    <div
+      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${onStats ? ' app-shell-stats' : ''}`}
+    >
       {!hideChrome && (
         <header className="topbar">
           <div className="brand">

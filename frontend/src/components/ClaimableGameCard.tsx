@@ -1,28 +1,25 @@
 import { Link } from 'react-router-dom';
-import { accountNameNeedles, type ClaimableGame } from '../auth';
+import {
+  matchingClaimablePlayers,
+  type ClaimableGame,
+} from '../auth';
 
 export function ClaimableGameCard({
   game,
   user,
+  selected,
+  onToggle,
 }: {
   game: ClaimableGame;
   user: { username: string; firstName: string; lastName: string };
+  selected?: boolean;
+  onToggle?: (gameId: string) => void;
 }) {
-  const needles = accountNameNeedles(user);
-  const matchNames = game.players
-    .filter(
-      (p) => p.claimable && needles.includes(p.name.trim().toLowerCase()),
-    )
-    .map((p) => p.name);
+  const matchNames = matchingClaimablePlayers(game, user).map((p) => p.name);
   const status = formatGameStatus(game.status);
   const when = formatDate(game.finishedAt ?? game.createdAt);
-
-  return (
-    <Link
-      to={`/games/${game.id}`}
-      state={{ from: 'account' }}
-      className="list-item"
-    >
+  const body = (
+    <>
       <div className="min-w-0">
         <p className="list-item-title truncate">{game.name ?? 'Game'}</p>
         <p className="list-item-meta truncate">
@@ -36,9 +33,41 @@ export function ClaimableGameCard({
             : ''}
         </p>
       </div>
-      <span className="list-item-chevron" aria-hidden>
-        ›
-      </span>
+      {onToggle ? (
+        <span
+          className={`claim-check${selected ? ' is-on' : ''}`}
+          aria-hidden
+        >
+          {selected ? '✓' : ''}
+        </span>
+      ) : (
+        <span className="list-item-chevron" aria-hidden>
+          ›
+        </span>
+      )}
+    </>
+  );
+
+  if (onToggle) {
+    return (
+      <button
+        type="button"
+        className={`list-item list-item-btn${selected ? ' list-item-selected' : ''}`}
+        aria-pressed={selected === true}
+        onClick={() => onToggle(game.id)}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      to={`/games/${game.id}`}
+      state={{ from: 'account' }}
+      className="list-item"
+    >
+      {body}
     </Link>
   );
 }

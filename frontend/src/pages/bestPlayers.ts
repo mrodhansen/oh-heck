@@ -1,0 +1,220 @@
+import type { StatsGame, StatsPlayer } from '../api';
+
+/** Average-play games mixed in so a hot streak shrinks toward the field. */
+const SHRINK = 10;
+
+/** Placement first (1sts heaviest), then made-bid %, then score. */
+const W_WIN = 0.32;
+const W_SECOND_THIRD = 0.18;
+const W_BID = 0.28;
+const W_AVG = 0.18;
+/** Small subtract — a regular burn already hits made-bid % harder. */
+const W_FORCE_BURN = 0.04;
+
+export type RankedPlayer = {
+  player: StatsPlayer;
+  rating: number;
+};
+
+export type TopRange = 'all' | '5y' | '1y' | '6m' | '1m';
+
+export function rangeSince(range: TopRange, now = new Date()): Date | null {
+  if (range === 'all') return null;
+  const d = new Date(now.getTime());
+  if (range === '5y') d.setFullYear(d.getFullYear() - 5);
+  else if (range === '1y') d.setFullYear(d.getFullYear() - 1);
+  else if (range === '6m') d.setMonth(d.getMonth() - 6);
+  else d.setMonth(d.getMonth() - 1);
+  return d;
+}
+
+function gameTime(g: StatsGame): number {
+  return new Date(g.finishedAt ?? g.createdAt).getTime();
+}
+
+export function dayStartMs(ymd: string): number {
+  return new Date(`${ymd}T00:00:00`).getTime();
+}
+
+export function dayEndMs(ymd: string): number {
+  return new Date(`${ymd}T23:59:59.999`).getTime();
+}
+
+/** Career stats when unbounded; otherwise standings inside [fromMs, toMs]. */
+export function playersForWindow(
+  players: StatsPlayer[],
+  games: StatsGame[],
+  fromMs: number | null,
+  toMs: number | null,
+): StatsPlayer[] {
+  if (fromMs == null && toMs == null) return players;
+  const windowed = games.filter((g) => {
+    const t = gameTime(g);
+    if (fromMs != null && t < fromMs) return false;
+    if (toMs != null && t > toMs) return false;
+    return true;
+  });
+  const out: StatsPlayer[] = [];
+  for (const p of players) {
+    let n = 0;
+    let wins = 0;
+    let seconds = 0;
+    let thirds = 0;
+    let total = 0;
+    for (const g of windowed) {
+      const row = g.standings.find((s) => s.name === p.name);
+      if (!row) continue;
+      n += 1;
+      total += row.total;
+      if (row.place === 1) wins += 1;
+      else if (row.place === 2) seconds += 1;
+      else if (row.place === 3) thirds += 1;
+    }
+    if (n === 0) continue;
+    out.push({
+      ...p,
+      gamesPlayed: n,
+      gamesCompleted: n,
+      wins,
+      seconds,
+      thirds,
+      podium: wins + seconds + thirds,
+      totalScore: total,
+      avgScore: Math.round((total / n) * 100) / 100,
+      winRate: Math.round((wins / n) * 10000) / 100,
+      bidAccuracy: null,
+      forceBurns: 0,
+      roundsPlayed: 0,
+    });
+  }
+  return out;
+}
+
+export function playersForRange(
+  players: StatsPlayer[],
+  games: StatsGame[],
+  range: TopRange,
+  now = new Date(),
+): StatsPlayer[] {
+  const since = rangeSince(range, now);
+  return playersForWindow(players, games, since ? since.getTime() : null, null);
+}
+
+type League = {
+  winRate: number;
+  avgScore: number;
+  bidAccuracy: number;
+  secondThirdRate: number;
+  forceBurnRate: number;
+};
+
+type MetricParts = {
+  n: number;
+  winRate: number;
+  avgScore: number;
+  bidAccuracy: number;
+  secondThirdRate: number;
+  forceBurnRate: number;
+};
+
+function mean(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  return xs.reduce((s, x) => s + x, 0) / xs.length;
+}
+
+/** 2nd + 3rd only. Firsts are already in win rate. */
+function secondThirdRate(p: StatsPlayer): number | null {
+  if (p.gamesCompleted <= 0) return null;
+  return ((p.seconds + p.thirds) / p.gamesCompleted) * 100;
+}
+
+/** Dealer force-burn rounds as a % of rounds played. */
+function forceBurnRate(p: StatsPlayer): number | null {
+  if (p.roundsPlayed <= 0) return null;
+  return (p.forceBurns / p.roundsPlayed) * 100;
+}
+
+function shrink(observed: number | null, games: number, league: number): number {
+  if (observed === null) return league;
+  return (games * observed + SHRINK * league) / (games + SHRINK);
+}
+
+export function leagueMeans(players: StatsPlayer[]): League {
+  return {
+    winRate: mean(
+      players.map((p) => p.winRate).filter((n): n is number => n != null),
+    ),
+    avgScore: mean(
+      players.map((p) => p.avgScore).filter((n): n is number => n != null),
+    ),
+    bidAccuracy: mean(
+      players.map((p) => p.bidAccuracy).filter((n): n is number => n != null),
+    ),
+    secondThirdRate: mean(
+      players.map(secondThirdRate).filter((n): n is number => n != null),
+    ),
+    forceBurnRate: mean(
+      players.map(forceBurnRate).filter((n): n is number => n != null),
+    ),
+  };
+}
+
+export function metricParts(
+  player: StatsPlayer,
+  league: League,
+): MetricParts | null {
+  const n = player.gamesCompleted;
+  if (n <= 0) return null;
+  return {
+    n,
+    winRate: shrink(player.winRate, n, league.winRate),
+    avgScore: shrink(player.avgScore, n, league.avgScore),
+    bidAccuracy: shrink(player.bidAccuracy, n, league.bidAccuracy),
+    secondThirdRate: shrink(
+      secondThirdRate(player),
+      n,
+      league.secondThirdRate,
+    ),
+    forceBurnRate: shrink(
+      forceBurnRate(player),
+      n,
+      league.forceBurnRate,
+    ),
+  };
+}
+
+/**
+ * Placement (1sts + 2nd/3rd) first, then made-bid %, then avg score.
+ * Force-burn rate subtracts a little — a normal miss already hits made-bid %.
+ * Then × games/(games+10).
+ */
+export function playerScore(parts: MetricParts): number {
+  const weighted =
+    W_WIN * parts.winRate +
+    W_SECOND_THIRD * parts.secondThirdRate +
+    W_BID * parts.bidAccuracy +
+    W_AVG * parts.avgScore -
+    W_FORCE_BURN * parts.forceBurnRate;
+  return Math.round(weighted * (parts.n / (parts.n + SHRINK)) * 10);
+}
+
+export function rankBestPlayers(
+  players: StatsPlayer[],
+  limit?: number,
+): RankedPlayer[] {
+  if (players.length === 0) return [];
+  const league = leagueMeans(players);
+  const scored = players
+    .map((player) => {
+      const parts = metricParts(player, league);
+      if (!parts) return null;
+      return { player, rating: playerScore(parts) };
+    })
+    .filter((r): r is RankedPlayer => r != null);
+  scored.sort(
+    (a, b) =>
+      b.rating - a.rating ||
+      b.player.gamesCompleted - a.player.gamesCompleted,
+  );
+  return limit == null ? scored : scored.slice(0, limit);
+}

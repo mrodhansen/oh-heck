@@ -46,6 +46,7 @@ import {
   eventCreate,
   roundSetupFields,
 } from './analytics';
+import { bindUserToGameSeat } from './claim-seat';
 import { asNotes, hasNotes } from './notes';
 import {
   ApiErrorCode,
@@ -1675,36 +1676,12 @@ export class GamesService {
       );
     }
 
-    const existing = await this.prisma.player.findUnique({
-      where: { userId },
+    await bindUserToGameSeat(this.prisma, {
+      gameId,
+      guestPlayerId: playerId,
+      userId,
+      displayName: target.name,
     });
-    if (existing && existing.id !== playerId) {
-      const seat = game.seats.find((s) => s.playerId === playerId);
-      if (!seat) throw new BadRequestException('Player not found in game');
-      await this.prisma.$transaction(async (tx) => {
-        await tx.gamePlayer.update({
-          where: { id: seat.id },
-          data: { playerId: existing.id },
-        });
-        await tx.roundEntry.updateMany({
-          where: { playerId, round: { gameId } },
-          data: { playerId: existing.id },
-        });
-        await tx.trickPlay.updateMany({
-          where: { playerId, trick: { gameId } },
-          data: { playerId: existing.id },
-        });
-        await tx.trick.updateMany({
-          where: { winnerPlayerId: playerId, gameId },
-          data: { winnerPlayerId: existing.id },
-        });
-      });
-    } else if (!existing) {
-      await this.prisma.player.update({
-        where: { id: playerId },
-        data: { userId },
-      });
-    }
     return this.getGame(gameId);
   }
 

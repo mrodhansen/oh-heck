@@ -1,6 +1,8 @@
+import { apiBaseUrl } from './baseUrl';
+
 export type ApiStatus = 'unknown' | 'offline' | 'waking' | 'ready';
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+const API_URL = apiBaseUrl();
 const WAKE_POLL_MS = 2_000;
 
 const listeners = new Set<(status: ApiStatus) => void>();

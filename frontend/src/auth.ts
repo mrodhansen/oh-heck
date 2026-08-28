@@ -45,6 +45,16 @@ export type ClaimableGame = {
   }[];
 };
 
+export function matchingClaimablePlayers(
+  game: ClaimableGame,
+  user: Pick<AuthUser, 'username' | 'firstName' | 'lastName'>,
+): ClaimableGame['players'] {
+  const needles = accountNameNeedles(user);
+  return game.players.filter(
+    (p) => p.claimable && needles.includes(p.name.trim().toLowerCase()),
+  );
+}
+
 export const authApi = {
   me: () => httpRequest<{ user: AuthUser | null }>('/auth/me'),
 
@@ -110,3 +120,34 @@ export const authApi = {
       },
     ),
 };
+
+export async function claimSelectedGames(
+  games: ClaimableGame[],
+  ids: readonly string[],
+  user: Pick<AuthUser, 'username' | 'firstName' | 'lastName'>,
+  onClaimed?: (gameId: string) => void,
+): Promise<{ claimedIds: string[] }> {
+  const claimedIds: string[] = [];
+  for (const id of ids) {
+    const game = games.find((g) => g.id === id);
+    if (!game) {
+      throw new Error('Game is no longer claimable');
+    }
+    const seats = matchingClaimablePlayers(game, user);
+    if (seats.length !== 1) {
+      throw new Error(
+        seats.length === 0
+          ? `No matching seat in ${game.name ?? 'game'}`
+          : `Multiple matching seats in ${game.name ?? 'game'}`,
+      );
+    }
+    const seat = seats[0];
+    if (!seat) {
+      throw new Error(`No matching seat in ${game.name ?? 'game'}`);
+    }
+    await authApi.claim(game.id, seat.id);
+    claimedIds.push(id);
+    onClaimed?.(id);
+  }
+  return { claimedIds };
+}

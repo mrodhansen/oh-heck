@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi, type ClaimableGame } from '../auth';
-import type { StatsPlayer } from '../api';
+import { accountDisplayName, authApi, type ClaimableGame } from '../auth';
+import { api, type StatsPlayer } from '../api';
+import { rankBestPlayers } from './bestPlayers';
 import { toUserMessage } from '../api/errors';
 import { ClaimableGameCard } from '../components/ClaimableGameCard';
 import { useAuth } from '../useAuth';
@@ -24,6 +25,9 @@ export function AccountPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<StatsPlayer | null>(null);
+  const [myRank, setMyRank] = useState<{ place: number; rating: number } | null>(
+    null,
+  );
   const [claimable, setClaimable] = useState<ClaimableGame[]>([]);
   const [claimableError, setClaimableError] = useState<string | null>(null);
   const [claimableLoading, setClaimableLoading] = useState(false);
@@ -33,6 +37,7 @@ export function AccountPage() {
   useEffect(() => {
     if (!user) {
       setStats(null);
+      setMyRank(null);
       setClaimable([]);
       setClaimableError(null);
       setClaimableLoading(false);
@@ -49,6 +54,32 @@ export function AccountPage() {
       .catch(() => {
         if (!alive) return;
         setStats(null);
+      });
+    api
+      .getStats()
+      .then((s) => {
+        if (!alive) return;
+        const ranked = rankBestPlayers(s.players);
+        const display = accountDisplayName(user);
+        const idx = ranked.findIndex(
+          (r) =>
+            r.player.userId === user.id ||
+            r.player.name === display,
+        );
+        if (idx < 0) {
+          setMyRank(null);
+          return;
+        }
+        const row = ranked[idx];
+        if (!row) {
+          setMyRank(null);
+          return;
+        }
+        setMyRank({ place: idx + 1, rating: row.rating });
+      })
+      .catch(() => {
+        if (!alive) return;
+        setMyRank(null);
       });
     authApi
       .claimable()
@@ -305,13 +336,23 @@ export function AccountPage() {
 
         <section className="card stack">
           <h3 className="section-title">Profile</h3>
-          <div className="profile-identity">
-            <p className="profile-name">
-              {user.firstName} {user.lastName}
-            </p>
-            <p className="profile-username">{user.username}</p>
-            {user.email ? (
-              <p className="profile-email">{user.email}</p>
+          <div className="profile-row">
+            <div className="profile-identity">
+              <p className="profile-name">
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="profile-username">{user.username}</p>
+              {user.email ? (
+                <p className="profile-email">{user.email}</p>
+              ) : null}
+            </div>
+            {myRank ? (
+              <div className="profile-rank">
+                <span className="profile-rank-place">
+                  Ranked #{myRank.place}
+                </span>
+                <span className="profile-rank-score">{myRank.rating}</span>
+              </div>
             ) : null}
           </div>
         </section>
@@ -337,7 +378,6 @@ export function AccountPage() {
                 }
               />
               <Metric label="Podiums" value={stats.podium} />
-              <Metric label="Nils made" value={stats.nilsMade} />
             </div>
           )}
           <Link to="/stats" className="btn ghost sm">
@@ -366,6 +406,11 @@ export function AccountPage() {
                   <ClaimableGameCard key={g.id} game={g} user={user} />
                 ))}
               </div>
+            )}
+            {!claimableLoading && claimable.length > 0 && (
+              <Link to="/account/claimable" className="btn">
+                Claim many
+              </Link>
             )}
             {!claimableLoading && claimable.length > CLAIM_PREVIEW && (
               <Link to="/account/claimable" className="btn ghost">

@@ -40,7 +40,7 @@ docker compose up --build
 ```
 
 - Web: http://localhost:5173
-- API: http://localhost:3000 (proxied at `/api` in Docker web)
+- API: http://localhost:3010 (proxied at `/api` in Docker web)
 - Postgres: `localhost:5433`
 
 Phone on LAN: `http://<mac-lan-ip>:5173` (same Wi‑Fi; allow firewall if needed).
@@ -58,7 +58,7 @@ npm install
 npm run start:dev
 
 cd frontend
-export VITE_API_URL=http://localhost:3000
+export VITE_API_URL=http://localhost:3010
 npm install
 npm run dev
 ```

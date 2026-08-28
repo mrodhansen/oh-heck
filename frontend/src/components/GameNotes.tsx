@@ -9,21 +9,11 @@ import {
 
 type Props = {
   notes: GameNote[];
+  readOnly?: boolean;
   onSave: (notes: GameNote[]) => Promise<void>;
 };
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-export function GameNotes({ notes, onSave }: Props) {
+export function GameNotes({ notes, readOnly = false, onSave }: Props) {
   const [items, setItems] = useState(notes);
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -107,37 +97,39 @@ export function GameNotes({ notes, onSave }: Props) {
 
   return (
     <div className="notes-panel">
-      <form className="notes-composer" onSubmit={addNote}>
-        <label className="field">
-          New note
-          <textarea
-            value={draft}
-            maxLength={MAX_NOTE_LENGTH}
-            rows={3}
-            placeholder="Write a note…"
-            disabled={saving || editingId != null}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setError(null);
-            }}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                void addNote(e);
-              }
-            }}
-          />
-        </label>
-        <div className="notes-composer-bar">
-          <button
-            type="submit"
-            className="btn primary"
-            disabled={saving || !canAdd}
-          >
-            {saving && !editingId ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </form>
+      {!readOnly && (
+        <form className="notes-composer" onSubmit={addNote}>
+          <label className="field">
+            New note
+            <textarea
+              value={draft}
+              maxLength={MAX_NOTE_LENGTH}
+              rows={3}
+              placeholder="Write a note…"
+              disabled={saving || editingId != null}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  void addNote(e);
+                }
+              }}
+            />
+          </label>
+          <div className="notes-composer-bar">
+            <button
+              type="submit"
+              className="btn primary"
+              disabled={saving || !canAdd}
+            >
+              {saving && !editingId ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {error && <div className="banner banner-inline">{error}</div>}
 
@@ -195,19 +187,18 @@ export function GameNotes({ notes, onSave }: Props) {
                   ) : (
                     <>
                       <p className="notes-item-text">{note.text}</p>
-                      <div className="notes-item-foot">
-                        <p className="notes-item-when">
-                          {formatWhen(note.updatedAt || note.createdAt)}
-                        </p>
-                        <button
-                          type="button"
-                          className="btn ghost sm"
-                          disabled={saving || editingId != null}
-                          onClick={() => startEdit(note)}
-                        >
-                          Edit
-                        </button>
-                      </div>
+                      {!readOnly && (
+                        <div className="notes-item-actions">
+                          <button
+                            type="button"
+                            className="btn ghost sm"
+                            disabled={saving || editingId != null}
+                            onClick={() => startEdit(note)}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
