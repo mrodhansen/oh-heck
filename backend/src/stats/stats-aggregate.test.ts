@@ -19,6 +19,7 @@ function snap(args: {
     status: GameStatus.COMPLETED,
     createdAt: new Date('2026-01-01'),
     finishedAt: new Date('2026-01-01'),
+    isHighTable: false,
     seats: args.seats.map((s, i) => ({
       seatIndex: i,
       player: {
@@ -153,5 +154,38 @@ describe('buildStats players mode', () => {
       'p-guest',
       'p-other-charlie',
     ]);
+  });
+});
+
+describe('isHighTable on game rows', () => {
+  const seats = [
+    { id: 'p1', name: 'Abe', points: 40 },
+    { id: 'p2', name: 'Martin', points: 30 },
+  ];
+
+  it('is false by default', () => {
+    const stats = buildStats([snap({ id: 'g1', seats })], 'players');
+    expect(stats.games[0]?.isHighTable).toBe(false);
+  });
+
+  it('is true when the game flag is set', () => {
+    const g = snap({ id: 'g1', seats });
+    g.isHighTable = true;
+    const stats = buildStats([g], 'players');
+    expect(stats.games[0]?.isHighTable).toBe(true);
+  });
+
+  it('is true when the linked tournament table is a high table', () => {
+    const g = snap({ id: 'g1', seats });
+    g.tournamentTable = { isHighTable: true };
+    const stats = buildStats([g], 'players');
+    expect(stats.games[0]?.isHighTable).toBe(true);
+  });
+
+  it('is true for Hawaii 2026 high-table titles', () => {
+    const g = snap({ id: 'g1', seats });
+    g.name = 'Game 4 · Jun 23, 2026';
+    const stats = buildStats([g], 'players');
+    expect(stats.games[0]?.isHighTable).toBe(true);
   });
 });

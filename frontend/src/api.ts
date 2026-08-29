@@ -381,6 +381,7 @@ export type StatsGame = {
   avgScore: number | null;
   roundsCompleted: number;
   forceBurns: number;
+  isHighTable: boolean;
   standings: { name: string; total: number; place: number }[];
 };
 

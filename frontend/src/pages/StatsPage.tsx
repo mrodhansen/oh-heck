@@ -304,6 +304,7 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
                         </span>
                         <span className="table-secondary">
                           {formatDate(g.finishedAt ?? g.createdAt)}
+                          {g.isHighTable ? ' · High table' : ''}
                         </span>
                       </Link>
                     </td>

@@ -10,6 +10,8 @@ export type StatsGameSnap = {
   status: GameStatus;
   createdAt: Date;
   finishedAt: Date | null;
+  isHighTable: boolean;
+  tournamentTable?: { isHighTable: boolean } | null;
   seats: {
     seatIndex: number;
     player: {
@@ -30,6 +32,26 @@ export type StatsGameSnap = {
     }[];
   }[];
 };
+
+/**
+ * Hawaii 2026 reunion high tables, seeded before Game.isHighTable existed.
+ * Game 4 = Jun 22 prelims; Game 9 = Jun 23; Game 14 = Jun 25.
+ */
+export const LEGACY_HIGH_TABLE_NAMES = new Set([
+  'Game 4 · Jun 23, 2026',
+  'Game 9 · Jun 23, 2026',
+  'Game 14 · Jun 25, 2026',
+]);
+
+export function gameIsHighTable(game: {
+  name: string | null;
+  isHighTable: boolean;
+  tournamentTable?: { isHighTable: boolean } | null;
+}): boolean {
+  if (game.isHighTable) return true;
+  if (game.tournamentTable?.isHighTable) return true;
+  return game.name != null && LEGACY_HIGH_TABLE_NAMES.has(game.name);
+}
 
 type PlayerAgg = {
   key: string;
@@ -141,6 +163,7 @@ export function buildStats(games: readonly StatsGameSnap[], mode: StatsMode) {
     avgScore: number | null;
     roundsCompleted: number;
     forceBurns: number;
+    isHighTable: boolean;
     standings: { name: string; total: number; place: number }[];
   }[] = [];
 
@@ -336,6 +359,7 @@ export function buildStats(games: readonly StatsGameSnap[], mode: StatsMode) {
       avgScore,
       roundsCompleted,
       forceBurns,
+      isHighTable: gameIsHighTable(game),
       standings: places.map((p) => ({
         name: p.name,
         total: p.total,

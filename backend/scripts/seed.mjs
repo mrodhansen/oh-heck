@@ -12,6 +12,10 @@
  * remaining ties prefer undertricks). Game 48 hand 13 recorded Addison
  * Corgry at the wrong seat — seating uses each player's modal position.
  *
+ * Hawaii 2026 (oh-heck-log-hawaii.json): games 4, 9, and 14 are high tables —
+ * the field of that day's prelim winners / top finishers. Marked highTable
+ * in the log and stored on Game.isHighTable.
+ *
  * Player-name aliases (notes are left as written):
  *   Jere / Jeremiah → Jeremiah
  *   Jere Jr / Jere Jere / Jeremiah Jr / JJ → Jeremiah Jr.
@@ -210,15 +214,26 @@ async function insertGame(spec, byName) {
 
   const already = await prisma.game.findFirst({
     where: { name: title },
-    select: { id: true },
+    select: { id: true, isHighTable: true },
   });
-  if (already) return 'skipped';
+  const highTable = spec.highTable === true;
+  if (already) {
+    if (highTable && !already.isHighTable) {
+      await prisma.game.update({
+        where: { id: already.id },
+        data: { isHighTable: true },
+      });
+      return 'high-table';
+    }
+    return 'skipped';
+  }
 
   await prisma.game.create({
     data: {
       name: title,
       status: GameStatus.COMPLETED,
       playMode: PlayMode.IN_PERSON,
+      isHighTable: highTable,
       createdAt,
       updatedAt: finishedAt,
       startedAt,
@@ -314,12 +329,14 @@ async function main() {
   console.log(`Inserting games from the family logs (${allGames.length})…`);
   let inserted = 0;
   let skipped = 0;
+  let highTableMarked = 0;
   for (const spec of allGames) {
     if (spec.players.length > 7) {
       throw new Error(`Game ${spec.n} has ${spec.players.length} players (max 7)`);
     }
     const result = await insertGame(spec, byName);
     if (result === 'skipped') skipped += 1;
+    else if (result === 'high-table') highTableMarked += 1;
     else inserted += 1;
   }
 
@@ -329,6 +346,7 @@ async function main() {
   ]);
   console.log('\nDone.');
   console.log(`  games inserted: ${inserted}  skipped (already present): ${skipped}`);
+  console.log(`  high tables marked on existing games: ${highTableMarked}`);
   console.log(`  players created: ${playersCreated}`);
   console.log(`  totals now: ${gameCount} games, ${playerCount} players`);
 }

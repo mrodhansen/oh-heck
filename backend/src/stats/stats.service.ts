@@ -22,6 +22,7 @@ export class StatsService {
           },
         },
         rounds: { include: { entries: true }, orderBy: { number: 'asc' } },
+        tournamentTable: { select: { isHighTable: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

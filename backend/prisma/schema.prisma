@@ -127,6 +127,9 @@ model Game {
   /// True when imported from a scorecard photo (LLM). False for file import. Null for live/scored games.
   aiImport Boolean?
 
+  /// Tournament high table, or a historical high table from a family log.
+  isHighTable Boolean @default(false)
+
   /// When set, this game belongs to a tournament table
   tournamentTableId String? @unique
 

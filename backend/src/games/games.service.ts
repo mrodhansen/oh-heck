@@ -1925,7 +1925,8 @@ export class GamesService {
       totalEdits: game.rounds.reduce((s, r) => s + r.editCount, 0),
       tournamentId: game.tournamentTable?.tournamentId ?? null,
       tournamentTableId: game.tournamentTableId,
-      isHighTable: game.tournamentTable?.isHighTable ?? false,
+      isHighTable:
+        game.isHighTable || game.tournamentTable?.isHighTable === true,
       tableNumber: game.tournamentTable?.tableNumber ?? null,
       prelimEditsLocked: false as boolean,
       players: game.players.map((p) => ({

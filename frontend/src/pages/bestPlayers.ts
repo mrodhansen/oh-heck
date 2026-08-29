@@ -15,11 +15,19 @@ const DAY_MS = 86_400_000;
 const YEAR_MS = 365 * DAY_MS;
 /** Each year multiplies a game's weight by this (1y → 80%, 2y → 64%). */
 export const RECENCY_PER_YEAR = 0.8;
+/** High-table games count this much vs a regular game (on top of recency). */
+export const HIGH_TABLE_WEIGHT = 1.25;
 
 /** 1 today, ×0.8 per year of age. */
 export function recencyWeight(gameMs: number, t0Ms: number): number {
   const ageMs = Math.max(0, t0Ms - gameMs);
   return RECENCY_PER_YEAR ** (ageMs / YEAR_MS);
+}
+
+/** Recency × 1.25 when the game is a high table. */
+export function gameWeight(g: StatsGame, t0Ms: number): number {
+  const recency = recencyWeight(gameTime(g), t0Ms);
+  return recency * (g.isHighTable ? HIGH_TABLE_WEIGHT : 1);
 }
 
 /** n/(n+k) hits 90% of the score at 20 games. */
@@ -57,7 +65,7 @@ export function dayEndMs(ymd: string): number {
 /**
  * Standings inside [fromMs, toMs] (unbounded = all games).
  * Win rate, 2nd/3rd rate, and avg score are recency-weighted so newer
- * games count more; game counts stay raw for display.
+ * games count more; high tables get a 1.25× bump. Game counts stay raw.
  */
 export function playersForWindow(
   players: StatsPlayer[],
@@ -89,7 +97,7 @@ export function playersForWindow(
     for (const g of windowed) {
       const row = g.standings.find((s) => s.name === p.name);
       if (!row) continue;
-      const w = recencyWeight(gameTime(g), t0);
+      const w = gameWeight(g, t0);
       n += 1;
       total += row.total;
       wSum += w;

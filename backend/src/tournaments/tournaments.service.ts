@@ -584,6 +584,7 @@ export class TournamentsService {
           where: { id: game.id },
           data: {
             tournamentTableId: table.id,
+            ...(table.isHighTable ? { isHighTable: true } : {}),
           },
         });
 

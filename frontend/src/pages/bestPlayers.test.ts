@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { StatsGame, StatsPlayer } from '../api';
 import {
+  gameWeight,
+  HIGH_TABLE_WEIGHT,
   playersForRange,
   playersForWindow,
   playerScore,
@@ -186,6 +188,7 @@ describe('time range', () => {
         avgScore: 25,
         roundsCompleted: 13,
         forceBurns: 0,
+        isHighTable: false,
         standings: [
           { name: 'Abe', total: 40, place: 1 },
           { name: 'Typical', total: 10, place: 2 },
@@ -206,6 +209,7 @@ describe('time range', () => {
         avgScore: 50,
         roundsCompleted: 13,
         forceBurns: 0,
+        isHighTable: false,
         standings: [{ name: 'Abe', total: 50, place: 1 }],
       },
     ];
@@ -233,6 +237,7 @@ describe('time range', () => {
         avgScore: 10,
         roundsCompleted: 13,
         forceBurns: 0,
+        isHighTable: false,
         standings: [{ name: 'Abe', total: 10, place: 1 }],
       },
       {
@@ -250,6 +255,7 @@ describe('time range', () => {
         avgScore: 20,
         roundsCompleted: 13,
         forceBurns: 0,
+        isHighTable: false,
         standings: [{ name: 'Abe', total: 20, place: 1 }],
       },
     ];
@@ -268,6 +274,7 @@ function game(over: {
   id: string;
   at: string;
   standings: { name: string; total: number; place: number }[];
+  isHighTable?: boolean;
 }): StatsGame {
   const winner = over.standings.find((s) => s.place === 1);
   const totals = over.standings.map((s) => s.total);
@@ -286,6 +293,7 @@ function game(over: {
     avgScore: totals.reduce((a, b) => a + b, 0) / totals.length,
     roundsCompleted: 13,
     forceBurns: 0,
+    isHighTable: over.isHighTable === true,
     standings: over.standings,
   };
 }
@@ -370,6 +378,65 @@ describe('recency weighting', () => {
     );
     expect(top[0]?.player.name).toBe('Abe');
     expect(top[0]!.rating).toBeGreaterThan(top[1]!.rating);
+  });
+});
+
+describe('high table weighting', () => {
+  const now = new Date('2026-08-01T00:00:00.000Z');
+  const at = '2026-06-23T18:00:00.000Z';
+
+  it('is 1.25× a same-day regular game', () => {
+    const regularGame = game({
+      id: 'reg',
+      at,
+      standings: [{ name: 'Abe', total: 40, place: 1 }],
+    });
+    const high = game({
+      id: 'high',
+      at,
+      isHighTable: true,
+      standings: [{ name: 'Abe', total: 40, place: 1 }],
+    });
+    expect(HIGH_TABLE_WEIGHT).toBe(1.25);
+    expect(gameWeight(high, now.getTime())).toBeCloseTo(
+      gameWeight(regularGame, now.getTime()) * HIGH_TABLE_WEIGHT,
+    );
+  });
+
+  it('pulls win rate toward the high-table result', () => {
+    const games = [
+      game({
+        id: 'reg',
+        at,
+        standings: [
+          { name: 'Abe', total: 60, place: 1 },
+          { name: 'Typical', total: 20, place: 2 },
+        ],
+      }),
+      game({
+        id: 'high',
+        at,
+        isHighTable: true,
+        standings: [
+          { name: 'Abe', total: 20, place: 2 },
+          { name: 'Typical', total: 60, place: 1 },
+        ],
+      }),
+    ];
+    const windowed = playersForWindow(
+      [regular, filler],
+      games,
+      null,
+      null,
+      now,
+    );
+    const abe = windowed.find((p) => p.name === 'Abe');
+    const typical = windowed.find((p) => p.name === 'Typical');
+    expect(abe?.gamesCompleted).toBe(2);
+    expect(typical?.gamesCompleted).toBe(2);
+    expect(typical?.winRate).toBeGreaterThan(50);
+    expect(abe?.winRate).toBeLessThan(50);
+    expect(typical?.avgScore).toBeGreaterThan(abe?.avgScore ?? 0);
   });
 });
 

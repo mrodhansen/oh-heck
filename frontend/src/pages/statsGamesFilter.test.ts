@@ -17,6 +17,7 @@ function game(partial: Partial<StatsGame> & Pick<StatsGame, 'id'>): StatsGame {
     avgScore: 51,
     roundsCompleted: 13,
     forceBurns: 0,
+    isHighTable: false,
     standings: [],
     ...partial,
   };
