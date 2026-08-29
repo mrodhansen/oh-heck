@@ -9,12 +9,22 @@
  *
  * 2013+ log: games 1–2 have no tricks-taken column; those are inferred from
  * bid + score (unique, or the combination that sums to the hand size;
- * remaining ties prefer undertricks). Game 48 hand 13 recorded Addison at
- * the wrong seat — seating uses each player's modal position.
+ * remaining ties prefer undertricks). Game 48 hand 13 recorded Addison
+ * Corgry at the wrong seat — seating uses each player's modal position.
  *
- * Hawaii 2026 log: nicknames mapped to existing Player names (Abe→Abraham,
- * Addie→Addison, Marty→Martin, Jere Sr→Jeremiah, Jere Jr→Jeremiah Jr.,
- * Tiff→Tiffany).
+ * Player-name aliases (notes are left as written):
+ *   Jere / Jeremiah → Jeremiah
+ *   Jere Jr / Jere Jere / Jeremiah Jr / JJ → Jeremiah Jr.
+ *   Milly / Mildrid → Milly
+ *   Marty / Martin → Martin
+ *   Abe / Abraham → Abraham
+ *   Tana / Montana → Monetana
+ *   Addie / Hawaii Addison → Addison Christiansen
+ *   Family game 50 Addison → Addison Hansen
+ *   Family game 48 Addison → Addison Corgry
+ *   M'Kenzie / Kenzie → MacKenzie
+ *   Kaz → Caz
+ *   Nate → Nathan
  */
 import { randomUUID } from 'crypto';
 import { readdirSync, readFileSync } from 'fs';
@@ -32,6 +42,46 @@ loadEnv();
 
 const prisma = new PrismaClient();
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), 'data');
+
+/** Lowercased, trailing-period-stripped name → canonical Player.name */
+const PLAYER_NAME_ALIASES = new Map([
+  ['jere', 'Jeremiah'],
+  ['jere sr', 'Jeremiah'],
+  ['jeremiah', 'Jeremiah'],
+  ['jere jr', 'Jeremiah Jr.'],
+  ['jere jere', 'Jeremiah Jr.'],
+  ['jeremiah jr', 'Jeremiah Jr.'],
+  ['jj', 'Jeremiah Jr.'],
+  ['milly', 'Milly'],
+  ['mildrid', 'Milly'],
+  ['marty', 'Martin'],
+  ['martin', 'Martin'],
+  ['abe', 'Abraham'],
+  ['abraham', 'Abraham'],
+  ['tana', 'Monetana'],
+  ['montana', 'Monetana'],
+  ['monetana', 'Monetana'],
+  ['addie', 'Addison Christiansen'],
+  ['addie christiansen', 'Addison Christiansen'],
+  ['addison christiansen', 'Addison Christiansen'],
+  ['addison hansen', 'Addison Hansen'],
+  ['addison corgry', 'Addison Corgry'],
+  ["m'kenzie", 'MacKenzie'],
+  ['mkenzie', 'MacKenzie'],
+  ['kenzie', 'MacKenzie'],
+  ['mackenzie', 'MacKenzie'],
+  ['kaz', 'Caz'],
+  ['caz', 'Caz'],
+  ['nate', 'Nathan'],
+  ['nathan', 'Nathan'],
+  ['tiff', 'Tiffany'],
+  ['tiffany', 'Tiffany'],
+]);
+
+function canonicalPlayerName(name) {
+  const key = name.trim().toLowerCase().replace(/\.+$/, '').replace(/\s+/g, ' ');
+  return PLAYER_NAME_ALIASES.get(key) ?? name;
+}
 
 function dealerSeat(roundNumber, playerCount) {
   return (playerCount - 1 + roundNumber - 1) % playerCount;
@@ -241,7 +291,12 @@ function loadLogFiles() {
       throw new Error(`No games in ${path}`);
     }
     console.log(`  ${name}: ${payload.games.length} games`);
-    games.push(...payload.games);
+    games.push(
+      ...payload.games.map((g) => ({
+        ...g,
+        players: g.players.map(canonicalPlayerName),
+      })),
+    );
   }
   return games;
 }
