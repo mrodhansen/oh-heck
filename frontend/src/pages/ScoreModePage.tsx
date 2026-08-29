@@ -15,6 +15,14 @@ export function ScoreModePage() {
           <span className="mode-card-title">Tournament</span>
           <span className="mode-card-meta">Multiple tables · high table</span>
         </Link>
+        <a
+          className="btn mode-card"
+          href={`${import.meta.env.BASE_URL}oh-heck-scoresheet.xlsx`}
+          download="Oh Heck Scoresheet.xlsx"
+        >
+          <span className="mode-card-title">Download scoresheet</span>
+          <span className="mode-card-meta">Blank Excel card for paper scoring</span>
+        </a>
         <Link className="btn mode-card" to="/play/upload">
           <span className="mode-card-title">Upload game</span>
           <span className="mode-card-meta">Import a file or scorecard photo</span>

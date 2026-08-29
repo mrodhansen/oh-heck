@@ -45,6 +45,7 @@ COPY --from=build-sqlite /app/node_modules ./node_modules
 COPY --from=build-sqlite /app/package.json ./package.json
 COPY --from=build-sqlite /app/prisma ./prisma
 COPY --from=build-sqlite /app/rules ./rules
+COPY --from=build-sqlite /app/scripts ./scripts
 COPY docker-entrypoint-sqlite.sh ./
 RUN chmod +x docker-entrypoint-sqlite.sh && mkdir -p /data
 EXPOSE 3000

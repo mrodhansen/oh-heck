@@ -21,6 +21,7 @@ export default defineConfig({
         'apple-touch-icon.png',
         'icon-192.png',
         'icon-512.png',
+        'oh-heck-scoresheet.xlsx',
       ],
       manifest: {
         name: 'Oh Heck',
@@ -62,7 +63,7 @@ export default defineConfig({
       },
       workbox: {
         // App shell offline; API is network-first via app offline layer
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,xlsx}'],
         navigateFallback: `${base}index.html`.replace(/\/+/g, '/'),
         runtimeCaching: [
           {

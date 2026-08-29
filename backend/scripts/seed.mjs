@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 /**
- * Additive load of the family Oh Heck log (scripts/data/oh-heck-log.json).
+ * Additive load of family Oh Heck logs (scripts/data/oh-heck-log*.json).
  *
  * Inserts games and players only. Never deletes. Skips a game when one with
  * the same title already exists. Reuses an existing Player of the same name
  * (claimed row preferred). Does not create or touch users, live sessions,
  * or tournaments.
  *
- * Games 1–2 have no tricks-taken column; those are inferred from bid + score
- * (unique, or the combination that sums to the hand size; remaining ties
- * prefer undertricks). Game 48 hand 13 recorded Addison at the wrong seat —
- * seating uses each player's modal position.
+ * 2013+ log: games 1–2 have no tricks-taken column; those are inferred from
+ * bid + score (unique, or the combination that sums to the hand size;
+ * remaining ties prefer undertricks). Game 48 hand 13 recorded Addison at
+ * the wrong seat — seating uses each player's modal position.
+ *
+ * Hawaii 2026 log: nicknames mapped to existing Player names (Abe→Abraham,
+ * Addie→Addison, Marty→Martin, Jere Sr→Jeremiah, Jere Jr→Jeremiah Jr.,
+ * Tiff→Tiffany).
  */
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { config as loadEnv } from 'dotenv';
@@ -27,11 +31,7 @@ import {
 loadEnv();
 
 const prisma = new PrismaClient();
-const DATA_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  'data',
-  'oh-heck-log.json',
-);
+const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), 'data');
 
 function dealerSeat(roundNumber, playerCount) {
   return (playerCount - 1 + roundNumber - 1) % playerCount;
@@ -226,22 +226,40 @@ async function insertGame(spec, byName) {
   return 'inserted';
 }
 
-async function main() {
-  const payload = JSON.parse(readFileSync(DATA_PATH, 'utf8'));
-  if (!payload?.games?.length) {
-    throw new Error(`No games in ${DATA_PATH}`);
+function loadLogFiles() {
+  const files = readdirSync(DATA_DIR)
+    .filter((name) => name.startsWith('oh-heck-log') && name.endsWith('.json'))
+    .sort();
+  if (files.length === 0) {
+    throw new Error(`No oh-heck-log*.json in ${DATA_DIR}`);
   }
+  const games = [];
+  for (const name of files) {
+    const path = join(DATA_DIR, name);
+    const payload = JSON.parse(readFileSync(path, 'utf8'));
+    if (!payload?.games?.length) {
+      throw new Error(`No games in ${path}`);
+    }
+    console.log(`  ${name}: ${payload.games.length} games`);
+    games.push(...payload.games);
+  }
+  return games;
+}
 
-  const names = [...new Set(payload.games.flatMap((g) => g.players))];
+async function main() {
+  console.log('Loading family logs…');
+  const allGames = loadLogFiles();
+
+  const names = [...new Set(allGames.flatMap((g) => g.players))];
   names.sort((a, b) => a.localeCompare(b));
   console.log(`Resolving ${names.length} players (create if missing)…`);
   const { byName, created: playersCreated } = await resolvePlayers(names);
   console.log(`  created ${playersCreated}, reused ${names.length - playersCreated}`);
 
-  console.log(`Inserting games from the family log (${payload.games.length})…`);
+  console.log(`Inserting games from the family logs (${allGames.length})…`);
   let inserted = 0;
   let skipped = 0;
-  for (const spec of payload.games) {
+  for (const spec of allGames) {
     if (spec.players.length > 7) {
       throw new Error(`Game ${spec.n} has ${spec.players.length} players (max 7)`);
     }
