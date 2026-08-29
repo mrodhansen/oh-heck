@@ -1245,6 +1245,7 @@ table.scoreboard tbody tr:last-child td.score-miss {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 8px;
 }
@@ -1256,6 +1257,8 @@ table.scoreboard tbody tr:last-child td.score-miss {
 .top-player-tools {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
 }

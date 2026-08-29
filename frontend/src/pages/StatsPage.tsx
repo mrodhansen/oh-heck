@@ -12,6 +12,7 @@ import {
   playersForRange,
   playersForWindow,
   rankBestPlayers,
+  type LastNGames,
   type TopRange,
 } from './bestPlayers';
 
@@ -525,6 +526,7 @@ function TopPlayers({
   games: StatsGame[];
 }) {
   const [range, setRange] = useState<TopRange>('all');
+  const [lastN, setLastN] = useState<LastNGames>('all');
   const [custom, setCustom] = useState<{ from: string; to: string } | null>(
     null,
   );
@@ -541,14 +543,16 @@ function TopPlayers({
           games,
           dayStartMs(custom.from),
           dayEndMs(custom.to),
+          new Date(),
+          lastN,
         )
-      : playersForRange(players, games, range);
+      : playersForRange(players, games, range, new Date(), lastN);
     return rankBestPlayers(pool, 10);
-  }, [players, games, range, custom]);
+  }, [players, games, range, custom, lastN]);
 
   useEffect(() => {
     setExpanded(false);
-  }, [range, custom]);
+  }, [range, custom, lastN]);
 
   function openCalendar() {
     setDraftFrom(custom?.from ?? '');
@@ -576,6 +580,28 @@ function TopPlayers({
       <div className="top-player-head">
         <h3 className="section-title section-title-plain">Top players</h3>
         <div className="top-player-tools">
+          <select
+            className="top-player-range"
+            value={lastN === 'all' ? 'all' : String(lastN)}
+            aria-label="Based on"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'all') {
+                setLastN('all');
+                return;
+              }
+              if (v === '5' || v === '10' || v === '20') {
+                setLastN(Number(v));
+                return;
+              }
+              throw new Error(`Invalid last-N value: ${v}`);
+            }}
+          >
+            <option value="all">All games</option>
+            <option value="5">Last 5</option>
+            <option value="10">Last 10</option>
+            <option value="20">Last 20</option>
+          </select>
           <select
             className="top-player-range"
             value={custom ? 'custom' : range}

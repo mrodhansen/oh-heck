@@ -40,6 +40,9 @@ export type RankedPlayer = {
 
 export type TopRange = 'all' | '5y' | '1y' | '6m' | '1m';
 
+/** 'all' = every game in the window; otherwise the N most recent. */
+export type LastNGames = 'all' | number;
+
 export function rangeSince(range: TopRange, now = new Date()): Date | null {
   if (range === 'all') return null;
   const d = new Date(now.getTime());
@@ -62,10 +65,20 @@ export function dayEndMs(ymd: string): number {
   return new Date(`${ymd}T23:59:59.999`).getTime();
 }
 
+function lastNCap(lastN: LastNGames): number | null {
+  if (lastN === 'all') return null;
+  if (!Number.isInteger(lastN) || lastN < 1) {
+    throw new Error(`lastN must be a positive integer or 'all', got ${lastN}`);
+  }
+  return lastN;
+}
+
 /**
  * Standings inside [fromMs, toMs] (unbounded = all games).
  * Win rate, 2nd/3rd rate, and avg score are recency-weighted so newer
  * games count more; high tables get a 1.25× bump. Game counts stay raw.
+ * When lastN is a number, only that player's most recent N games in the
+ * window count; fewer than N still ranks, with the usual game runoff.
  */
 export function playersForWindow(
   players: StatsPlayer[],
@@ -73,14 +86,21 @@ export function playersForWindow(
   fromMs: number | null,
   toMs: number | null,
   now = new Date(),
+  lastN: LastNGames = 'all',
 ): StatsPlayer[] {
   const t0 = toMs ?? now.getTime();
-  const unbounded = fromMs == null && toMs == null;
+  const cap = lastNCap(lastN);
+  const careerStats = fromMs == null && toMs == null && cap == null;
   const windowed = games.filter((g) => {
     const t = gameTime(g);
     if (fromMs != null && t < fromMs) return false;
     if (toMs != null && t > toMs) return false;
     return true;
+  });
+  const newestFirst = [...windowed].sort((a, b) => {
+    const dt = gameTime(b) - gameTime(a);
+    if (dt !== 0) return dt;
+    return b.id.localeCompare(a.id);
   });
   const out: StatsPlayer[] = [];
   for (const p of players) {
@@ -94,7 +114,7 @@ export function playersForWindow(
     let wSeconds = 0;
     let wThirds = 0;
     let wTotal = 0;
-    for (const g of windowed) {
+    for (const g of newestFirst) {
       const row = g.standings.find((s) => s.name === p.name);
       if (!row) continue;
       const w = gameWeight(g, t0);
@@ -112,6 +132,7 @@ export function playersForWindow(
         thirds += 1;
         wThirds += w;
       }
+      if (cap != null && n >= cap) break;
     }
     if (n === 0 || wSum <= 0) continue;
     out.push({
@@ -126,9 +147,9 @@ export function playersForWindow(
       totalScore: total,
       avgScore: Math.round((wTotal / wSum) * 100) / 100,
       winRate: Math.round((wWins / wSum) * 10000) / 100,
-      bidAccuracy: unbounded ? p.bidAccuracy : null,
-      forceBurns: unbounded ? p.forceBurns : 0,
-      roundsPlayed: unbounded ? p.roundsPlayed : 0,
+      bidAccuracy: careerStats ? p.bidAccuracy : null,
+      forceBurns: careerStats ? p.forceBurns : 0,
+      roundsPlayed: careerStats ? p.roundsPlayed : 0,
     });
   }
   return out;
@@ -139,6 +160,7 @@ export function playersForRange(
   games: StatsGame[],
   range: TopRange,
   now = new Date(),
+  lastN: LastNGames = 'all',
 ): StatsPlayer[] {
   const since = rangeSince(range, now);
   return playersForWindow(
@@ -147,6 +169,7 @@ export function playersForRange(
     since ? since.getTime() : null,
     null,
     now,
+    lastN,
   );
 }
 

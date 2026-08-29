@@ -440,6 +440,80 @@ describe('high table weighting', () => {
   });
 });
 
+describe('last N games', () => {
+  const now = new Date('2026-08-01T00:00:00.000Z');
+
+  it('uses only the most recent N games in the window', () => {
+    const games = [
+      game({
+        id: 'oldest',
+        at: '2026-01-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 10, place: 2 },
+          { name: 'Typical', total: 90, place: 1 },
+        ],
+      }),
+      game({
+        id: 'mid',
+        at: '2026-04-01T00:00:00.000Z',
+        standings: [{ name: 'Abe', total: 40, place: 1 }],
+      }),
+      game({
+        id: 'newest',
+        at: '2026-07-01T00:00:00.000Z',
+        standings: [{ name: 'Abe', total: 60, place: 1 }],
+      }),
+    ];
+    const windowed = playersForWindow([regular], games, null, null, now, 2);
+    expect(windowed).toHaveLength(1);
+    expect(windowed[0]?.gamesCompleted).toBe(2);
+    expect(windowed[0]?.wins).toBe(2);
+    expect(windowed[0]?.avgScore).toBeGreaterThan(40);
+  });
+
+  it('does not count games outside the timeframe toward last N', () => {
+    const games = [
+      game({
+        id: 'old-win',
+        at: '2014-01-01T00:00:00.000Z',
+        standings: [{ name: 'Abe', total: 80, place: 1 }],
+      }),
+      game({
+        id: 'recent-loss',
+        at: '2026-06-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abe', total: 10, place: 2 },
+          { name: 'Typical', total: 50, place: 1 },
+        ],
+      }),
+    ];
+    const windowed = playersForRange([regular], games, '1y', now, 5);
+    expect(windowed).toHaveLength(1);
+    expect(windowed[0]?.gamesCompleted).toBe(1);
+    expect(windowed[0]?.wins).toBe(0);
+  });
+
+  it('still includes a player with fewer than N games', () => {
+    const games = [
+      game({
+        id: 'one',
+        at: '2026-06-01T00:00:00.000Z',
+        standings: [{ name: 'Zeke', total: 66, place: 1 }],
+      }),
+    ];
+    const pool = playersForWindow([oneShot], games, null, null, now, 10);
+    expect(pool).toHaveLength(1);
+    expect(pool[0]?.gamesCompleted).toBe(1);
+    expect(rankBestPlayers(pool)).toHaveLength(1);
+  });
+
+  it('rejects a non-positive lastN', () => {
+    expect(() =>
+      playersForWindow([regular], [], null, null, now, 0),
+    ).toThrow(/positive integer/);
+  });
+});
+
 describe('playerScore', () => {
   it('weights placement, made bids, and score, minus a small force-burn hit', () => {
     expect(
