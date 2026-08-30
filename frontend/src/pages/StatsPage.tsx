@@ -44,6 +44,7 @@ import {
   stackSm,
   statsGrid,
   statTile,
+  tableScroll,
 } from '../ui';
 
 const TABLE_PAGE_SIZE = 20;
@@ -335,7 +336,7 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
         <div className={cn(card, empty)}>No games match these filters.</div>
       ) : (
         <div className={cn(card, 'overflow-hidden p-0')}>
-          <div className="table-scroll">
+          <div className={tableScroll}>
             <table className={dataTable}>
               <thead>
                 <tr>
@@ -462,7 +463,7 @@ function PlayersList({
         <div className={cn(card, empty)}>No players match these filters.</div>
       ) : (
         <div className={cn(card, 'overflow-hidden p-0')}>
-          <div className="table-scroll">
+          <div className={tableScroll}>
             <table className={dataTable}>
               <thead>
                 <tr>

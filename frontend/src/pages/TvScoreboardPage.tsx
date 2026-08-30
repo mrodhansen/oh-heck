@@ -8,7 +8,26 @@ import { TvFit } from '../components/TvFit';
 import { getCachedGame } from '../offline/db';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
-import { banner, card, cn, empty, fillCenter } from '../ui';
+import {
+  banner,
+  card,
+  cn,
+  empty,
+  fillCenter,
+  placeTone,
+  score,
+  scoreNeg,
+  scorePos,
+  sectionTitle,
+  tvBody,
+  tvPlace,
+  tvScreen,
+  tvStandingList,
+  tvStandingName,
+  tvStandingRow,
+  tvStandings,
+  tvTable,
+} from '../ui';
 
 export function TvScoreboardPage() {
   const { id } = useParams<{ id: string }>();
@@ -119,48 +138,40 @@ export function TvScoreboardPage() {
   if (!game) return <div className={cn(empty, fillCenter)}>Game not found</div>;
 
   return (
-    <div className="tv-screen">
+    <div className={tvScreen}>
       {error ? <div className={cn(banner, 'shrink-0')}>{error}</div> : null}
       <TvFit layoutKey={tvBoardFingerprint(game)}>
-        <div className="tv-body">
-          <section className={cn(card, 'tv-standings')}>
-            <h3 className="section-title">Leaders</h3>
-            <div className="tv-standing-list">
+        <div className={cn('tv-body', tvBody)}>
+          <section className={cn(card, tvStandings)}>
+            <h3 className={cn(sectionTitle, 'mb-2 shrink-0 text-mode')}>Leaders</h3>
+            <div className={tvStandingList}>
               {standings.map((s) => (
-                <div
-                  key={s.playerId}
-                  className={`tv-standing-row${
-                    s.place === 1
-                      ? ' is-first'
-                      : s.place === 2
-                        ? ' is-second'
-                        : s.place === 3
-                          ? ' is-third'
-                          : ''
-                  }`}
-                >
-                  <span
-                    className={`place ${
-                      s.place === 1
-                        ? 'gold'
-                        : s.place === 2
-                          ? 'silver'
-                          : s.place === 3
-                            ? 'bronze'
-                            : ''
-                    }`}
-                  >
+                <div key={s.playerId} className={tvStandingRow(s.place)}>
+                  <span className={cn(tvPlace, placeTone(s.place))}>
                     {s.place}
                   </span>
-                  <span className="tv-standing-name">{s.playerName}</span>
-                  <span className={`score ${s.total >= 0 ? 'pos' : 'neg'}`}>
+                  <span
+                    className={cn(
+                      tvStandingName,
+                      s.place === 1 && 'font-bold',
+                    )}
+                  >
+                    {s.playerName}
+                  </span>
+                  <span
+                    className={cn(
+                      score,
+                      'font-display text-3xl leading-none',
+                      s.total >= 0 ? scorePos : scoreNeg,
+                    )}
+                  >
                     {s.total}
                   </span>
                 </div>
               ))}
             </div>
           </section>
-          <div className="tv-table">
+          <div className={cn('tv-table', tvTable)}>
             <Scoreboard game={game} variant="tv" showStandings={false} />
           </div>
         </div>

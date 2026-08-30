@@ -16,6 +16,16 @@ import { LiveSessionPage } from './pages/LiveSessionPage';
 import { TvScoreboardPage } from './pages/TvScoreboardPage';
 import { SyncStatus } from './components/SyncStatus';
 import { useAuth } from './useAuth';
+import {
+  appMain,
+  brand,
+  brandTitle,
+  cn,
+  navLinkClass,
+  navLinks,
+  rulesHelpClass,
+  topbar,
+} from './ui';
 
 export function App() {
   const { pathname } = useLocation();
@@ -33,27 +43,41 @@ export function App() {
 
   return (
     <div
-      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${wideDesktop ? ' app-shell-stats' : ''}${inTv ? ' app-shell-tv' : ''}`}
+      className={cn(
+        'app-shell',
+        hideChrome && 'app-shell-game',
+        wideDesktop && 'app-shell-stats',
+        inTv && 'app-shell-tv',
+      )}
     >
       {!hideChrome && (
-        <header className="topbar">
-          <div className="brand">
-            <h1>Oh Heck</h1>
-            <NavLink to="/rules" className="rules-help" title="Rules" aria-label="Rules">
+        <header className={topbar}>
+          <div className={brand}>
+            <h1 className={brandTitle}>Oh Heck</h1>
+            <NavLink
+              to="/rules"
+              className={({ isActive }) => rulesHelpClass(isActive)}
+              title="Rules"
+              aria-label="Rules"
+            >
               ?
             </NavLink>
           </div>
-          <nav className="nav-links">
-            <NavLink to="/" end>
+          <nav className={navLinks}>
+            <NavLink to="/" end className={({ isActive }) => navLinkClass(isActive)}>
               Play
             </NavLink>
-            <NavLink to="/stats">Stats</NavLink>
-            <NavLink to="/account">{user ? user.firstName : 'Account'}</NavLink>
+            <NavLink to="/stats" className={({ isActive }) => navLinkClass(isActive)}>
+              Stats
+            </NavLink>
+            <NavLink to="/account" className={({ isActive }) => navLinkClass(isActive)}>
+              {user ? user.firstName : 'Account'}
+            </NavLink>
           </nav>
         </header>
       )}
       {!inTv && <SyncStatus />}
-      <main className="app-main">
+      <main className={appMain}>
         <Routes>
           <Route path="/" element={<PlayModePage />} />
           <Route path="/play/live" element={<LiveHubPage />} />

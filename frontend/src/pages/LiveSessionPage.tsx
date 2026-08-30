@@ -21,6 +21,10 @@ import { useSocketRoom } from '../useSocketRoom';
 import {
   banner,
   bannerWarn,
+  boardMid,
+  boardTrump,
+  boardTrumpLabel,
+  boardTrumpSuit,
   btnClass,
   card,
   cn,
@@ -33,10 +37,35 @@ import {
   hint,
   iconBtn,
   iconBtnSpacer,
+  liveBidBackdrop,
+  liveBidRange,
+  liveBidReopen,
+  liveBidSheet,
+  liveBidSheetTitle,
+  liveBidSheetTop,
+  liveFeltWrap,
+  liveHand,
+  liveMeArea,
+  livePhaseHeader,
+  livePhaseRow,
+  livePhaseRowMeta,
+  livePlay,
+  livePlayBody,
+  liveTurnHint,
+  lobbyCenter,
+  lobbyCode,
+  lobbyCodeLabel,
+  lobbyCol,
+  lobbyMe,
+  lobbySides,
+  lobbyTable,
   pageFit,
   panelScroll,
   phaseDot,
   stack,
+  trickCount,
+  trickEmpty,
+  trickWinnerLabel,
 } from '../ui';
 
 export function LiveSessionPage() {
@@ -297,8 +326,8 @@ export function LiveSessionPage() {
       {(isFinished || tab === 'board') && (
         <div className={cn(panelScroll, stack)}>
           <section className={cn(card, 'flex flex-col items-center gap-2 text-center')}>
-            <div className="lobby-code-label">Game code</div>
-            <div className="lobby-code">{view.code}</div>
+            <div className={lobbyCodeLabel}>Game code</div>
+            <div className={lobbyCode}>{view.code}</div>
             <div className="flex w-full flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
@@ -387,7 +416,7 @@ function LobbyView({
   const presentCount = view.players.filter((p) => !p.gone).length;
 
   return (
-    <div className={cn(gameScreen, 'lobby-screen')}>
+    <div className={cn(gameScreen, 'min-h-0')}>
       <header className={gameTopbar}>
         <button type="button" className={iconBtn} onClick={onBack} aria-label="Back">
           ←
@@ -410,16 +439,16 @@ function LobbyView({
 
       {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="lobby-table">
-        <div className="lobby-sides">
-          <div className="lobby-col">
+      <div className={lobbyTable}>
+        <div className={lobbySides}>
+          <div className={lobbyCol}>
             {padSeats(left, 3).map((p, i) => (
               <SeatChip key={p?.id ?? `l${i}`} player={p} />
             ))}
           </div>
-          <div className="lobby-center">
-            <div className="lobby-code-label">Game code</div>
-            <div className="lobby-code">{view.code}</div>
+          <div className={lobbyCenter}>
+            <div className={lobbyCodeLabel}>Game code</div>
+            <div className={lobbyCode}>{view.code}</div>
             <button type="button" className={btnClass({ size: 'sm' })} onClick={onCopy}>
               {copied ? 'Copied' : 'Copy link'}
             </button>
@@ -437,19 +466,19 @@ function LobbyView({
                     : 'Waiting for players'}
               </button>
             ) : (
-              <p className={cn(hint, 'lobby-wait-hint')}>Waiting for host to start…</p>
+              <p className={cn(hint, 'm-0')}>Waiting for host to start…</p>
             )}
             <p className={hint}>
               {presentCount}/{view.maxPlayers} players
             </p>
           </div>
-          <div className="lobby-col">
+          <div className={lobbyCol}>
             {padSeats(right, 3).map((p, i) => (
               <SeatChip key={p?.id ?? `r${i}`} player={p} />
             ))}
           </div>
         </div>
-        <div className="lobby-me">
+        <div className={lobbyMe}>
           <SeatChip player={view.players.find((p) => p.id === view.me.playerId) ?? null} me />
         </div>
       </div>
@@ -548,14 +577,14 @@ function LivePlayTable({
     };
 
   return (
-    <div className={`live-play players-${n}`}>
-      <header className="live-phase-header">
-        <p className="live-phase-row">
+    <div className={livePlay}>
+      <header className={livePhaseHeader}>
+        <p className={livePhaseRow}>
           Round {view.roundNumber}
           <span className={phaseDot}>·</span>
           {handSize} cards
         </p>
-        <p className="live-phase-row live-phase-row-meta">
+        <p className={cn(livePhaseRow, livePhaseRowMeta)}>
           Tricks {tricksTaken}
           {handSize > 0 ? `/${handSize}` : ''}
           <span className={phaseDot}>·</span>
@@ -563,8 +592,8 @@ function LivePlayTable({
         </p>
       </header>
 
-      <div className="live-play-body">
-        <div className="live-felt-wrap">
+      <div className={livePlayBody}>
+        <div className={cn('live-felt-wrap', liveFeltWrap)}>
           <LiveBoard
             view={view}
             layout={layout}
@@ -576,20 +605,20 @@ function LivePlayTable({
           {/* Bid popup sits over the table only — hand stays fully visible below. */}
           {view.isMyBidTurn && bidSheetOpen && (
             <div
-              className="live-bid-backdrop"
+              className={liveBidBackdrop}
               onClick={() => setBidSheetOpen(false)}
               role="presentation"
             >
               <div
-                className={cn('live-bid-sheet', card)}
+                className={cn(liveBidSheet, card)}
                 role="dialog"
                 aria-label="Place your bid"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="live-bid-sheet-top">
-                  <div className="live-bid-sheet-title">
+                <div className={liveBidSheetTop}>
+                  <div className={liveBidSheetTitle}>
                     Your bid{' '}
-                    <span className="live-bid-range">(0–{handSize})</span>
+                    <span className={liveBidRange}>(0–{handSize})</span>
                   </div>
                   <button
                     type="button"
@@ -631,7 +660,7 @@ function LivePlayTable({
           {view.isMyBidTurn && !bidSheetOpen && (
             <button
               type="button"
-              className={cn('live-bid-reopen', btnClass({ kind: 'primary' }))}
+              className={cn(liveBidReopen, btnClass({ kind: 'primary' }))}
               onClick={() => setBidSheetOpen(true)}
             >
               Your turn to bid
@@ -639,21 +668,21 @@ function LivePlayTable({
           )}
         </div>
 
-        <div className="live-me-area">
+        <div className={liveMeArea}>
           {!view.isMyBidTurn && bidding && (
-            <p className={cn(hint, 'live-turn-hint')}>
+            <p className={cn(hint, liveTurnHint)}>
               {turnWaitLabel(view, view.bidderSeat)}
             </p>
           )}
 
           {view.phase === 'playing' && !view.isMyTurn && (
-            <p className={cn(hint, 'live-turn-hint')}>
+            <p className={cn(hint, liveTurnHint)}>
               {turnWaitLabel(view, view.turnSeat)}
             </p>
           )}
 
           {(view.phase === 'playing' || bidding) && (
-            <div className={`live-hand ${bidding ? 'live-hand-bidding' : ''}`}>
+            <div className={cn('live-hand', liveHand, bidding && 'live-hand-bidding')}>
               {view.hand.map((c) => {
                 const legal =
                   view.phase !== 'playing' ||
@@ -828,7 +857,7 @@ function LiveBoard({
   cells.push(
     <div
       key="mid"
-      className="board-mid"
+      className={cn('board-mid', boardMid)}
       style={{ gridColumn: 3, gridRow: `1 / span ${sideRows}` }}
     >
       <BoardTrump view={view} />
@@ -853,8 +882,8 @@ function LiveBoard({
 function BoardTrump({ view }: { view: LiveView }) {
   if (!view.trumpCard && !view.trumpSuit) return null;
   return (
-    <div className="board-trump">
-      <span className="board-trump-label">Trump</span>
+    <div className={cn('board-trump', boardTrump)}>
+      <span className={cn('board-trump-label', boardTrumpLabel)}>Trump</span>
       {view.trumpCard ? (
         <PlayingCard
           card={{
@@ -865,7 +894,7 @@ function BoardTrump({ view }: { view: LiveView }) {
           compact
         />
       ) : (
-        <span className="board-trump-suit">{trumpLabel(view.trumpSuit)}</span>
+        <span className={boardTrumpSuit}>{trumpLabel(view.trumpSuit)}</span>
       )}
     </div>
   );
@@ -922,27 +951,27 @@ function BoardPlay({
 
 function TrickStatus({ view }: { view: LiveView }) {
   if (view.phase === 'bidding') {
-    return <span className="trick-empty">Bidding…</span>;
+    return <span className={trickEmpty}>Bidding…</span>;
   }
   const hasPlays = view.table.plays.length > 0;
   const winnerSeat = view.table.complete ? view.table.winnerSeat : null;
   if (!hasPlays) {
     return (
-      <span className="trick-empty">
+      <span className={trickEmpty}>
         {view.isMyTurn ? 'Your lead' : 'Waiting for lead'}
       </span>
     );
   }
   if (view.table.complete && winnerSeat != null) {
     return (
-      <span className="trick-winner-label">
+      <span className={trickWinnerLabel}>
         {view.players.find((p) => p.seatIndex === winnerSeat)?.name ?? 'Player'}{' '}
         takes it
       </span>
     );
   }
   return (
-    <span className="trick-count">
+    <span className={trickCount}>
       {view.table.plays.length}/{view.players.length}
     </span>
   );

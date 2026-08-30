@@ -13,6 +13,7 @@ import {
   scorePos,
   sectionTitle,
   stack,
+  tableScroll,
 } from '../ui';
 
 type Props = {
@@ -37,7 +38,7 @@ export function Scoreboard({
   const showEditCol = Boolean(editRound) && !isTv;
 
   return (
-    <div className={cn(stack, isTv && 'tv-scoreboard')}>
+    <div className={cn(stack, isTv && 'tv-scoreboard h-auto')}>
       {showStandings ? (
       <section className={card}>
         <h3 className={sectionTitle}>Standings</h3>
@@ -67,9 +68,9 @@ export function Scoreboard({
       </section>
       ) : null}
 
-      <section className={card}>
-        <h3 className={sectionTitle}>Scoreboard</h3>
-        <div className="table-scroll">
+      <section className={cn(card, isTv && 'flex h-auto flex-col')}>
+        <h3 className={cn(sectionTitle, isTv && 'text-mode')}>Scoreboard</h3>
+        <div className={cn(tableScroll, isTv && 'overflow-visible')}>
           <table className="scoreboard">
             <thead>
               <tr>

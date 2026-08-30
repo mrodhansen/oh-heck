@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cn, tvFit, tvFitInner } from '../ui';
 
 type Props = {
   layoutKey: string;
@@ -64,10 +65,10 @@ export function TvFit({ layoutKey, children }: Props) {
   }, [layoutKey]);
 
   return (
-    <div ref={outerRef} className="tv-fit">
+    <div ref={outerRef} className={tvFit}>
       <div
         ref={innerRef}
-        className={`tv-fit-inner${fit?.widthPx != null ? ' is-wide' : ''}`}
+        className={cn('tv-fit-inner', tvFitInner, fit?.widthPx != null && 'is-wide')}
         style={{
           width: fit?.widthPx != null ? `${fit.widthPx}px` : 'max-content',
           transform: `translate(-50%, -50%) scale(${fit?.scale ?? 1})`,

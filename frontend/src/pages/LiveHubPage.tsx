@@ -13,6 +13,7 @@ import {
   btnClass,
   card,
   cn,
+  codeInput,
   empty,
   field,
   lede,
@@ -298,7 +299,7 @@ export function LiveHubPage() {
             Join Game
             <input
               type="number"
-              className="code-input tabular-nums tracking-wider"
+              className={codeInput}
               value={code}
               onChange={(e) =>
                 setCode(e.target.value.replace(/\D/g, '').slice(0, 4))
