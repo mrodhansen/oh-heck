@@ -3,6 +3,14 @@ import {
   matchingClaimablePlayers,
   type ClaimableGame,
 } from '../auth';
+import {
+  cn,
+  listItem,
+  listItemChevron,
+  listItemMeta,
+  listItemStatus,
+  listItemTitle,
+} from '../ui';
 
 export function ClaimableGameCard({
   game,
@@ -21,11 +29,13 @@ export function ClaimableGameCard({
   const body = (
     <>
       <div className="min-w-0">
-        <p className="list-item-title truncate">{game.name ?? 'Game'}</p>
-        <p className="list-item-meta truncate">
+        <p className={cn(listItemTitle, 'truncate', selected && 'font-bold')}>
+          {game.name ?? 'Game'}
+        </p>
+        <p className={cn(listItemMeta, 'truncate')}>
           {game.players.map((p) => p.name).join(', ')}
         </p>
-        <p className="list-item-status">
+        <p className={listItemStatus}>
           {status}
           {when ? ` · ${when}` : ''}
           {matchNames.length > 0
@@ -35,13 +45,16 @@ export function ClaimableGameCard({
       </div>
       {onToggle ? (
         <span
-          className={`claim-check${selected ? ' is-on' : ''}`}
+          className={cn(
+            'mt-0.5 grid size-5.5 shrink-0 place-items-center rounded-md border-2 border-line-strong text-meta font-bold leading-none text-surface',
+            selected && 'border-ok bg-ok',
+          )}
           aria-hidden
         >
           {selected ? '✓' : ''}
         </span>
       ) : (
-        <span className="list-item-chevron" aria-hidden>
+        <span className={listItemChevron} aria-hidden>
           ›
         </span>
       )}
@@ -52,7 +65,11 @@ export function ClaimableGameCard({
     return (
       <button
         type="button"
-        className={`list-item list-item-btn${selected ? ' list-item-selected' : ''}`}
+        className={cn(
+          listItem,
+          'w-full cursor-pointer border-0 bg-transparent px-0 text-left',
+          selected && 'bg-sand-100',
+        )}
         aria-pressed={selected === true}
         onClick={() => onToggle(game.id)}
       >
@@ -65,7 +82,7 @@ export function ClaimableGameCard({
     <Link
       to={`/games/${game.id}`}
       state={{ from: 'account' }}
-      className="list-item"
+      className={cn(listItem, 'bg-transparent px-0')}
     >
       {body}
     </Link>

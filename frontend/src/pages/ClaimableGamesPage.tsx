@@ -8,6 +8,24 @@ import {
 import { toUserMessage } from '../api/errors';
 import { ClaimableGameCard } from '../components/ClaimableGameCard';
 import { useAuth } from '../useAuth';
+import {
+  actionBar,
+  banner,
+  bannerOk,
+  btnClass,
+  card,
+  cn,
+  empty,
+  fillCenter,
+  hint,
+  list,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  stack,
+} from '../ui';
 
 export function ClaimableGamesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -96,7 +114,7 @@ export function ClaimableGamesPage() {
   }
 
   if (authLoading) {
-    return <div className="empty fill-center">Loading…</div>;
+    return <div className={cn(empty, fillCenter)}>Loading…</div>;
   }
   if (!user) {
     return <Navigate to="/account" replace />;
@@ -106,36 +124,41 @@ export function ClaimableGamesPage() {
   const n = selected.size;
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header">
-          <h2 className="page-title">Claim your games</h2>
-          <Link to="/account" className="btn ghost sm">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={pageHeader}>
+          <h2 className={pageTitle}>Claim your games</h2>
+          <Link to="/account" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Back
           </Link>
         </div>
-        <p className="hint" style={{ margin: 0 }}>
+        <p className={cn(hint, 'm-0')}>
           Check the games you played, then claim them.
         </p>
       </div>
-      <div className="page-fit-body stack">
-        {error && <div className="banner">{error}</div>}
-        {message && <div className="banner banner-ok">{message}</div>}
-        {loading && <div className="empty">Looking for games…</div>}
+      <div className={cn(pageFitBody, stack)}>
+        {error && <div className={banner}>{error}</div>}
+        {message && <div className={bannerOk}>{message}</div>}
+        {loading && <div className={empty}>Looking for games…</div>}
         {!loading && !error && games.length === 0 && (
-          <div className="empty">No games to claim.</div>
+          <div className={empty}>No games to claim.</div>
         )}
         {!loading && games.length > 0 && (
-          <div className="card stack">
+          <div className={cn(card, stack)}>
             <button
               type="button"
-              className="btn ghost sm"
+              className={btnClass({ kind: 'ghost', size: 'sm' })}
               disabled={busy}
               onClick={toggleAll}
             >
               {allOn ? 'Clear all' : 'Select all'}
             </button>
-            <div className="list claim-list">
+            <div
+              className={cn(
+                list,
+                'mt-1 overflow-visible rounded-none border-x-0 border-b-0 bg-transparent',
+              )}
+            >
               {games.map((g) => (
                 <ClaimableGameCard
                   key={g.id}
@@ -150,10 +173,10 @@ export function ClaimableGamesPage() {
         )}
       </div>
       {!loading && games.length > 0 && (
-        <div className="action-bar">
+        <div className={actionBar}>
           <button
             type="button"
-            className="btn primary block"
+            className={btnClass({ kind: 'primary', block: true })}
             disabled={busy || n === 0}
             onClick={() => void onClaim()}
           >

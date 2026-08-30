@@ -6,6 +6,16 @@ import {
   MAX_NOTES_PER_GAME,
   createGameNote,
 } from '../offline/notes';
+import {
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  list,
+  panelScroll,
+} from '../ui';
 
 type Props = {
   notes: GameNote[];
@@ -96,12 +106,13 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
     items.length < MAX_NOTES_PER_GAME;
 
   return (
-    <div className="notes-panel">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
       {!readOnly && (
-        <form className="notes-composer" onSubmit={addNote}>
-          <label className="field">
+        <form className="flex shrink-0 flex-col gap-2" onSubmit={addNote}>
+          <label className={field}>
             New note
             <textarea
+              className="min-h-notes"
               value={draft}
               maxLength={MAX_NOTE_LENGTH}
               rows={3}
@@ -119,10 +130,10 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
               }}
             />
           </label>
-          <div className="notes-composer-bar">
+          <div className="flex justify-end">
             <button
               type="submit"
-              className="btn primary"
+              className={btnClass({ kind: 'primary' })}
               disabled={saving || !canAdd}
             >
               {saving && !editingId ? 'Saving…' : 'Save'}
@@ -131,20 +142,23 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
         </form>
       )}
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="panel-scroll notes-list-wrap">
+      <div className={panelScroll}>
         {items.length === 0 ? (
-          <div className="card empty">No notes yet.</div>
+          <div className={cn(card, empty)}>No notes yet.</div>
         ) : (
-          <div className="list notes-list">
+          <div className={list}>
             {items.map((note) => {
               const editing = editingId === note.id;
               return (
-                <div key={note.id} className="notes-item">
+                <div
+                  key={note.id}
+                  className="flex flex-col gap-2 border-b border-line px-3.5 py-3 last:border-b-0"
+                >
                   {editing ? (
                     <>
-                      <label className="field">
+                      <label className={field}>
                         Edit note
                         <textarea
                           value={editText}
@@ -165,10 +179,10 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
                           }}
                         />
                       </label>
-                      <div className="notes-item-actions">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          className="btn ghost sm"
+                          className={btnClass({ kind: 'ghost', size: 'sm' })}
                           disabled={saving}
                           onClick={cancelEdit}
                         >
@@ -176,7 +190,7 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
                         </button>
                         <button
                           type="button"
-                          className="btn primary sm"
+                          className={btnClass({ kind: 'primary', size: 'sm' })}
                           disabled={saving || !editText.trim()}
                           onClick={() => void saveEdit()}
                         >
@@ -186,12 +200,14 @@ export function GameNotes({ notes, readOnly = false, onSave }: Props) {
                     </>
                   ) : (
                     <>
-                      <p className="notes-item-text">{note.text}</p>
+                      <p className="m-0 wrap-anywhere whitespace-pre-wrap leading-snug">
+                        {note.text}
+                      </p>
                       {!readOnly && (
-                        <div className="notes-item-actions">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            className="btn ghost sm"
+                            className={btnClass({ kind: 'ghost', size: 'sm' })}
                             disabled={saving || editingId != null}
                             onClick={() => startEdit(note)}
                           >

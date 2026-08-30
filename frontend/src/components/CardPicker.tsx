@@ -1,6 +1,7 @@
 import { rankLabel, suitGlyph } from '../live/cards';
 import { RANKS, SUITS, cardKey } from '../offline/superPlay';
 import type { Rank, Suit } from '../types/cards';
+import { cn } from '../ui';
 
 type Props = {
   selectedSuit: Suit | null;
@@ -11,6 +12,9 @@ type Props = {
   onSelectRank: (rank: Rank) => void;
 };
 
+const pickerBtn =
+  'flex-1 min-h-11 min-w-0 cursor-pointer rounded-btn border font-display disabled:cursor-not-allowed disabled:opacity-35';
+
 export function CardPicker({
   selectedSuit,
   selectedRank,
@@ -20,8 +24,8 @@ export function CardPicker({
   onSelectRank,
 }: Props) {
   return (
-    <div className="card-picker">
-      <div className="card-picker-suits" role="radiogroup" aria-label="Suit">
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-1.5" role="radiogroup" aria-label="Suit">
         {SUITS.map((suit) => {
           const red = suit === 'H' || suit === 'D';
           return (
@@ -30,9 +34,14 @@ export function CardPicker({
               type="button"
               role="radio"
               aria-checked={selectedSuit === suit}
-              className={`card-picker-suit ${red ? 'red' : 'black'} ${
-                selectedSuit === suit ? 'selected' : ''
-              }`}
+              className={cn(
+                pickerBtn,
+                'text-2xl',
+                red ? 'text-danger' : 'text-grey-900',
+                selectedSuit === suit
+                  ? 'border-grey-800 bg-sand-100 shadow-inset-sel'
+                  : 'border-line-strong bg-surface',
+              )}
               disabled={disabled}
               onClick={() => onSelectSuit(suit)}
             >
@@ -41,7 +50,11 @@ export function CardPicker({
           );
         })}
       </div>
-      <div className="card-picker-ranks" role="radiogroup" aria-label="Rank">
+      <div
+        className="flex flex-nowrap gap-1.5 portrait:grid portrait:grid-cols-7"
+        role="radiogroup"
+        aria-label="Rank"
+      >
         {RANKS.map((rank) => {
           const key = selectedSuit ? cardKey({ s: selectedSuit, r: rank }) : '';
           const used = selectedSuit != null && usedKeys.has(key);
@@ -53,14 +66,21 @@ export function CardPicker({
               role="radio"
               aria-checked={selectedRank === rank}
               disabled={disabled || !selectedSuit || used}
-              className={`card-picker-rank ${red ? 'red' : 'black'} ${
-                selectedRank === rank ? 'selected' : ''
-              }`}
+              className={cn(
+                pickerBtn,
+                'flex flex-col items-center justify-center py-1 text-btn-sm font-bold leading-tight portrait:text-btn',
+                red ? 'text-danger' : 'text-grey-900',
+                selectedRank === rank
+                  ? 'border-grey-800 bg-sand-100 shadow-inset-sel'
+                  : 'border-line-strong bg-surface',
+              )}
               onClick={() => onSelectRank(rank)}
             >
               <span>{rankLabel(rank)}</span>
               {selectedSuit ? (
-                <span className="card-picker-rank-suit">{suitGlyph(selectedSuit)}</span>
+                <span className="text-meta font-medium">
+                  {suitGlyph(selectedSuit)}
+                </span>
               ) : null}
             </button>
           );

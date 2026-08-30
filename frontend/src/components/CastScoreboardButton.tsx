@@ -3,6 +3,16 @@ import type { GameDetail } from '../api';
 import { getCastAppId, isCastUserCancel } from '../cast/snapshot';
 import { sendCastBoard, startCastSession } from '../cast/sender';
 import { currentTvScoreboardHref } from '../cast/tvUrl';
+import {
+  banner,
+  btnClass,
+  cn,
+  iconBtn,
+  modal,
+  modalBackdrop,
+  sectionTitle,
+  stack,
+} from '../ui';
 
 type Props = {
   game: GameDetail;
@@ -68,7 +78,7 @@ export function CastScoreboardButton({ game }: Props) {
     <>
       <button
         type="button"
-        className="icon-btn"
+        className={iconBtn}
         aria-label="Cast scoreboard"
         title="Cast scoreboard"
         onClick={() => {
@@ -80,36 +90,36 @@ export function CastScoreboardButton({ game }: Props) {
         <CastIcon />
       </button>
       {open ? (
-        <div className="modal-backdrop" onClick={close} role="presentation">
+        <div className={modalBackdrop} onClick={close} role="presentation">
           <div
-            className="modal stack"
+            className={cn(modal, stack)}
             role="dialog"
             aria-labelledby="cast-scoreboard-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <p id="cast-scoreboard-title" className="section-title" style={{ margin: 0 }}>
+            <p id="cast-scoreboard-title" className={cn(sectionTitle, 'm-0')}>
               Cast scoreboard
             </p>
-            {error ? <div className="banner">{error}</div> : null}
+            {error ? <div className={banner}>{error}</div> : null}
             <button
               type="button"
-              className="btn primary block"
+              className={btnClass({ kind: 'primary', block: true })}
               disabled={busy}
               onClick={() => void castToTv()}
             >
               {busy ? '…' : 'Cast to TV'}
             </button>
-            <button type="button" className="btn block" onClick={openTvBoard}>
+            <button type="button" className={btnClass({ block: true })} onClick={openTvBoard}>
               Open TV board
             </button>
             <button
               type="button"
-              className="btn ghost block"
+              className={btnClass({ kind: 'ghost', block: true })}
               onClick={() => void copyLink()}
             >
               {copied ? 'Copied' : 'Copy TV link'}
             </button>
-            <button type="button" className="btn ghost block" onClick={close}>
+            <button type="button" className={btnClass({ kind: 'ghost', block: true })} onClick={close}>
               Cancel
             </button>
           </div>

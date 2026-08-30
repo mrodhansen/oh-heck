@@ -3,6 +3,7 @@ import { copyFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const base = process.env.VITE_BASE || '/';
@@ -12,6 +13,7 @@ const backendTournaments = path.resolve(rootDir, '../backend/src/tournaments');
 export default defineConfig({
   base,
   plugins: [
+    tailwindcss(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

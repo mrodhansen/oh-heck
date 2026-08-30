@@ -16,6 +16,29 @@ import {
 import { parseExportFile } from '../importParse';
 import { newId } from '../offline/rules';
 import { isApiReady } from '../offline/sync';
+import {
+  actionBar,
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  hint,
+  modal,
+  modalBackdrop,
+  modeCard,
+  modeCardMeta,
+  modeCardTitle,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  sectionTitle,
+  stack,
+  stackSm,
+} from '../ui';
 
 type Choice = 'file' | 'photo' | null;
 
@@ -102,18 +125,18 @@ export function UploadGamePage() {
   }
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header">
-          <h2 className="page-title">Upload game</h2>
-          <Link to="/play/score" className="btn ghost sm">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={pageHeader}>
+          <h2 className={pageTitle}>Upload game</h2>
+          <Link to="/play/score" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Back
           </Link>
         </div>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
-      {reading && <div className="empty">Reading…</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
+      {reading && <div className={empty}>Reading…</div>}
 
       <input
         ref={fileRef}
@@ -140,34 +163,34 @@ export function UploadGamePage() {
       />
 
       {choiceOpen && !reading && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-            <h3 className="page-title" style={{ fontSize: '1.2rem', margin: 0 }}>
+        <div className={modalBackdrop} role="dialog" aria-modal="true">
+          <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+            <h3 className={cn(pageTitle, 'm-0 text-mode')}>
               How do you want to add this game?
             </h3>
             <button
               type="button"
-              className="btn mode-card"
+              className={cn(modeCard, 'cursor-pointer')}
               onClick={() => {
                 setChoice('file');
                 fileRef.current?.click();
               }}
             >
-              <span className="mode-card-title">Upload game data?</span>
-              <span className="mode-card-meta">XML, JSON, or CSV export</span>
+              <span className={modeCardTitle}>Upload game data?</span>
+              <span className={modeCardMeta}>XML, JSON, or CSV export</span>
             </button>
             <button
               type="button"
-              className="btn mode-card"
+              className={cn(modeCard, 'cursor-pointer')}
               onClick={() => {
                 setChoice('photo');
                 photoRef.current?.click();
               }}
             >
-              <span className="mode-card-title">Take picture of a scorecard?</span>
-              <span className="mode-card-meta">Read the card with Grok</span>
+              <span className={modeCardTitle}>Take picture of a scorecard?</span>
+              <span className={modeCardMeta}>Read the card with Grok</span>
             </button>
-            <Link to="/play/score" className="btn ghost block">
+            <Link to="/play/score" className={btnClass({ kind: 'ghost', block: true })}>
               Cancel
             </Link>
           </div>
@@ -175,8 +198,8 @@ export function UploadGamePage() {
       )}
 
       {draft && preview && !reading && (
-        <div className="page-fit-body stack">
-          <label className="field">
+        <div className={cn(pageFitBody, stack)}>
+          <label className={field}>
             Game name
             <input
               type="text"
@@ -189,12 +212,12 @@ export function UploadGamePage() {
             />
           </label>
 
-          <div className="stack-sm">
+          <div className={stackSm}>
             {draft.players
               .slice()
               .sort((a, b) => a.seatIndex - b.seatIndex)
               .map((p) => (
-                <label key={p.id} className="field">
+                <label key={p.id} className={field}>
                   Seat {p.seatIndex + 1}
                   <input
                     type="text"
@@ -214,7 +237,7 @@ export function UploadGamePage() {
           </div>
 
           {validation.length > 0 && (
-            <div className="banner banner-inline">{validation[0]}</div>
+            <div className={cn(banner, 'shrink-0')}>{validation[0]}</div>
           )}
 
           <Scoreboard
@@ -223,8 +246,8 @@ export function UploadGamePage() {
             onEditRound={(n) => setEditRound(n)}
           />
 
-          <section className="card stack-sm">
-            <h3 className="section-title">Notes</h3>
+          <section className={cn(card, stackSm)}>
+            <h3 className={sectionTitle}>Notes</h3>
             <GameNotes
               notes={draft.notes}
               onSave={async (notes) => {
@@ -236,13 +259,13 @@ export function UploadGamePage() {
       )}
 
       {draft && preview && !reading && (
-        <div className="action-bar">
-          <button type="button" className="btn ghost" onClick={resetChoice}>
+        <div className={actionBar}>
+          <button type="button" className={btnClass({ kind: 'ghost' })} onClick={resetChoice}>
             Start over
           </button>
           <button
             type="button"
-            className="btn primary block"
+            className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
             disabled={!canConfirm}
             onClick={() => setConfirmOpen(true)}
           >
@@ -288,22 +311,22 @@ export function UploadGamePage() {
 
       {confirmOpen && (
         <div
-          className="modal-backdrop"
+          className={modalBackdrop}
           role="dialog"
           aria-modal="true"
           onClick={() => !saving && setConfirmOpen(false)}
         >
-          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-            <p style={{ margin: 0, fontWeight: 600 }}>
+          <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+            <p className="m-0 font-semibold">
               Are you sure you want to confirm?
             </p>
-            <p className="hint" style={{ margin: 0 }}>
+            <p className={cn(hint, 'm-0')}>
               This saves the game. You can still edit rounds after.
             </p>
-            <div className="action-bar form-actions">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                className="btn ghost"
+                className={btnClass({ kind: 'ghost' })}
                 disabled={saving}
                 onClick={() => setConfirmOpen(false)}
               >
@@ -311,7 +334,7 @@ export function UploadGamePage() {
               </button>
               <button
                 type="button"
-                className="btn primary block"
+                className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
                 disabled={saving}
                 onClick={() => void confirmImport()}
               >
@@ -323,8 +346,12 @@ export function UploadGamePage() {
       )}
 
       {choice && !draft && !reading && !choiceOpen && (
-        <div className="page-fit-body">
-          <button type="button" className="btn primary block" onClick={resetChoice}>
+        <div className={pageFitBody}>
+          <button
+            type="button"
+            className={btnClass({ kind: 'primary', block: true })}
+            onClick={resetChoice}
+          >
             Choose again
           </button>
         </div>

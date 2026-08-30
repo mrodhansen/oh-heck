@@ -7,6 +7,7 @@ import {
   onSyncChange,
   syncNow,
 } from '../offline/sync';
+import { btnClass, cn } from '../ui';
 
 export function SyncStatus() {
   const apiStatus = useApiStatus();
@@ -41,7 +42,11 @@ export function SyncStatus() {
   const waking = apiStatus === 'waking' || apiStatus === 'unknown';
   if (online && !waking && pending === 0 && !error) return null;
 
-  const tone = !online ? 'offline' : waking ? 'waking' : 'online';
+  const tone = !online
+    ? 'border-sync-offline-border bg-sync-offline text-sync-offline-fg'
+    : waking
+      ? 'border-sync-waking-border bg-sync-waking text-sync-waking-fg'
+      : 'border-sync-online-border bg-sync-online text-sync-online-fg';
   const label = !online
     ? pending > 0
       ? `Offline · ${pending} pending`
@@ -55,12 +60,18 @@ export function SyncStatus() {
         : `Syncing ${pending} change${pending === 1 ? '' : 's'}…`;
 
   return (
-    <div className={`sync-bar ${tone}`} role="status">
+    <div
+      className={cn(
+        'mb-2 flex shrink-0 items-center justify-between gap-2.5 rounded-btn border px-2.5 py-2 text-meta',
+        tone,
+      )}
+      role="status"
+    >
       <span className="truncate">{label}</span>
       {online && !waking && (pending > 0 || error) && (
         <button
           type="button"
-          className="btn ghost sm"
+          className={btnClass({ kind: 'ghost', size: 'sm' })}
           disabled={syncing}
           onClick={() => {
             setSyncing(true);

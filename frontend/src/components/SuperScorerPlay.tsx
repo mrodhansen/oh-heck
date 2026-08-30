@@ -9,6 +9,14 @@ import {
   playsFromRound,
 } from '../offline/superPlay';
 import type { CardJson, Rank, Suit } from '../types/cards';
+import {
+  actionBar,
+  btnClass,
+  cn,
+  hint,
+  phaseDot,
+  playMiddle,
+} from '../ui';
 
 type Props = {
   game: GameDetail;
@@ -98,18 +106,18 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
 
   return (
     <>
-      <div className="play-middle">
-        <div className="super-play">
+      <div className={playMiddle}>
+        <div className="flex min-h-0 flex-col gap-2.5 overflow-auto px-0.5 pb-2">
           {view.trumpCard && (
-            <p className="super-play-trump">
+            <p className="m-0 text-center font-650 text-grey-800">
               Trump {suitGlyph(view.trumpCard.s)} {rankLabel(view.trumpCard.r)}
-              <span className="phase-dot">·</span>
+              <span className={phaseDot}>·</span>
               Trick {Math.min(view.completed.length + 1, current.handSize)}/
               {current.handSize}
             </p>
           )}
 
-          <div className="super-play-standings">
+          <div className="flex flex-col gap-1">
             {current.bidOrderPlayerIds.map((pid) => {
               const e = current.entries.find((x) => x.playerId === pid);
               if (!e) return null;
@@ -118,12 +126,17 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
               return (
                 <div
                   key={pid}
-                  className={`super-play-seat ${isTurn ? 'turn' : ''}`}
+                  className={cn(
+                    'flex items-center justify-between gap-2 rounded-btn border px-2.5 py-1.5 text-btn',
+                    isTurn
+                      ? 'border-grey-700 bg-sand-100 font-650'
+                      : 'border-line bg-surface',
+                  )}
                 >
                   <span className="truncate">{e.playerName}</span>
                   <strong>
                     {taken}
-                    <span className="value-of">/{e.bid}</span>
+                    <span>/{e.bid}</span>
                   </strong>
                 </div>
               );
@@ -131,12 +144,15 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
           </div>
 
           {!needTrump && view.current && view.current.plays.length > 0 && (
-            <div className="super-play-trick">
+            <div className="flex flex-wrap justify-center gap-2">
               {view.current.plays.map((p) => {
                 const name =
                   game.players.find((x) => x.id === p.playerId)?.name ?? '';
                 return (
-                  <div key={`${p.playerId}-${p.playOrder}`} className="super-play-slot">
+                  <div
+                    key={`${p.playerId}-${p.playOrder}`}
+                    className="flex min-w-0 flex-col items-center gap-1 text-kicker text-muted"
+                  >
                     <PlayingCard
                       card={{
                         key: p.key,
@@ -156,12 +172,12 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
             view.current &&
             view.current.plays.length === 0 &&
             lastWinner && (
-              <p className="hint" style={{ margin: 0, textAlign: 'center' }}>
+              <p className={cn(hint, 'm-0 text-center')}>
                 {lastWinner.name} took it — leads
               </p>
             )}
 
-          <p className="super-play-who">
+          <p className="mt-1 mb-0 text-center font-display text-2xl font-650">
             {needTrump
               ? 'Flip card — trump'
               : turnPlayer
@@ -181,10 +197,10 @@ export function SuperScorerPlay({ game, current, saving, onSave }: Props) {
       </div>
 
       {canUndo && (
-        <div className="action-bar">
+        <div className={actionBar}>
           <button
             type="button"
-            className="btn ghost block"
+            className={btnClass({ kind: 'ghost', block: true })}
             disabled={saving}
             onClick={() => void undo()}
           >

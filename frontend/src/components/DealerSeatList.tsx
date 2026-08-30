@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
+import { cn } from '../cn';
 
 type Props = {
   names: string[];
@@ -61,7 +62,7 @@ export function DealerSeatList({
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={names} strategy={verticalListSortingStrategy}>
-        <div className="dealer-pick" role="radiogroup" aria-label="First dealer">
+        <div className="flex flex-col gap-2" role="radiogroup" aria-label="First dealer">
           {names.map((name, i) => (
             <SortableSeat
               key={name}
@@ -111,7 +112,10 @@ function SortableSeat({
       }}
     >
       {isDragging || dragging ? (
-        <div className="dealer-option-hole" aria-hidden />
+        <div
+          className="min-h-stepper rounded-btn border border-dashed border-line-strong bg-sand-100"
+          aria-hidden
+        />
       ) : (
         <SeatCard
           name={name}
@@ -139,35 +143,42 @@ function SeatCard({
 }) {
   return (
     <div
-      className={[
-        'dealer-option',
-        selected ? 'selected' : '',
-        lifted ? 'dealer-option-float-static' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={cn(
+        'flex w-full min-h-stepper cursor-grab flex-wrap items-center gap-2 rounded-btn border border-line bg-surface px-2 py-3 pl-3.5 text-left text-grey-900 touch-none',
+        selected && 'border-grey-700 bg-sand-100 shadow-inset-sel',
+        lifted && 'cursor-grabbing shadow-float',
+        !lifted && 'active:bg-sand-100',
+      )}
     >
       <button
         type="button"
         role="radio"
         aria-checked={selected}
-        className="dealer-select"
+        className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left text-inherit"
         onClick={onSelect}
       >
-        <span className="dealer-radio" aria-hidden>
-          {selected ? <span className="dealer-radio-dot" /> : null}
+        <span
+          className={cn(
+            'inline-flex size-5.5 shrink-0 items-center justify-center rounded-full border-2 border-line-strong bg-surface',
+            selected && 'border-grey-800',
+          )}
+          aria-hidden
+        >
+          {selected ? <span className="size-2.5 rounded-full bg-grey-800" /> : null}
         </span>
-        <span className="dealer-name truncate">{name}</span>
+        <span className={cn('min-w-0 flex-1 truncate text-md font-semibold', selected && 'font-bold')}>
+          {name}
+        </span>
       </button>
       <button
         type="button"
-        className="dealer-grip"
+        className="flex size-10 shrink-0 cursor-grab flex-col items-center justify-center gap-0.5 border-0 bg-transparent p-0 touch-none active:cursor-grabbing"
         aria-label={`Reorder ${name}`}
         {...handleProps}
       >
-        <span />
-        <span />
-        <span />
+        <span className="block h-0.5 w-4 rounded-sm bg-grey-600" />
+        <span className="block h-0.5 w-4 rounded-sm bg-grey-600" />
+        <span className="block h-0.5 w-4 rounded-sm bg-grey-600" />
       </button>
     </div>
   );

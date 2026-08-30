@@ -7,6 +7,31 @@ import { toUserMessage } from '../api/errors';
 import { ClaimableGameCard } from '../components/ClaimableGameCard';
 import { useAuth } from '../useAuth';
 import { clearLocalGameCache } from '../offline/sync';
+import {
+  banner,
+  bannerOk,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  fillCenter,
+  hint,
+  list,
+  modal,
+  modalBackdrop,
+  muted,
+  pageFit,
+  pageFitBody,
+  pageTitle,
+  row,
+  sectionTitle,
+  sectionTitlePlain,
+  stack,
+  statsGrid,
+  statTile,
+  textLink,
+} from '../ui';
 
 const CLAIM_PREVIEW = 3;
 
@@ -201,22 +226,22 @@ export function AccountPage() {
   }
 
   if (loading) {
-    return <div className="empty fill-center">Loading account…</div>;
+    return <div className={cn(empty, fillCenter)}>Loading account…</div>;
   }
 
   if (!user) {
     return (
-      <div className="page-fit">
-        <div className="page-fit-body stack">
-          {error && <div className="banner">{error}</div>}
-          {message && <div className="banner banner-ok">{message}</div>}
-          <form className="card stack" onSubmit={onAuth}>
-            <h2 className="page-title">
+      <div className={pageFit}>
+        <div className={cn(pageFitBody, stack)}>
+          {error && <div className={banner}>{error}</div>}
+          {message && <div className={bannerOk}>{message}</div>}
+          <form className={cn(card, stack)} onSubmit={onAuth}>
+            <h2 className={pageTitle}>
               {mode === 'register' ? 'Register' : 'Sign in'}
             </h2>
             {mode === 'register' && (
               <>
-                <label className="field">
+                <label className={field}>
                   First name
                   <input
                     value={firstName}
@@ -226,7 +251,7 @@ export function AccountPage() {
                     required
                   />
                 </label>
-                <label className="field">
+                <label className={field}>
                   Last name
                   <input
                     value={lastName}
@@ -236,7 +261,7 @@ export function AccountPage() {
                     required
                   />
                 </label>
-                <label className="field">
+                <label className={field}>
                   Email
                   <input
                     type="email"
@@ -248,7 +273,7 @@ export function AccountPage() {
                 </label>
               </>
             )}
-            <label className="field">
+            <label className={field}>
               {mode === 'register' ? 'Username' : 'Username or email'}
               <input
                 value={username}
@@ -258,7 +283,7 @@ export function AccountPage() {
                 required
               />
             </label>
-            <label className="field">
+            <label className={field}>
               Password
               <input
                 type="password"
@@ -273,11 +298,11 @@ export function AccountPage() {
               />
             </label>
             {mode === 'signin' ? (
-              <p className="hint" style={{ margin: 0 }}>
+              <p className={cn(hint, 'm-0')}>
                 Need an account?{' '}
                 <button
                   type="button"
-                  className="text-link"
+                  className={textLink}
                   onClick={() => {
                     setMode('register');
                     setError(null);
@@ -288,11 +313,11 @@ export function AccountPage() {
                 </button>
               </p>
             ) : (
-              <p className="hint" style={{ margin: 0 }}>
+              <p className={cn(hint, 'm-0')}>
                 Already have an account?{' '}
                 <button
                   type="button"
-                  className="text-link"
+                  className={textLink}
                   onClick={() => {
                     setMode('signin');
                     setError(null);
@@ -305,7 +330,7 @@ export function AccountPage() {
             )}
             <button
               type="submit"
-              className="btn primary"
+              className={btnClass({ kind: 'primary' })}
               disabled={
                 busy ||
                 !username.trim() ||
@@ -319,7 +344,7 @@ export function AccountPage() {
           </form>
           <button
             type="button"
-            className="btn danger"
+            className={btnClass({ kind: 'danger' })}
             disabled={busy}
             onClick={() => void onClearGameCache()}
           >
@@ -331,42 +356,44 @@ export function AccountPage() {
   }
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-body stack">
-        {error && <div className="banner">{error}</div>}
-        {message && <div className="banner banner-ok">{message}</div>}
+    <div className={pageFit}>
+      <div className={cn(pageFitBody, stack)}>
+        {error && <div className={banner}>{error}</div>}
+        {message && <div className={bannerOk}>{message}</div>}
 
-        <section className="card stack">
-          <h3 className="section-title">Profile</h3>
-          <div className="profile-row">
-            <div className="profile-identity">
-              <p className="profile-name">
+        <section className={cn(card, stack)}>
+          <h3 className={sectionTitle}>Profile</h3>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="m-0 text-xl font-650 tracking-tight text-grey-900">
                 {user.firstName} {user.lastName}
               </p>
-              <p className="profile-username">{user.username}</p>
+              <p className={cn(muted, 'm-0 text-lede')}>{user.username}</p>
               {user.email ? (
-                <p className="profile-email">{user.email}</p>
+                <p className={cn(muted, 'm-0 text-lede')}>{user.email}</p>
               ) : null}
             </div>
             {myRank ? (
-              <div className="profile-rank">
-                <span className="profile-rank-place">
+              <div className="flex shrink-0 flex-col items-end">
+                <span className="text-label font-650 tracking-wider text-muted">
                   Ranked #{myRank.place}
                 </span>
-                <span className="profile-rank-score">{myRank.rating}</span>
+                <span className="font-display text-page font-650 tabular-nums text-grey-900">
+                  {myRank.rating}
+                </span>
               </div>
             ) : null}
           </div>
         </section>
 
-        <section className="card stack">
-          <h3 className="section-title">Your stats</h3>
+        <section className={cn(card, stack)}>
+          <h3 className={sectionTitle}>Your stats</h3>
           {!stats ? (
-            <p className="muted" style={{ margin: 0 }}>
+            <p className={cn(muted, 'm-0')}>
               No claimed games yet. Open a game from Stats and tap Claim game.
             </p>
           ) : (
-            <div className="stats-grid">
+            <div className={statsGrid}>
               <Metric label="Games" value={stats.gamesCompleted} />
               <Metric label="Wins" value={stats.wins} />
               <Metric
@@ -382,40 +409,45 @@ export function AccountPage() {
               <Metric label="Podiums" value={stats.podium} />
             </div>
           )}
-          <Link to="/stats" className="btn ghost sm">
+          <Link to="/stats" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Full stats
           </Link>
         </section>
 
         {(claimableLoading || claimableError || claimable.length > 0) && (
-          <section className="card stack">
+          <section className={cn(card, stack)}>
             <div>
-              <h3 className="section-title section-title-plain">
+              <h3 className={cn(sectionTitle, sectionTitlePlain)}>
                 Claim your games
               </h3>
-              <p className="hint" style={{ margin: 0 }}>
+              <p className={cn(hint, 'm-0')}>
                 You might have played in these games. Don’t forget to claim
                 them.
               </p>
             </div>
-            {claimableLoading && <div className="empty">Looking for games…</div>}
+            {claimableLoading && <div className={empty}>Looking for games…</div>}
             {claimableError && (
-              <div className="banner banner-inline">{claimableError}</div>
+              <div className={cn(banner, 'shrink-0')}>{claimableError}</div>
             )}
             {!claimableLoading && claimable.length > 0 && (
-              <div className="list claim-list">
+              <div
+                className={cn(
+                  list,
+                  'mt-1 overflow-visible rounded-none border-x-0 border-b-0 bg-transparent',
+                )}
+              >
                 {claimable.slice(0, CLAIM_PREVIEW).map((g) => (
                   <ClaimableGameCard key={g.id} game={g} user={user} />
                 ))}
               </div>
             )}
             {!claimableLoading && claimable.length > 0 && (
-              <Link to="/account/claimable" className="btn">
+              <Link to="/account/claimable" className={btnClass()}>
                 Claim many
               </Link>
             )}
             {!claimableLoading && claimable.length > CLAIM_PREVIEW && (
-              <Link to="/account/claimable" className="btn ghost">
+              <Link to="/account/claimable" className={btnClass({ kind: 'ghost' })}>
                 See all
               </Link>
             )}
@@ -424,18 +456,18 @@ export function AccountPage() {
 
         {passwordOpen && (
           <div
-            className="modal-backdrop"
+            className={modalBackdrop}
             onClick={busy ? undefined : closePassword}
           >
-            <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-              <p className="section-title" style={{ margin: 0 }}>
+            <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+              <p className={cn(sectionTitle, 'mb-0')}>
                 Change password
               </p>
               {passwordError ? (
-                <div className="banner banner-inline">{passwordError}</div>
+                <div className={cn(banner, 'shrink-0')}>{passwordError}</div>
               ) : null}
-              <form className="stack" onSubmit={onSave}>
-                <label className="field">
+              <form className={stack} onSubmit={onSave}>
+                <label className={field}>
                   New password
                   <input
                     type="password"
@@ -446,10 +478,10 @@ export function AccountPage() {
                     autoFocus
                   />
                 </label>
-                <div className="row" style={{ gap: 8 }}>
+                <div className={cn(row, 'gap-2')}>
                   <button
                     type="button"
-                    className="btn ghost"
+                    className={btnClass({ kind: 'ghost' })}
                     disabled={busy}
                     onClick={closePassword}
                   >
@@ -457,9 +489,8 @@ export function AccountPage() {
                   </button>
                   <button
                     type="submit"
-                    className="btn primary"
+                    className={cn(btnClass({ kind: 'primary' }), 'flex-1')}
                     disabled={busy || !newPassword}
-                    style={{ flex: 1 }}
                   >
                     {busy ? '…' : 'Update password'}
                   </button>
@@ -471,7 +502,7 @@ export function AccountPage() {
 
         <button
           type="button"
-          className="btn"
+          className={btnClass()}
           disabled={busy}
           onClick={() => void onClearGameCache()}
         >
@@ -480,7 +511,7 @@ export function AccountPage() {
 
         <button
           type="button"
-          className="btn"
+          className={btnClass()}
           disabled={busy}
           onClick={openPassword}
         >
@@ -489,7 +520,7 @@ export function AccountPage() {
 
         <button
           type="button"
-          className="btn danger"
+          className={btnClass({ kind: 'danger' })}
           disabled={busy}
           onClick={() => void onLogout()}
         >
@@ -508,13 +539,11 @@ function Metric({
   value: string | number;
 }) {
   return (
-    <div className="stat-tile">
-      <div className="label">{label}</div>
-      <div className="value" style={{ fontSize: '1.1rem' }}>
+    <div className={statTile}>
+      <div className="text-kicker uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-0.5 font-display text-md font-650 tabular-nums text-grey-900">
         {value}
       </div>
     </div>
   );
 }
-
-

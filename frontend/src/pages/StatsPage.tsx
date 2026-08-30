@@ -15,8 +15,48 @@ import {
   type LastNGames,
   type TopRange,
 } from './bestPlayers';
+import {
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  fillCenter,
+  gameTabClass,
+  gameTabs,
+  hint,
+  iconBtn,
+  modal,
+  modalBackdrop,
+  muted,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  place,
+  placeTone,
+  row,
+  sectionTitle,
+  sectionTitlePlain,
+  stack,
+  stackSm,
+  statsGrid,
+  statTile,
+} from '../ui';
 
 const TABLE_PAGE_SIZE = 20;
+
+const dataTable = 'w-max min-w-full border-collapse text-hint tablet:w-full';
+const dataTh =
+  'whitespace-nowrap border-b border-line bg-surface p-2.5 text-left align-top text-kicker font-semibold uppercase tracking-wide text-muted';
+const dataTd =
+  'whitespace-nowrap border-b border-line bg-surface p-2.5 text-left align-top';
+const tableLink = 'flex flex-col gap-0.5 text-inherit active:opacity-75';
+const tablePrimary =
+  'max-w-36 truncate font-semibold text-grey-900 tablet:max-w-none';
+const tableSecondary = 'text-kicker text-muted';
 
 type Tab = 'overview' | 'games' | 'players';
 
@@ -64,9 +104,9 @@ export function StatsPage() {
     };
   }, []);
 
-  if (loading) return <div className="empty fill-center">Loading stats…</div>;
-  if (error) return <div className="banner">{error}</div>;
-  if (!stats) return <div className="empty">Stats unavailable.</div>;
+  if (loading) return <div className={cn(empty, fillCenter)}>Loading stats…</div>;
+  if (error) return <div className={banner}>{error}</div>;
+  if (!stats) return <div className={empty}>Stats unavailable.</div>;
 
   const view = statsView(stats, showAllPlayers);
   const player =
@@ -75,13 +115,16 @@ export function StatsPage() {
       : null;
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header stats-title-row">
-          <h2 className="page-title">Stats</h2>
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={cn(pageHeader, 'items-center')}>
+          <h2 className={pageTitle}>Stats</h2>
           <button
             type="button"
-            className={`stats-all-toggle${showAllPlayers ? ' on' : ''}`}
+            className={cn(
+              'flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap border-0 bg-transparent p-0 text-hint font-medium',
+              showAllPlayers ? 'text-grey-900' : muted,
+            )}
             role="switch"
             aria-checked={showAllPlayers}
             onClick={() => {
@@ -90,15 +133,28 @@ export function StatsPage() {
             }}
           >
             Show All Players
-            <span className="stats-all-switch" aria-hidden>
-              <span className="stats-all-knob" />
+            <span
+              className={cn(
+                'relative h-switch w-9 shrink-0 overflow-hidden rounded-full border',
+                showAllPlayers
+                  ? 'border-grey-800 bg-grey-800'
+                  : 'border-line-strong bg-sand-200',
+              )}
+              aria-hidden
+            >
+              <span
+                className={cn(
+                  'absolute top-0.5 size-4 rounded-full bg-surface',
+                  showAllPlayers ? 'left-4' : 'left-0.5',
+                )}
+              />
             </span>
           </button>
         </div>
-        <div className="stats-tabs" role="tablist">
+        <div className={cn(gameTabs, 'mt-2.5')} role="tablist">
           <button
             type="button"
-            className={tab === 'overview' ? 'active' : ''}
+            className={gameTabClass(tab === 'overview')}
             onClick={() => {
               setTab('overview');
               setSelectedPlayer(null);
@@ -108,7 +164,7 @@ export function StatsPage() {
           </button>
           <button
             type="button"
-            className={tab === 'games' ? 'active' : ''}
+            className={gameTabClass(tab === 'games')}
             onClick={() => {
               setTab('games');
               setSelectedPlayer(null);
@@ -118,7 +174,7 @@ export function StatsPage() {
           </button>
           <button
             type="button"
-            className={tab === 'players' ? 'active' : ''}
+            className={gameTabClass(tab === 'players')}
             onClick={() => setTab('players')}
           >
             Players
@@ -126,7 +182,7 @@ export function StatsPage() {
         </div>
       </div>
 
-      <div className="page-fit-body stack">
+      <div className={cn(pageFitBody, stack)}>
         {tab === 'overview' && (
           <OverviewPanel stats={view} showAllPlayers={showAllPlayers} />
         )}
@@ -163,7 +219,7 @@ function OverviewPanel({
 
   return (
     <>
-      <div className="stats-grid">
+      <div className={statsGrid}>
         <Metric label="Completed games" value={overview.completedGames} />
         <Metric label="Players" value={overview.uniquePlayers} />
         <Metric label="Rounds logged" value={overview.totalRoundsPlayed} />
@@ -172,16 +228,16 @@ function OverviewPanel({
 
       <TopPlayers players={stats.players} games={stats.games} />
 
-      <section className="card">
-        <h3 className="section-title">Leaders</h3>
+      <section className={card}>
+        <h3 className={sectionTitle}>Leaders</h3>
         {stats.players.length === 0 ? (
-          <p className="empty" style={{ padding: 12 }}>
+          <p className="p-3 text-center text-btn text-muted">
             {showAllPlayers
               ? 'No player stats yet.'
               : 'Claim a completed game to unlock leaders.'}
           </p>
         ) : (
-          <div className="leader-list">
+          <div className="flex flex-col">
             <LeaderRow label="Most wins" leader={leaders.mostWins} />
             <LeaderRow label="Highest avg score" leader={leaders.highestAvg} />
             <LeaderRow label="Best single game" leader={leaders.bestSingleGame} />
@@ -218,14 +274,14 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
 
   if (games.length === 0) {
     return (
-      <div className="card empty">No completed games yet.</div>
+      <div className={cn(card, empty)}>No completed games yet.</div>
     );
   }
 
   return (
-    <div className="stack">
-      <div className="game-list-filters">
-        <label className="field">
+    <div className={stack}>
+      <div className={stackSm}>
+        <label className={field}>
           Name
           <input
             type="search"
@@ -235,8 +291,8 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
             autoComplete="off"
           />
         </label>
-        <div className="game-list-dates">
-          <label className="field">
+        <div className="grid grid-cols-2 gap-2">
+          <label className={field}>
             From
             <input
               type="date"
@@ -245,7 +301,7 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
               max={to || undefined}
             />
           </label>
-          <label className="field">
+          <label className={field}>
             To
             <input
               type="date"
@@ -256,13 +312,13 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
           </label>
         </div>
         {filtering ? (
-          <div className="game-list-filter-meta">
-            <span className="muted">
+          <div className="flex items-center justify-between gap-2">
+            <span className={muted}>
               {filtered.length} of {games.length}
             </span>
             <button
               type="button"
-              className="btn ghost sm"
+              className={btnClass({ kind: 'ghost', size: 'sm' })}
               onClick={() => {
                 setName('');
                 setFrom('');
@@ -276,55 +332,55 @@ function GamesPanel({ games }: { games: StatsGame[] }) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="card empty">No games match these filters.</div>
+        <div className={cn(card, empty)}>No games match these filters.</div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className={cn(card, 'overflow-hidden p-0')}>
           <div className="table-scroll">
-            <table className="data-table">
+            <table className={dataTable}>
               <thead>
                 <tr>
-                  <th>Game</th>
-                  <th>Players</th>
-                  <th>Winner</th>
-                  <th>High</th>
-                  <th>Low</th>
-                  <th>FB</th>
+                  <th className={dataTh}>Game</th>
+                  <th className={dataTh}>Players</th>
+                  <th className={dataTh}>Winner</th>
+                  <th className={dataTh}>High</th>
+                  <th className={dataTh}>Low</th>
+                  <th className={dataTh}>FB</th>
                 </tr>
               </thead>
               <tbody>
                 {paged.items.map((g) => (
-                  <tr key={g.id}>
-                    <td>
+                  <tr key={g.id} className="last:[&>td]:border-b-0">
+                    <td className={dataTd}>
                       <Link
                         to={`/games/${g.id}`}
                         state={{ from: 'stats' }}
-                        className="table-link"
+                        className={tableLink}
                       >
-                        <span className="table-primary">
+                        <span className={tablePrimary}>
                           {g.name ?? 'Untitled'}
                         </span>
-                        <span className="table-secondary">
+                        <span className={tableSecondary}>
                           {formatDate(g.finishedAt ?? g.createdAt)}
                           {g.isHighTable ? ' · High table' : ''}
                         </span>
                       </Link>
                     </td>
-                    <td>{g.playerCount}</td>
-                    <td>
+                    <td className={dataTd}>{g.playerCount}</td>
+                    <td className={dataTd}>
                       {g.winner ? (
                         <>
                           {g.winner}
                           {g.winnerScore != null ? (
-                            <span className="muted"> ({g.winnerScore})</span>
+                            <span className={muted}> ({g.winnerScore})</span>
                           ) : null}
                         </>
                       ) : (
                         '—'
                       )}
                     </td>
-                    <td>{fmt(g.highScore)}</td>
-                    <td>{fmt(g.lowScore)}</td>
-                    <td>{g.forceBurns}</td>
+                    <td className={dataTd}>{fmt(g.highScore)}</td>
+                    <td className={dataTd}>{fmt(g.lowScore)}</td>
+                    <td className={dataTd}>{g.forceBurns}</td>
                   </tr>
                 ))}
               </tbody>
@@ -365,7 +421,7 @@ function PlayersList({
 
   if (players.length === 0) {
     return (
-      <div className="card empty">
+      <div className={cn(card, empty)}>
         {showAllPlayers
           ? 'No players in completed games yet.'
           : 'No registered players yet. Claim a seat on a completed game.'}
@@ -374,9 +430,9 @@ function PlayersList({
   }
 
   return (
-    <div className="stack">
-      <div className="game-list-filters">
-        <label className="field">
+    <div className={stack}>
+      <div className={stackSm}>
+        <label className={field}>
           Name
           <input
             type="search"
@@ -387,13 +443,13 @@ function PlayersList({
           />
         </label>
         {filtering ? (
-          <div className="game-list-filter-meta">
-            <span className="muted">
+          <div className="flex items-center justify-between gap-2">
+            <span className={muted}>
               {filtered.length} of {players.length}
             </span>
             <button
               type="button"
-              className="btn ghost sm"
+              className={btnClass({ kind: 'ghost', size: 'sm' })}
               onClick={() => setName('')}
             >
               Clear
@@ -403,39 +459,42 @@ function PlayersList({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="card empty">No players match these filters.</div>
+        <div className={cn(card, empty)}>No players match these filters.</div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className={cn(card, 'overflow-hidden p-0')}>
           <div className="table-scroll">
-            <table className="data-table">
+            <table className={dataTable}>
               <thead>
                 <tr>
-                  <th>Player</th>
-                  <th>Games</th>
-                  <th>Wins</th>
-                  <th>Avg</th>
-                  <th>Bids</th>
+                  <th className={dataTh}>Player</th>
+                  <th className={dataTh}>Games</th>
+                  <th className={dataTh}>Wins</th>
+                  <th className={dataTh}>Avg</th>
+                  <th className={dataTh}>Bids</th>
                 </tr>
               </thead>
               <tbody>
                 {paged.items.map((p) => (
-                  <tr key={p.key ?? p.name}>
-                    <td>
+                  <tr key={p.key ?? p.name} className="last:[&>td]:border-b-0">
+                    <td className={dataTd}>
                       <button
                         type="button"
-                        className="table-link"
+                        className={cn(
+                          tableLink,
+                          'cursor-pointer appearance-none border-0 bg-transparent p-0 text-left',
+                        )}
                         onClick={() => onSelect(p.key ?? p.name)}
                       >
-                        <span className="table-primary">{p.name}</span>
-                        <span className="table-secondary">
+                        <span className={tablePrimary}>{p.name}</span>
+                        <span className={tableSecondary}>
                           {p.gamesCompleted} finished
                         </span>
                       </button>
                     </td>
-                    <td>{p.gamesPlayed}</td>
-                    <td>{p.wins}</td>
-                    <td>{fmt(p.avgScore)}</td>
-                    <td>{pct(p.bidAccuracy)}</td>
+                    <td className={dataTd}>{p.gamesPlayed}</td>
+                    <td className={dataTd}>{p.wins}</td>
+                    <td className={dataTd}>{fmt(p.avgScore)}</td>
+                    <td className={dataTd}>{pct(p.bidAccuracy)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -463,19 +522,23 @@ function PlayerDetail({
   onBack: () => void;
 }) {
   return (
-    <div className="stack">
-      <button type="button" className="btn ghost sm back-inline" onClick={onBack}>
+    <div className={stack}>
+      <button
+        type="button"
+        className={cn(btnClass({ kind: 'ghost', size: 'sm' }), 'self-start pl-0')}
+        onClick={onBack}
+      >
         ← Players
       </button>
-      <div className="row space-between">
-        <h3 className="page-title" style={{ fontSize: '1.25rem' }}>
+      <div className={cn(row, 'justify-between')}>
+        <h3 className={cn(pageTitle, 'text-md')}>
           {player.name}
         </h3>
-        <span className="status ok">
+        <span className="shrink-0 text-hint text-ok">
           {player.wins} win{player.wins === 1 ? '' : 's'}
         </span>
       </div>
-      <div className="stats-grid">
+      <div className={statsGrid}>
         <Metric label="Games played" value={player.gamesPlayed} />
         <Metric label="Finished" value={player.gamesCompleted} />
         <Metric label="Win rate" value={pct(player.winRate)} />
@@ -576,12 +639,12 @@ function TopPlayers({
   }
 
   return (
-    <section className="card">
-      <div className="top-player-head">
-        <h3 className="section-title section-title-plain">Top players</h3>
-        <div className="top-player-tools">
+    <section className={card}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <h3 className={cn(sectionTitle, sectionTitlePlain)}>Top players</h3>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <select
-            className="top-player-range"
+            className="h-9 shrink-0 rounded-btn border border-line-strong bg-surface px-2 text-meta text-ink"
             value={lastN === 'all' ? 'all' : String(lastN)}
             aria-label="Based on"
             onChange={(e) => {
@@ -603,7 +666,7 @@ function TopPlayers({
             <option value="20">Last 20</option>
           </select>
           <select
-            className="top-player-range"
+            className="h-9 shrink-0 rounded-btn border border-line-strong bg-surface px-2 text-meta text-ink"
             value={custom ? 'custom' : range}
             aria-label="Time range"
             onChange={(e) => {
@@ -622,7 +685,11 @@ function TopPlayers({
           </select>
           <button
             type="button"
-            className={`icon-btn${custom ? ' is-on' : ''}`}
+            className={cn(
+              iconBtn,
+              'h-9 w-9',
+              custom && 'border-grey-800 bg-sand-100',
+            )}
             aria-label="Custom date range"
             aria-pressed={custom != null}
             onClick={openCalendar}
@@ -633,21 +700,21 @@ function TopPlayers({
       </div>
       {calOpen && (
         <div
-          className="modal-backdrop"
+          className={modalBackdrop}
           onClick={() => {
             setCalOpen(false);
             setCalError(null);
           }}
         >
-          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-            <p className="section-title" style={{ margin: 0 }}>
+          <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+            <p className={cn(sectionTitle, 'm-0')}>
               Date range
             </p>
             {calError ? (
-              <div className="banner banner-inline">{calError}</div>
+              <div className={cn(banner, 'shrink-0')}>{calError}</div>
             ) : null}
-            <div className="game-list-dates">
-              <label className="field">
+            <div className="grid grid-cols-2 gap-2">
+              <label className={field}>
                 From
                 <input
                   type="date"
@@ -659,7 +726,7 @@ function TopPlayers({
                   }}
                 />
               </label>
-              <label className="field">
+              <label className={field}>
                 To
                 <input
                   type="date"
@@ -672,10 +739,10 @@ function TopPlayers({
                 />
               </label>
             </div>
-            <div className="row" style={{ gap: 8 }}>
+            <div className={cn(row, 'gap-2')}>
               <button
                 type="button"
-                className="btn ghost"
+                className={btnClass({ kind: 'ghost' })}
                 onClick={() => {
                   setCalOpen(false);
                   setCalError(null);
@@ -685,8 +752,7 @@ function TopPlayers({
               </button>
               <button
                 type="button"
-                className="btn primary"
-                style={{ flex: 1 }}
+                className={cn(btnClass({ kind: 'primary' }), 'flex-1')}
                 onClick={applyCustom}
               >
                 Apply
@@ -696,28 +762,31 @@ function TopPlayers({
         </div>
       )}
       {top.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>
+        <p className={cn(muted, 'm-0')}>
           No games in this range.
         </p>
       ) : (
-        <div className="top-player-list">
+        <div className="flex flex-col">
           {(expanded ? top : top.slice(0, 3)).map((row, i) => {
             const p = row.player;
-            const placeClass =
-              i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
             return (
-              <div key={p.key ?? p.name} className="top-player-row">
-                <span className={`place ${placeClass}`.trim()}>{i + 1}</span>
+              <div
+                key={p.key ?? p.name}
+                className="flex min-w-0 items-center gap-3 border-b border-line py-2.5 first:pt-0 last:border-b-0 last:pb-0"
+              >
+                <span className={cn(place, placeTone(i + 1))}>{i + 1}</span>
                 <div className="min-w-0">
-                  <p className="top-player-name truncate">{p.name}</p>
-                  <p className="top-player-meta truncate">
+                  <p className="m-0 truncate font-650 text-grey-900">{p.name}</p>
+                  <p className={cn(hint, 'mt-0.5 mb-0 truncate')}>
                     {p.gamesCompleted} game{p.gamesCompleted === 1 ? '' : 's'}
                     {p.winRate != null ? ` · ${p.winRate}% wins` : ''}
                     {p.avgScore != null ? ` · ${fmt(p.avgScore)} avg` : ''}
                     {p.bidAccuracy != null ? ` · ${p.bidAccuracy}% bids` : ''}
                   </p>
                 </div>
-                <span className="top-player-rating">{row.rating}</span>
+                <span className="ml-auto shrink-0 text-xl font-650 leading-snug tabular-nums text-grey-900">
+                  {row.rating}
+                </span>
               </div>
             );
           })}
@@ -726,7 +795,7 @@ function TopPlayers({
       {top.length > 3 && (
         <button
           type="button"
-          className="btn ghost sm top-player-expand"
+          className={cn(btnClass({ kind: 'ghost', size: 'sm' }), 'mt-2 w-full')}
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? 'Show top 3' : 'Show top 10'}
@@ -738,15 +807,15 @@ function TopPlayers({
 
 function LeaderRow({ label, leader }: { label: string; leader: StatsLeader }) {
   return (
-    <div className="leader-row">
-      <span className="leader-label">{label}</span>
+    <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-line py-2.5 first:pt-0 last:border-b-0 last:pb-0">
+      <span className={cn(muted, 'shrink-0 text-lede')}>{label}</span>
       {leader ? (
-        <span className="leader-value">
-          <strong>{leader.name}</strong>
-          <span className="muted"> · {leader.value}</span>
+        <span className="min-w-0 text-right text-btn">
+          <strong className="font-650 text-grey-900">{leader.name}</strong>
+          <span className={muted}> · {leader.value}</span>
         </span>
       ) : (
-        <span className="muted">—</span>
+        <span className={muted}>—</span>
       )}
     </div>
   );
@@ -769,21 +838,21 @@ function TablePager({
 }) {
   if (total === 0) return null;
   return (
-    <div className="table-pager">
+    <div className="flex items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2.5">
       <button
         type="button"
-        className="btn sm"
+        className={btnClass({ size: 'sm' })}
         disabled={page <= 1}
         onClick={() => onPage(page - 1)}
       >
         Prev
       </button>
-      <span className="muted">
+      <span className={muted}>
         {from}–{to} of {total}
       </span>
       <button
         type="button"
-        className="btn sm"
+        className={btnClass({ size: 'sm' })}
         disabled={page >= pages}
         onClick={() => onPage(page + 1)}
       >
@@ -795,9 +864,9 @@ function TablePager({
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="stat-tile">
-      <div className="label">{label}</div>
-      <div className="value" style={{ fontSize: '1.1rem' }}>
+    <div className={statTile}>
+      <div className="text-kicker uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-0.5 text-md font-650 tabular-nums text-grey-900">
         {value}
       </div>
     </div>

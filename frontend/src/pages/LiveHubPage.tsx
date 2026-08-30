@@ -7,6 +7,25 @@ import type { LiveGoneSeat, LiveLookup } from '../live/types';
 import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
 import { useApiStatus, useOnline } from '../useOnline';
+import {
+  actionBar,
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  lede,
+  modeCard,
+  modeCardMeta,
+  modeCardTitle,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageTitle,
+  row,
+  stack,
+} from '../ui';
 
 export function LiveHubPage() {
   const nav = useNavigate();
@@ -58,15 +77,15 @@ export function LiveHubPage() {
 
   if (!apiReady) {
     return (
-      <div className="page-fit">
-        <div className="page-fit-header">
-          <h2 className="page-title">Play</h2>
+      <div className={pageFit}>
+        <div className={pageFitHeader}>
+          <h2 className={pageTitle}>Play</h2>
         </div>
-        <div className="page-fit-body">
-          <p className="lede">Waking server… live play will unlock when it is up.</p>
+        <div className={pageFitBody}>
+          <p className={lede}>Waking server… live play will unlock when it is up.</p>
         </div>
-        <div className="action-bar">
-          <Link to="/" className="btn primary block">
+        <div className={actionBar}>
+          <Link to="/" className={btnClass({ kind: 'primary', block: true })}>
             Back
           </Link>
         </div>
@@ -184,30 +203,30 @@ export function LiveHubPage() {
 
   if (step === 'claim' && lookup) {
     return (
-      <div className="page-fit">
-        <div className="page-fit-header">
-          <h2 className="page-title">Take a seat</h2>
-          <p className="lede">
+      <div className={pageFit}>
+        <div className={pageFitHeader}>
+          <h2 className={pageTitle}>Take a seat</h2>
+          <p className={lede}>
             Game <strong>{lookup.code}</strong> is in progress. Choose a player
             who left.
           </p>
         </div>
-        <div className="page-fit-body stack">
-          {error && <div className="banner">{error}</div>}
+        <div className={cn(pageFitBody, stack)}>
+          {error && <div className={banner}>{error}</div>}
           {lookup.gonePlayers.length === 0 ? (
-            <div className="empty">No open seats right now.</div>
+            <div className={empty}>No open seats right now.</div>
           ) : (
-            <div className="stack">
+            <div className={stack}>
               {lookup.gonePlayers.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  className="btn mode-card claim-seat-btn"
+                  className={cn(modeCard, 'cursor-pointer disabled:cursor-not-allowed disabled:opacity-40')}
                   disabled={busy}
                   onClick={() => onClaim(p)}
                 >
-                  <span className="mode-card-title">{p.name}</span>
-                  <span className="mode-card-meta">
+                  <span className={modeCardTitle}>{p.name}</span>
+                  <span className={modeCardMeta}>
                     {p.isHost ? 'Host · ' : ''}
                     Gone — tap to play as them
                   </span>
@@ -215,7 +234,7 @@ export function LiveHubPage() {
               ))}
             </div>
           )}
-          <button type="button" className="btn ghost" onClick={backToHub}>
+          <button type="button" className={btnClass({ kind: 'ghost' })} onClick={backToHub}>
             Back
           </button>
         </div>
@@ -225,19 +244,19 @@ export function LiveHubPage() {
 
   if (step === 'name') {
     return (
-      <div className="page-fit">
-        <div className="page-fit-header">
-          <h2 className="page-title">Your name</h2>
-          <p className="lede">
+      <div className={pageFit}>
+        <div className={pageFitHeader}>
+          <h2 className={pageTitle}>Your name</h2>
+          <p className={lede}>
             Joining game <strong>{code.trim()}</strong>
             {user
               ? ' — pre-filled from your account. You can change it.'
               : ''}
           </p>
         </div>
-        <form className="page-fit-body stack" onSubmit={onJoinWithName}>
-          {error && <div className="banner">{error}</div>}
-          <label className="field">
+        <form className={cn(pageFitBody, stack)} onSubmit={onJoinWithName}>
+          {error && <div className={banner}>{error}</div>}
+          <label className={field}>
             Name
             <input
               type="text"
@@ -249,15 +268,14 @@ export function LiveHubPage() {
               placeholder="Enter name"
             />
           </label>
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn ghost" onClick={backToHub}>
+          <div className={cn(row, 'gap-2')}>
+            <button type="button" className={btnClass({ kind: 'ghost' })} onClick={backToHub}>
               Back
             </button>
             <button
               type="submit"
-              className="btn primary"
+              className={cn(btnClass({ kind: 'primary' }), 'flex-1')}
               disabled={busy || !joinName.trim()}
-              style={{ flex: 1 }}
             >
               {busy ? 'Joining…' : 'Join'}
             </button>
@@ -268,19 +286,19 @@ export function LiveHubPage() {
   }
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <h2 className="page-title">Live game</h2>
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <h2 className={pageTitle}>Live game</h2>
       </div>
-      <div className="page-fit-body stack">
-        {error && <div className="banner">{error}</div>}
+      <div className={cn(pageFitBody, stack)}>
+        {error && <div className={banner}>{error}</div>}
 
-        <form className="card stack" onSubmit={onJoinCode}>
-          <label className="field">
+        <form className={cn(card, stack)} onSubmit={onJoinCode}>
+          <label className={field}>
             Join Game
             <input
               type="number"
-              className="code-input"
+              className="code-input tabular-nums tracking-wider"
               value={code}
               onChange={(e) =>
                 setCode(e.target.value.replace(/\D/g, '').slice(0, 4))
@@ -296,17 +314,17 @@ export function LiveHubPage() {
           </label>
           <button
             type="submit"
-            className="btn primary"
+            className={btnClass({ kind: 'primary' })}
             disabled={busy || code.trim().length < 4}
           >
             Join
           </button>
         </form>
 
-        <div className="divider-or">or</div>
+        <div className="text-center text-meta lowercase text-muted">or</div>
 
-        <form className="card stack" onSubmit={onCreate}>
-          <label className="field">
+        <form className={cn(card, stack)} onSubmit={onCreate}>
+          <label className={field}>
             Create a new game
             {user ? null : (
               <input
@@ -321,7 +339,7 @@ export function LiveHubPage() {
           </label>
           <button
             type="submit"
-            className="btn primary"
+            className={btnClass({ kind: 'primary' })}
             disabled={
               busy || !(user ? accountDisplayName(user) : createName).trim()
             }
@@ -330,8 +348,8 @@ export function LiveHubPage() {
           </button>
         </form>
       </div>
-      <div className="action-bar">
-        <Link to="/" className="btn primary block">
+      <div className={actionBar}>
+        <Link to="/" className={btnClass({ kind: 'primary', block: true })}>
           Back
         </Link>
       </div>

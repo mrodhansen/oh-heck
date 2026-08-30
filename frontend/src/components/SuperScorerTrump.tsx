@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CardPicker } from './CardPicker';
 import type { CardJson, Rank, Suit } from '../types/cards';
+import { playMiddle } from '../ui';
 
 type Props = {
   saving: boolean;
@@ -27,9 +28,11 @@ export function SuperScorerTrump({ saving, onSave }: Props) {
   }
 
   return (
-    <div className="play-middle">
-      <div className="super-play">
-        <p className="super-play-who">Choose trump</p>
+    <div className={playMiddle}>
+      <div className="flex min-h-0 flex-col gap-2.5 overflow-auto px-0.5 pb-2">
+        <p className="mt-1 mb-0 text-center font-display text-2xl font-650">
+          Choose trump
+        </p>
         <CardPicker
           selectedSuit={suit}
           selectedRank={rank}

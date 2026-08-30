@@ -2,6 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, GameSummary } from '../api';
 import { toUserMessage } from '../api/errors';
+import {
+  banner,
+  btnClass,
+  card,
+  empty,
+  list,
+  listItem,
+  listItemChevron,
+  listItemMeta,
+  listItemStatus,
+  listItemTitle,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  sectionTitle,
+  stack,
+  stackSm,
+} from '../ui';
+import { cn } from '../cn';
 
 const RESUME_LIMIT = 5;
 
@@ -37,34 +58,34 @@ export function HomePage() {
   );
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header play-home-header">
-        <div className="page-header">
-          <h2 className="page-title">Single</h2>
-          <Link to="/play/score" className="btn ghost sm">
+    <div className={pageFit}>
+      <div className={cn(pageFitHeader, 'mb-1')}>
+        <div className={pageHeader}>
+          <h2 className={pageTitle}>Single</h2>
+          <Link to="/play/score" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Back
           </Link>
         </div>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="page-fit-body stack">
-        <Link className="btn primary block" to="/new">
+      <div className={cn(pageFitBody, stack)}>
+        <Link className={btnClass({ kind: 'primary', block: true })} to="/new">
           New game
         </Link>
 
-        <section className="stack-sm">
-          <h3 className="section-title">Resume</h3>
+        <section className={stackSm}>
+          <h3 className={sectionTitle}>Resume</h3>
 
-          {loading && <div className="empty">Loading…</div>}
+          {loading && <div className={empty}>Loading…</div>}
 
           {!loading && inProgress.length === 0 && (
-            <div className="card empty">No games in progress.</div>
+            <div className={cn(card, empty)}>No games in progress.</div>
           )}
 
           {!loading && inProgress.length > 0 && (
-            <div className="list">
+            <div className={list}>
               {inProgress.map((g) => {
                 const leader = [...g.standings].sort(
                   (a, b) => a.place - b.place,
@@ -73,23 +94,23 @@ export function HomePage() {
                   <Link
                     key={g.id}
                     to={`/games/${g.id}`}
-                    className="list-item"
+                    className={listItem}
                   >
                     <div className="min-w-0">
-                      <p className="list-item-title truncate">
+                      <p className={cn(listItemTitle, 'truncate')}>
                         {g.name ?? 'Game'}
                       </p>
-                      <p className="list-item-meta truncate">
+                      <p className={cn(listItemMeta, 'truncate')}>
                         {g.players.join(', ')}
                       </p>
-                      <p className="list-item-status">
+                      <p className={listItemStatus}>
                         Round {g.currentRound ?? '—'}
                         {leader
                           ? ` · Lead ${leader.playerName} (${leader.total})`
                           : ''}
                       </p>
                     </div>
-                    <span className="list-item-chevron" aria-hidden>
+                    <span className={listItemChevron} aria-hidden>
                       ›
                     </span>
                   </Link>

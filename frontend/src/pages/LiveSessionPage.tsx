@@ -18,6 +18,26 @@ import { trumpLabel } from '../live/cards';
 import { clearLiveAuth, loadLiveAuth } from '../live/session';
 import type { LivePlayerPublic, LiveView } from '../live/types';
 import { useSocketRoom } from '../useSocketRoom';
+import {
+  banner,
+  bannerWarn,
+  btnClass,
+  card,
+  cn,
+  empty,
+  fillCenter,
+  gameScreen,
+  gameTabClass,
+  gameTabs,
+  gameTopbar,
+  hint,
+  iconBtn,
+  iconBtnSpacer,
+  pageFit,
+  panelScroll,
+  phaseDot,
+  stack,
+} from '../ui';
 
 export function LiveSessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -186,12 +206,12 @@ export function LiveSessionPage() {
     }
   }
 
-  if (loading) return <div className="empty fill-center">Loading…</div>;
+  if (loading) return <div className={cn(empty, fillCenter)}>Loading…</div>;
   if (!auth) {
     return (
-      <div className="page-fit">
-        <div className="banner">{error ?? 'Not seated'}</div>
-        <Link className="btn primary" to="/play/live">
+      <div className={pageFit}>
+        <div className={banner}>{error ?? 'Not seated'}</div>
+        <Link className={btnClass({ kind: 'primary' })} to="/play/live">
           Enter code
         </Link>
       </div>
@@ -199,9 +219,13 @@ export function LiveSessionPage() {
   }
   if (!view) {
     return (
-      <div className="page-fit">
-        <div className="banner">{error ?? 'Session not found'}</div>
-        <button type="button" className="btn ghost" onClick={() => nav('/')}>
+      <div className={pageFit}>
+        <div className={banner}>{error ?? 'Session not found'}</div>
+        <button
+          type="button"
+          className={btnClass({ kind: 'ghost' })}
+          onClick={() => nav('/')}
+        >
           Home
         </button>
       </div>
@@ -227,35 +251,43 @@ export function LiveSessionPage() {
     view.phase === 'complete' || view.status === 'COMPLETED';
 
   return (
-    <div className="game-screen">
-      <header className="game-topbar">
-        <div className="icon-btn spacer" aria-hidden />
+    <div className={gameScreen}>
+      <header className={gameTopbar}>
+        <div
+          className={iconBtnSpacer}
+          aria-hidden
+        />
         {isFinished ? (
-          <div className="game-topbar-title">Board</div>
+          <div className="border-b border-line py-2 text-center font-display text-md font-650 text-grey-900">
+            Board
+          </div>
         ) : (
-          <div className="game-tabs">
+          <div className={gameTabs}>
             <button
               type="button"
-              className={tab === 'play' ? 'active' : ''}
+              className={gameTabClass(tab === 'play')}
               onClick={() => setTab('play')}
             >
               Play
             </button>
             <button
               type="button"
-              className={tab === 'board' ? 'active' : ''}
+              className={gameTabClass(tab === 'board')}
               onClick={() => setTab('board')}
             >
               Board
             </button>
           </div>
         )}
-        <div className="icon-btn spacer" aria-hidden />
+        <div
+          className={iconBtnSpacer}
+          aria-hidden
+        />
       </header>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
       {view.goneCount > 0 && !isFinished && (
-        <div className="banner banner-inline banner-warn">
+        <div className={cn(bannerWarn, 'shrink-0')}>
           {view.goneCount === 1
             ? '1 player has left — others can reclaim their seat with the code'
             : `${view.goneCount} players have left — others can reclaim seats with the code`}
@@ -263,17 +295,21 @@ export function LiveSessionPage() {
       )}
 
       {(isFinished || tab === 'board') && (
-        <div className="panel-scroll stack">
-          <section className="card live-board-meta">
+        <div className={cn(panelScroll, stack)}>
+          <section className={cn(card, 'flex flex-col items-center gap-2 text-center')}>
             <div className="lobby-code-label">Game code</div>
             <div className="lobby-code">{view.code}</div>
-            <div className="row live-board-actions">
-              <button type="button" className="btn sm" onClick={() => void copyLink()}>
+            <div className="flex w-full flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                className={btnClass({ size: 'sm' })}
+                onClick={() => void copyLink()}
+              >
                 {copied ? 'Copied' : 'Copy link'}
               </button>
               <button
                 type="button"
-                className="btn sm ghost"
+                className={btnClass({ kind: 'ghost', size: 'sm' })}
                 onClick={() => void onLeave()}
                 disabled={busy}
               >
@@ -285,12 +321,12 @@ export function LiveSessionPage() {
           {board ? (
             <Scoreboard game={board} />
           ) : boardError ? (
-            <div className="stack">
-              <div className="banner">{boardError}</div>
+            <div className={stack}>
+              <div className={banner}>{boardError}</div>
               {view.gameId ? (
                 <button
                   type="button"
-                  className="btn primary"
+                  className={btnClass({ kind: 'primary' })}
                   onClick={() => void loadBoard(view.gameId!)}
                 >
                   Retry
@@ -298,7 +334,7 @@ export function LiveSessionPage() {
               ) : null}
             </div>
           ) : (
-            <div className="empty">Scoreboard loading…</div>
+            <div className={empty}>Scoreboard loading…</div>
           )}
         </div>
       )}
@@ -351,15 +387,20 @@ function LobbyView({
   const presentCount = view.players.filter((p) => !p.gone).length;
 
   return (
-    <div className="game-screen lobby-screen">
-      <header className="game-topbar">
-        <button type="button" className="icon-btn" onClick={onBack} aria-label="Back">
+    <div className={cn(gameScreen, 'lobby-screen')}>
+      <header className={gameTopbar}>
+        <button type="button" className={iconBtn} onClick={onBack} aria-label="Back">
           ←
         </button>
-        <div className="game-topbar-title">Waiting room</div>
+        <div className="border-b border-line py-2 text-center font-display text-md font-650 text-grey-900">
+          Waiting room
+        </div>
         <button
           type="button"
-          className="btn sm ghost leave-btn"
+          className={cn(
+            btnClass({ kind: 'ghost', size: 'sm' }),
+            'min-w-stepper justify-self-end',
+          )}
           onClick={onLeave}
           disabled={busy}
         >
@@ -367,7 +408,7 @@ function LobbyView({
         </button>
       </header>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
       <div className="lobby-table">
         <div className="lobby-sides">
@@ -379,13 +420,13 @@ function LobbyView({
           <div className="lobby-center">
             <div className="lobby-code-label">Game code</div>
             <div className="lobby-code">{view.code}</div>
-            <button type="button" className="btn sm" onClick={onCopy}>
+            <button type="button" className={btnClass({ size: 'sm' })} onClick={onCopy}>
               {copied ? 'Copied' : 'Copy link'}
             </button>
             {view.me.isHost ? (
               <button
                 type="button"
-                className="btn primary"
+                className={btnClass({ kind: 'primary' })}
                 disabled={!view.canStart || busy}
                 onClick={onStart}
               >
@@ -396,9 +437,9 @@ function LobbyView({
                     : 'Waiting for players'}
               </button>
             ) : (
-              <p className="hint lobby-wait-hint">Waiting for host to start…</p>
+              <p className={cn(hint, 'lobby-wait-hint')}>Waiting for host to start…</p>
             )}
-            <p className="hint">
+            <p className={hint}>
               {presentCount}/{view.maxPlayers} players
             </p>
           </div>
@@ -511,13 +552,13 @@ function LivePlayTable({
       <header className="live-phase-header">
         <p className="live-phase-row">
           Round {view.roundNumber}
-          <span className="phase-dot">·</span>
+          <span className={phaseDot}>·</span>
           {handSize} cards
         </p>
         <p className="live-phase-row live-phase-row-meta">
           Tricks {tricksTaken}
           {handSize > 0 ? `/${handSize}` : ''}
-          <span className="phase-dot">·</span>
+          <span className={phaseDot}>·</span>
           Bid {totalBid}
         </p>
       </header>
@@ -540,7 +581,7 @@ function LivePlayTable({
               role="presentation"
             >
               <div
-                className="live-bid-sheet card"
+                className={cn('live-bid-sheet', card)}
                 role="dialog"
                 aria-label="Place your bid"
                 onClick={(e) => e.stopPropagation()}
@@ -552,7 +593,7 @@ function LivePlayTable({
                   </div>
                   <button
                     type="button"
-                    className="btn ghost sm"
+                    className={btnClass({ kind: 'ghost', size: 'sm' })}
                     onClick={() => setBidSheetOpen(false)}
                   >
                     View board
@@ -566,7 +607,7 @@ function LivePlayTable({
                   onChange={setBid}
                 />
                 {view.forbiddenLastBid !== null && (
-                  <label className="fb-toggle">
+                  <label className="self-center min-h-9 min-w-12 cursor-pointer rounded-btn border border-line-strong bg-surface-2 px-3 text-btn-sm font-bold tracking-wide text-grey-600">
                     <input
                       type="checkbox"
                       checked={forceBurn}
@@ -577,7 +618,7 @@ function LivePlayTable({
                 )}
                 <button
                   type="button"
-                  className="btn primary"
+                  className={btnClass({ kind: 'primary' })}
                   disabled={busy || bid === view.forbiddenLastBid}
                   onClick={onBid}
                 >
@@ -590,7 +631,7 @@ function LivePlayTable({
           {view.isMyBidTurn && !bidSheetOpen && (
             <button
               type="button"
-              className="live-bid-reopen btn primary"
+              className={cn('live-bid-reopen', btnClass({ kind: 'primary' }))}
               onClick={() => setBidSheetOpen(true)}
             >
               Your turn to bid
@@ -600,13 +641,13 @@ function LivePlayTable({
 
         <div className="live-me-area">
           {!view.isMyBidTurn && bidding && (
-            <p className="hint live-turn-hint">
+            <p className={cn(hint, 'live-turn-hint')}>
               {turnWaitLabel(view, view.bidderSeat)}
             </p>
           )}
 
           {view.phase === 'playing' && !view.isMyTurn && (
-            <p className="hint live-turn-hint">
+            <p className={cn(hint, 'live-turn-hint')}>
               {turnWaitLabel(view, view.turnSeat)}
             </p>
           )}

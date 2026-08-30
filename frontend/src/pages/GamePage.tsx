@@ -29,6 +29,52 @@ import {
   downloadGameJson,
   downloadGameXml,
 } from '../exportGameCsv';
+import {
+  actionBar,
+  actionStack,
+  banner,
+  bannerOk,
+  btnClass,
+  card,
+  cn,
+  empty,
+  fillCenter,
+  gameScreen,
+  gameTabClass,
+  gameTabs,
+  gameTopbar,
+  hint,
+  iconBtn,
+  iconBtnSpacer,
+  lede,
+  modal,
+  modalBackdrop,
+  modeCard,
+  modeCardMeta,
+  modeCardTitle,
+  muted,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageTitle,
+  panelScroll,
+  phaseDealer,
+  phaseDot,
+  phaseHeader,
+  phaseSub,
+  phaseTitle,
+  phaseTotal,
+  playLayout,
+  playMiddle,
+  row,
+  sectionTitle,
+  stack,
+  stackSm,
+  turnCardBody,
+  turnCardClass,
+  turnCardHead,
+  turnList,
+} from '../ui';
 
 function navFrom(state: unknown): 'stats' | 'account' | null {
   if (typeof state !== 'object' || state === null || !('from' in state)) {
@@ -183,9 +229,9 @@ export function GamePage() {
     return current.entries.reduce((sum, e) => sum + (e.bid ?? 0), 0);
   }, [current]);
 
-  if (loading) return <div className="empty fill-center">Loading…</div>;
-  if (!game && error) return <div className="banner">{error}</div>;
-  if (!game) return <div className="empty fill-center">Game not found</div>;
+  if (loading) return <div className={cn(empty, fillCenter)}>Loading…</div>;
+  if (!game && error) return <div className={banner}>{error}</div>;
+  if (!game) return <div className={cn(empty, fillCenter)}>Game not found</div>;
 
   const phase = game.phase;
   const isFinished = phase === 'completed' || game.status === 'COMPLETED';
@@ -371,8 +417,8 @@ export function GamePage() {
   }
 
   return (
-    <div className="game-screen">
-      <header className="game-topbar">
+    <div className={gameScreen}>
+      <header className={gameTopbar}>
         <Link
           to={
             navFrom(location.state) === 'stats'
@@ -388,16 +434,16 @@ export function GamePage() {
               ? { tab: 'games' }
               : undefined
           }
-          className="icon-btn"
+          className={iconBtn}
           aria-label="Back"
         >
           ←
         </Link>
-        <div className="game-tabs">
+        <div className={gameTabs}>
           {!isFinished && (
             <button
               type="button"
-              className={tab === 'play' ? 'active' : ''}
+              className={gameTabClass(tab === 'play')}
               onClick={() => setTab('play')}
             >
               Play
@@ -405,7 +451,7 @@ export function GamePage() {
           )}
           <button
             type="button"
-            className={tab === 'board' ? 'active' : ''}
+            className={gameTabClass(tab === 'board')}
             onClick={() => setTab('board')}
           >
             Board
@@ -413,7 +459,7 @@ export function GamePage() {
           {canTakeNotes && (
             <button
               type="button"
-              className={tab === 'notes' ? 'active' : ''}
+              className={gameTabClass(tab === 'notes')}
               onClick={() => setTab('notes')}
               aria-label={
                 hasGameNotes(game.notes) ? 'Notes, has notes' : 'Notes'
@@ -421,30 +467,40 @@ export function GamePage() {
             >
               Notes
               {hasGameNotes(game.notes) ? (
-                <span className="tab-dot" aria-hidden />
+                <span
+                  className="mb-px ml-1 inline-block size-1.5 rounded-full bg-grey-700 align-middle"
+                  aria-hidden
+                />
               ) : null}
             </button>
           )}
         </div>
-        <div className="icon-btn spacer" aria-hidden />
+        <div
+          className={iconBtnSpacer}
+          aria-hidden
+        />
       </header>
 
       {error && (isFinished || tab !== 'play') && (
-        <div className="banner banner-inline">{error}</div>
+        <div className={cn(banner, 'shrink-0')}>{error}</div>
       )}
       {claimMessage && (
-        <div className="banner banner-ok banner-inline">{claimMessage}</div>
+        <div className={cn(bannerOk, 'shrink-0')}>{claimMessage}</div>
       )}
 
       {(isFinished || tab === 'board') && tab !== 'notes' && (
-        <div className="panel-scroll">
+        <div className={panelScroll}>
           <div
-            className={`card claim-panel${isFinished && canClaim ? ' has-claim' : ''}`}
+            className={cn(
+              card,
+              'mb-3 flex items-center gap-2',
+              !(isFinished && canClaim) && 'justify-end',
+            )}
           >
             {isFinished && canClaim ? (
               <button
                 type="button"
-                className="btn primary block"
+                className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
                 onClick={() => {
                   setError(null);
                   setClaimMessage(null);
@@ -469,24 +525,24 @@ export function GamePage() {
             }
           />
           {isFinished && (
-            <div className="card stack-sm">
+            <div className={cn(card, stackSm)}>
               <button
                 type="button"
-                className="btn ghost block"
+                className={btnClass({ kind: 'ghost', block: true })}
                 onClick={() => downloadGameCsv(game)}
               >
                 Export CSV
               </button>
               <button
                 type="button"
-                className="btn ghost block"
+                className={btnClass({ kind: 'ghost', block: true })}
                 onClick={() => downloadGameXml(game)}
               >
                 Export XML
               </button>
               <button
                 type="button"
-                className="btn ghost block"
+                className={btnClass({ kind: 'ghost', block: true })}
                 onClick={() => downloadGameJson(game)}
               >
                 Export JSON
@@ -539,9 +595,9 @@ export function GamePage() {
         tab === 'play' &&
         current &&
         !(showBidRecap && phase === 'tricks' && !game.superScorer) && (
-        <div className="play-layout">
-          <header className="phase-header">
-            <h2 className="phase-title">
+        <div className={playLayout}>
+          <header className={phaseHeader}>
+            <h2 className={phaseTitle}>
               {game.superScorer && !hasTrumpCard(current.trumpCard) && phase === 'bidding'
                 ? 'Choose trump'
                 : phase === 'bidding'
@@ -550,34 +606,34 @@ export function GamePage() {
                     ? 'Play'
                     : 'Scoring'}
             </h2>
-            <p className="phase-sub">
+            <p className={phaseSub}>
               Round {current.number}
-              <span className="phase-dot">·</span>
+              <span className={phaseDot}>·</span>
               {handSize} cards
               {hasTrumpCard(current.trumpCard) && current.trumpCard ? (
                 <>
-                  <span className="phase-dot">·</span>
+                  <span className={phaseDot}>·</span>
                   {suitGlyph(current.trumpCard.s)}
                 </>
               ) : null}
               {phase === 'tricks' && current.forceBurn ? (
                 <>
-                  <span className="phase-dot">·</span>
+                  <span className={phaseDot}>·</span>
                   FB
                 </>
               ) : null}
             </p>
             {phase === 'bidding' ? (
               <>
-                <p className="phase-dealer">
+                <p className={phaseDealer}>
                   {requireDealerName(game, current)} is dealer
                 </p>
-                <p className="phase-dealer">
+                <p className={phaseDealer}>
                   {requireFirstPlayName(game, current)} is first bid
                 </p>
               </>
             ) : (
-              <p className="phase-dealer">
+              <p className={phaseDealer}>
                 {requireFirstPlayName(game, current)} is first play
               </p>
             )}
@@ -586,7 +642,7 @@ export function GamePage() {
               !hasTrumpCard(current.trumpCard) &&
               phase === 'bidding'
             ) && (
-              <p className="phase-total">
+              <p className={phaseTotal}>
                 <strong>
                   {phase === 'bidding' ? liveBidSum : totalBidsForRound}
                 </strong>{' '}
@@ -624,8 +680,8 @@ export function GamePage() {
           {phase === 'bidding' &&
             !(game.superScorer && !hasTrumpCard(current.trumpCard)) && (
             <>
-              <div className="play-middle">
-                <div className="turn-list">
+              <div className={playMiddle}>
+                <div className={turnList}>
                   {bidOrder.map((pid) => {
                     const p = game.players.find((x) => x.id === pid);
                     if (!p) throw new Error(`Missing player ${pid}`);
@@ -637,43 +693,47 @@ export function GamePage() {
                     return (
                       <div
                         key={pid}
-                        className={[
-                          'turn-card',
-                          isActive ? 'expanded' : 'collapsed',
-                          !isActive && locked !== undefined ? 'done' : '',
-                          !isActive && locked === undefined ? 'pending' : '',
-                          isLast && isActive ? 'dealer' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
+                        className={turnCardClass({
+                          expanded: isActive,
+                          done: locked !== undefined,
+                          pending: locked === undefined,
+                          dealer: isLast && isActive,
+                        })}
                       >
                         <button
                           type="button"
-                          className="turn-card-head"
+                          className={turnCardHead}
                           aria-expanded={isActive}
                           onClick={() => expandBid(pid)}
                         >
-                          <div className="turn-card-who">
-                            <span className="turn-card-name truncate">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span
+                              className={cn(
+                                'min-w-0 truncate font-semibold text-grey-900',
+                                isActive ? 'font-display text-mode' : 'text-btn',
+                              )}
+                            >
                               {p.name}
                             </span>
                             {isLast && (
-                              <span className="turn-card-tag">last</span>
+                              <span className="shrink-0 text-kicker lowercase tracking-wide text-muted">
+                                last
+                              </span>
                             )}
                           </div>
-                          <div className="turn-card-value">
+                          <div className="min-w-6 shrink-0 text-right font-display text-md tabular-nums">
                             {display !== undefined ? (
-                              <strong>{display}</strong>
+                              <strong className="font-bold text-grey-900">{display}</strong>
                             ) : (
-                              <span className="muted">—</span>
+                              <span className={muted}>—</span>
                             )}
                           </div>
                         </button>
 
                         {isActive && (
-                          <div className="turn-card-body">
+                          <div className={turnCardBody}>
                             {isLast && forbiddenLast !== null && (
-                              <p className="focus-warn">
+                              <p className="m-0 text-center text-meta text-danger">
                                 Cannot bid {forbiddenLast}
                               </p>
                             )}
@@ -687,7 +747,10 @@ export function GamePage() {
                             {isLast && forbiddenLast !== null && (
                               <button
                                 type="button"
-                                className={`fb-toggle ${forceBurn ? 'on' : ''}`}
+                                className={cn(
+                                  'self-center min-h-9 min-w-12 cursor-pointer rounded-btn border border-line-strong bg-surface-2 px-3 text-meta font-bold tracking-wide text-grey-600',
+                                  forceBurn && 'border-grey-800 bg-grey-800 text-sand-50',
+                                )}
                                 aria-pressed={forceBurn}
                                 title="Force Burn"
                                 onClick={() => setForceBurn((v) => !v)}
@@ -703,14 +766,14 @@ export function GamePage() {
                 </div>
               </div>
 
-              <div className="action-stack">
+              <div className={actionStack}>
                 {error ? (
-                  <div className="banner banner-inline">{error}</div>
+                  <div className={cn(banner, 'shrink-0')}>{error}</div>
                 ) : null}
-                <div className="action-bar">
+                <div className="flex min-w-0 shrink-0 items-center gap-2">
                   <button
                     type="button"
-                    className="btn primary block"
+                    className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
                     disabled={
                       saving ||
                       (bidsReady ? bidIllegal : !expandedBidId)
@@ -750,8 +813,8 @@ export function GamePage() {
 
           {phase === 'tricks' && !game.superScorer && (
             <>
-              <div className="play-middle">
-                <div className="turn-list">
+              <div className={playMiddle}>
+                <div className={turnList}>
                   {bidOrder.map((pid) => {
                     const e = current.entries.find((x) => x.playerId === pid);
                     if (!e) throw new Error(`Missing entry ${pid}`);
@@ -765,47 +828,50 @@ export function GamePage() {
                     return (
                       <div
                         key={pid}
-                        className={[
-                          'turn-card',
-                          isActive ? 'expanded' : 'collapsed',
-                          !isActive && locked !== undefined ? 'done' : '',
-                          !isActive && locked === undefined ? 'pending' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
+                        className={turnCardClass({
+                          expanded: isActive,
+                          done: locked !== undefined,
+                          pending: locked === undefined,
+                        })}
                       >
                         <button
                           type="button"
-                          className="turn-card-head"
+                          className={turnCardHead}
                           aria-expanded={isActive}
                           onClick={() => expandTrick(pid)}
                         >
-                          <div className="turn-card-who">
-                            <span className="turn-card-name truncate">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span
+                              className={cn(
+                                'min-w-0 truncate font-semibold text-grey-900',
+                                isActive ? 'font-display text-mode' : 'text-btn',
+                              )}
+                            >
                               {e.playerName}
                             </span>
                           </div>
-                          <div className="turn-card-value">
+                          <div className="min-w-6 shrink-0 text-right font-display text-md tabular-nums">
                             {display !== undefined ? (
-                              <strong>
+                              <strong className="font-bold text-grey-900">
                                 {display}
-                                <span className="value-of">/{e.bid}</span>
+                                <span className="text-meta font-semibold text-muted">
+                                  /{e.bid}
+                                </span>
                               </strong>
                             ) : (
-                              <span className="muted">
+                              <span className={muted}>
                                 —
-                                <span className="value-of">/{e.bid}</span>
+                                <span className="text-meta font-semibold text-muted">
+                                  /{e.bid}
+                                </span>
                               </span>
                             )}
                           </div>
                         </button>
 
                         {isActive && (
-                          <div className="turn-card-body">
-                            <p
-                              className="hint"
-                              style={{ margin: 0, textAlign: 'center' }}
-                            >
+                          <div className={turnCardBody}>
+                            <p className={cn(hint, 'm-0 text-center')}>
                               {remainingTricks - currentTricks} left in round
                             </p>
                             <NumberStepper
@@ -823,14 +889,14 @@ export function GamePage() {
                 </div>
               </div>
 
-              <div className="action-stack">
+              <div className={actionStack}>
                 {error ? (
-                  <div className="banner banner-inline">{error}</div>
+                  <div className={cn(banner, 'shrink-0')}>{error}</div>
                 ) : null}
-                <div className="action-bar">
+                <div className="flex min-w-0 shrink-0 items-center gap-2">
                   <button
                     type="button"
-                    className="btn primary block"
+                    className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
                     disabled={
                       saving ||
                       (tricksReady ? !trickSumOk : !expandedTrickId)
@@ -883,39 +949,39 @@ function ClaimGameScreen({
   onConfirm: () => void;
 }) {
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <h2 className="page-title">Claim game</h2>
-        <p className="lede">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <h2 className={pageTitle}>Claim game</h2>
+        <p className={lede}>
           Who did you play as
           {gameName ? ` in ${gameName}` : ''}? The table name stays the same.
         </p>
       </div>
-      <div className="page-fit-body stack">
-        {error && <div className="banner">{error}</div>}
+      <div className={cn(pageFitBody, stack)}>
+        {error && <div className={banner}>{error}</div>}
         {players.length === 0 ? (
-          <div className="empty">No unclaimed seats left.</div>
+          <div className={empty}>No unclaimed seats left.</div>
         ) : (
-          <div className="claim-card-list">
+          <div className={stackSm}>
             {players.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className="btn mode-card"
+                className={modeCard}
                 disabled={busy}
                 onClick={() => onPick({ id: p.id, name: p.name })}
               >
-                <span className="mode-card-title">{p.name}</span>
-                <span className="mode-card-meta">Tap to claim this seat</span>
+                <span className={modeCardTitle}>{p.name}</span>
+                <span className={modeCardMeta}>Tap to claim this seat</span>
               </button>
             ))}
           </div>
         )}
       </div>
-      <div className="action-bar">
+      <div className={actionBar}>
         <button
           type="button"
-          className="btn ghost block"
+          className={btnClass({ kind: 'ghost', block: true })}
           disabled={busy}
           onClick={onCancel}
         >
@@ -924,21 +990,21 @@ function ClaimGameScreen({
       </div>
       {pending && (
         <div
-          className="modal-backdrop"
+          className={modalBackdrop}
           onClick={busy ? undefined : onCancelConfirm}
         >
-          <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-            <p className="section-title" style={{ margin: 0 }}>
+          <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+            <p className={cn(sectionTitle, 'm-0')}>
               Claim this game?
             </p>
-            <p style={{ margin: 0 }}>
+            <p className="m-0">
               Are you sure you want to claim {possessive(pending.name)} game?
               These stats will count as yours.
             </p>
-            <div className="row" style={{ gap: 8 }}>
+            <div className={cn(row, 'gap-2')}>
               <button
                 type="button"
-                className="btn ghost"
+                className={btnClass({ kind: 'ghost' })}
                 disabled={busy}
                 onClick={onCancelConfirm}
               >
@@ -946,10 +1012,9 @@ function ClaimGameScreen({
               </button>
               <button
                 type="button"
-                className="btn primary"
+                className={cn(btnClass({ kind: 'primary' }), 'flex-1')}
                 disabled={busy}
                 onClick={onConfirm}
-                style={{ flex: 1 }}
               >
                 {busy ? '…' : 'Yes, claim'}
               </button>

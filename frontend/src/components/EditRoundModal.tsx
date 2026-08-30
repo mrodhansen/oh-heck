@@ -3,6 +3,22 @@ import { GameDetail } from '../api';
 import { toUserMessage } from '../api/errors';
 import { NumberStepper } from './NumberStepper';
 import { forbiddenLastBid } from '../offline/rules';
+import {
+  banner,
+  bannerInfo,
+  btnClass,
+  card,
+  cn,
+  grid2,
+  hint,
+  modal,
+  modalBackdrop,
+  muted,
+  pageTitle,
+  row,
+  stack,
+  stackSm,
+} from '../ui';
 
 type Props = {
   game: GameDetail;
@@ -68,10 +84,10 @@ export function EditRoundModal({
 
   if (!round || (!round.complete && !allowIncomplete)) {
     return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-          <p className="banner">Cannot edit an incomplete round.</p>
-          <button type="button" className="btn ghost" onClick={onClose}>
+      <div className={modalBackdrop} onClick={onClose}>
+        <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+          <p className={banner}>Cannot edit an incomplete round.</p>
+          <button type="button" className={btnClass({ kind: 'ghost' })} onClick={onClose}>
             Close
           </button>
         </div>
@@ -118,23 +134,26 @@ export function EditRoundModal({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal stack" onClick={(e) => e.stopPropagation()}>
-        <div className="row space-between">
-          <h3 className="page-title" style={{ fontSize: '1.25rem', margin: 0 }}>
+    <div className={modalBackdrop} onClick={onClose}>
+      <div className={cn(modal, stack)} onClick={(e) => e.stopPropagation()}>
+        <div className={cn(row, 'justify-between')}>
+          <h3 className={pageTitle}>
             Edit round {roundNumber}
           </h3>
-          <button type="button" className="btn ghost sm" onClick={onClose}>
+          <button type="button" className={btnClass({ kind: 'ghost', size: 'sm' })} onClick={onClose}>
             Close
           </button>
         </div>
-        <div className="row space-between">
-          <p className="hint" style={{ margin: 0 }}>
+        <div className={cn(row, 'justify-between')}>
+          <p className={cn(hint, 'm-0')}>
             {handSize} cards · bid order
           </p>
           <button
             type="button"
-            className={`fb-toggle ${forceBurn ? 'on' : ''}`}
+            className={cn(
+              'self-center min-h-9 min-w-12 cursor-pointer rounded-btn border border-line-strong bg-surface-2 px-3 text-meta font-bold tracking-wide text-grey-600',
+              forceBurn && 'border-grey-800 bg-grey-800 text-sand-50',
+            )}
             aria-pressed={forceBurn}
             title="Force Burn"
             onClick={() => setForceBurn((v) => !v)}
@@ -143,23 +162,23 @@ export function EditRoundModal({
           </button>
         </div>
 
-        {error && <div className="banner">{error}</div>}
+        {error && <div className={banner}>{error}</div>}
 
-        <div className="stack-sm">
+        <div className={stackSm}>
           {bidOrder.map((pid, idx) => {
             const p = game.players.find((x) => x.id === pid)!;
             const isLast = idx === bidOrder.length - 1;
             return (
-              <div key={pid} className="card stack-sm">
+              <div key={pid} className={cn(card, stackSm)}>
                 <div>
                   <strong>{p.name}</strong>
                   {isLast && (
-                    <span className="muted"> · dealer / last bid</span>
+                    <span className={muted}> · dealer / last bid</span>
                   )}
                 </div>
-                <div className="grid-2">
+                <div className={grid2}>
                   <div>
-                    <div className="hint" style={{ marginBottom: 6 }}>
+                    <div className={cn(hint, 'mb-1.5')}>
                       Bid
                       {isLast && forbiddenLast !== null
                         ? ` (not ${forbiddenLast})`
@@ -176,7 +195,7 @@ export function EditRoundModal({
                     />
                   </div>
                   <div>
-                    <div className="hint" style={{ marginBottom: 6 }}>
+                    <div className={cn(hint, 'mb-1.5')}>
                       Tricks
                     </div>
                     <NumberStepper
@@ -194,13 +213,13 @@ export function EditRoundModal({
           })}
         </div>
 
-        <div className={`banner ${trickSum === handSize ? 'info' : ''}`}>
+        <div className={trickSum === handSize ? bannerInfo : banner}>
           Tricks total: {trickSum} / {handSize}
         </div>
 
         <button
           type="button"
-          className="btn primary block"
+          className={btnClass({ kind: 'primary', block: true })}
           disabled={saving}
           onClick={submit}
         >

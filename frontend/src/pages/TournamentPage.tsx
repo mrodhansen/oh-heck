@@ -10,6 +10,30 @@ import { toUserMessage } from '../api/errors';
 import { SuperScorerToggle } from '../components/SuperScorerToggle';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
+import {
+  actionBar,
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  fillCenter,
+  hint,
+  lede,
+  list,
+  listItem,
+  listItemMeta,
+  listItemTitle,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  row,
+  sectionTitle,
+  stack,
+  stackSm,
+} from '../ui';
 
 export function TournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,9 +142,9 @@ export function TournamentPage() {
     }
   }
 
-  if (loading) return <div className="empty fill-center">Loading…</div>;
-  if (!t && error) return <div className="banner">{error}</div>;
-  if (!t) return <div className="empty fill-center">Not found</div>;
+  if (loading) return <div className={cn(empty, fillCenter)}>Loading…</div>;
+  if (!t && error) return <div className={banner}>{error}</div>;
+  if (!t) return <div className={cn(empty, fillCenter)}>Not found</div>;
 
   if (selectedTable) {
     return (
@@ -143,53 +167,53 @@ export function TournamentPage() {
     t.status === 'OPEN' && x >= n && !t.proposedTableSizesError;
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header">
-          <h2 className="page-title truncate">{t.name ?? 'Tournament'}</h2>
-          <Link to="/play/tournaments" className="btn ghost sm">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={pageHeader}>
+          <h2 className={cn(pageTitle, 'truncate')}>{t.name ?? 'Tournament'}</h2>
+          <Link to="/play/tournaments" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Back
           </Link>
         </div>
-        <p className="lede">{statusLabel(t.status)}</p>
+        <p className={lede}>{statusLabel(t.status)}</p>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
       {t.highTableError && (
-        <div className="banner banner-inline" role="alert">
+        <div className={cn(banner, 'shrink-0')} role="alert">
           {t.highTableError}
         </div>
       )}
 
-      <div className="page-fit-body stack">
+      <div className={cn(pageFitBody, stack)}>
         {t.status === 'OPEN' && (
           <>
-            <div className="tourney-count">
-              <span className="tourney-count-num">
+            <div className="flex items-baseline gap-2.5 py-2">
+              <span className="font-display text-stepper font-bold leading-none tabular-nums">
                 {x}/{n}
               </span>
-              <span className="tourney-count-label">players entered</span>
+              <span className="text-btn text-muted">players entered</span>
             </div>
 
             {t.proposedTableSizes && t.proposedTableSizes.length > 0 && (
-              <p className="hint">
+              <p className={hint}>
                 Tables will be:{' '}
                 {t.proposedTableSizes.map((s) => `${s}`).join(' · ')}
               </p>
             )}
             {t.proposedTableSizesError && (
-              <p className="hint" role="alert">
+              <p className={hint} role="alert">
                 {t.proposedTableSizesError}
               </p>
             )}
 
-            <div className="list name-list">
+            <div className={list}>
               {t.players.map((p) => (
-                <div key={p.id} className="list-item static">
-                  <p className="list-item-title truncate">{p.name}</p>
+                <div key={p.id} className={cn(listItem, 'cursor-default')}>
+                  <p className={cn(listItemTitle, 'truncate')}>{p.name}</p>
                   <button
                     type="button"
-                    className="name-remove"
+                    className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-btn border border-line-strong bg-surface text-xl leading-none text-grey-600 enabled:active:bg-sand-200 disabled:cursor-not-allowed disabled:opacity-35"
                     disabled={busy}
                     aria-label={`Remove ${p.name}`}
                     onClick={() => void removePlayer(p.id)}
@@ -203,7 +227,7 @@ export function TournamentPage() {
             {canSeat && (
               <button
                 type="button"
-                className="btn primary block"
+                className={btnClass({ kind: 'primary', block: true })}
                 disabled={busy}
                 onClick={() => void seatTables()}
               >
@@ -214,19 +238,26 @@ export function TournamentPage() {
         )}
 
         {t.status === 'COMPLETED' && t.finalStandings && (
-          <section className="stack-sm">
-            <h3 className="section-title">Placements</h3>
-            <div className="list placement-list">
+          <section className={stackSm}>
+            <h3 className={sectionTitle}>Placements</h3>
+            <div className={list}>
               {t.finalStandings.map((row) => (
-                <div key={row.tournamentPlayerId} className="list-item static placement-row">
-                  <span className="placement-place">{row.place}</span>
-                  <div className="min-w-0 placement-body">
-                    <p className="list-item-title truncate">{row.name}</p>
-                    <p className="list-item-meta truncate">
+                <div
+                  key={row.tournamentPlayerId}
+                  className={cn(listItem, 'cursor-default items-center')}
+                >
+                  <span className="w-7 shrink-0 font-display font-bold tabular-nums text-grey-800">
+                    {row.place}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn(listItemTitle, 'truncate')}>{row.name}</p>
+                    <p className={cn(listItemMeta, 'truncate')}>
                       {placementMeta(row)}
                     </p>
                   </div>
-                  <span className="placement-score">{row.score}</span>
+                  <span className="shrink-0 font-semibold tabular-nums text-grey-700">
+                    {row.score}
+                  </span>
                 </div>
               ))}
             </div>
@@ -234,11 +265,11 @@ export function TournamentPage() {
         )}
 
         {t.status !== 'OPEN' && (
-          <section className="stack-sm">
-            <h3 className="section-title">
+          <section className={stackSm}>
+            <h3 className={sectionTitle}>
               {t.status === 'COMPLETED' ? 'Games' : 'Tables'}
             </h3>
-            <div className="table-grid">
+            <div className="flex flex-col gap-2.5">
               {[...t.tables]
                 .sort((a, b) => {
                   if (a.isHighTable !== b.isHighTable) {
@@ -250,7 +281,10 @@ export function TournamentPage() {
                 <button
                   key={tb.id}
                   type="button"
-                  className={`table-card ${tb.isHighTable ? 'high' : ''}`}
+                  className={cn(
+                    'flex w-full min-h-tap cursor-pointer flex-col gap-1.5 rounded-card border border-line-strong bg-surface p-3.5 text-left',
+                    tb.isHighTable && 'border-grey-700 bg-sand-100',
+                  )}
                   onClick={() => {
                     if (tb.gameId && tb.status === 'IN_PROGRESS') {
                       navigate(`/games/${tb.gameId}`);
@@ -261,21 +295,21 @@ export function TournamentPage() {
                     }
                   }}
                 >
-                  <div className="table-card-head">
-                    <span className="table-card-title">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-display text-md font-semibold">
                       {tb.isHighTable
                         ? 'High Table'
                         : `Table ${tb.tableNumber}`}
                     </span>
-                    <span className="table-card-status">
+                    <span className="shrink-0 text-label text-muted">
                       {tableStatusLabel(tb)}
                     </span>
                   </div>
-                  <p className="table-card-names">
+                  <p className="m-0 text-btn leading-snug text-grey-700">
                     {tb.seats.map((s) => s.name).join(', ')}
                   </p>
                   {tb.standings && tb.status === 'COMPLETED' && (
-                    <p className="table-card-meta">
+                    <p className="m-0 text-hint text-muted">
                       1st{' '}
                       {[...tb.standings]
                         .sort((a, b) => a.place - b.place)[0]
@@ -290,7 +324,10 @@ export function TournamentPage() {
       </div>
 
       {t.status === 'OPEN' && (
-        <form className="tourney-add-bar" onSubmit={addName}>
+        <form
+          className="mt-auto flex shrink-0 flex-col gap-2 border-t border-line pt-2"
+          onSubmit={addName}
+        >
           <input
             type="text"
             value={nameInput}
@@ -302,7 +339,7 @@ export function TournamentPage() {
           />
           <button
             type="submit"
-            className="btn primary block"
+            className={btnClass({ kind: 'primary', block: true })}
             disabled={busy || !nameInput.trim()}
           >
             Add
@@ -336,38 +373,52 @@ function TableDetail({
   const seats = [...table.seats].sort((a, b) => a.seatIndex - b.seatIndex);
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header">
-          <h2 className="page-title">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={pageHeader}>
+          <h2 className={pageTitle}>
             {table.isHighTable ? 'High Table' : `Table ${table.tableNumber}`}
           </h2>
-          <button type="button" className="btn ghost sm" onClick={onBack}>
+          <button type="button" className={btnClass({ kind: 'ghost', size: 'sm' })} onClick={onBack}>
             Back
           </button>
         </div>
-        <p className="lede">
+        <p className={lede}>
           Seating top → bottom. Dealer is random (bids last, round 1).
         </p>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="page-fit-body">
-        <div className="dealer-pick" role="list">
+      <div className={pageFitBody}>
+        <div className="flex flex-col gap-2" role="list">
           {seats.map((s) => (
             <div
               key={s.id}
-              className={`dealer-option static ${s.isDealer ? 'selected' : ''}`}
+              className={cn(
+                'flex w-full min-h-stepper cursor-default flex-wrap items-center gap-2 rounded-btn border border-line bg-surface px-2 py-3 pl-3.5 text-left text-grey-900',
+                s.isDealer && 'border-grey-700 bg-sand-100 shadow-inset-sel',
+              )}
               role="listitem"
             >
-              <span className="seat-index" aria-hidden>
+              <span className="w-6 shrink-0 text-meta tabular-nums text-muted" aria-hidden>
                 {s.seatIndex + 1}
               </span>
-              <span className="dealer-name truncate">{s.name}</span>
-              {s.isDealer && <span className="dealer-badge">Deals first</span>}
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-md font-semibold',
+                  s.isDealer && 'font-bold',
+                )}
+              >
+                {s.name}
+              </span>
+              {s.isDealer && (
+                <span className="ml-auto shrink-0 text-xs font-semibold text-ok">
+                  Deals first
+                </span>
+              )}
               {s.sourcePlace != null && (
-                <span className="seat-source">
+                <span className="ml-8 basis-full text-hint text-muted">
                   T{s.sourceTableNumber} · {placeLabel(s.sourcePlace)} (
                   {s.sourceScore})
                 </span>
@@ -377,12 +428,12 @@ function TableDetail({
         </div>
 
         {table.standings && table.status === 'COMPLETED' && (
-          <div className="card stack-sm" style={{ marginTop: 12 }}>
-            <h3 className="section-title">Results</h3>
+          <div className={cn(card, stackSm, 'mt-3')}>
+            <h3 className={sectionTitle}>Results</h3>
             {[...table.standings]
               .sort((a, b) => a.place - b.place)
               .map((s) => (
-                <div key={s.playerId} className="row space-between">
+                <div key={s.playerId} className={cn(row, 'justify-between')}>
                   <span>
                     {s.place}. {s.playerName}
                   </span>
@@ -397,11 +448,11 @@ function TableDetail({
         )}
       </div>
 
-      <div className="action-bar">
+      <div className={actionBar}>
         {table.gameId && (
           <button
             type="button"
-            className="btn primary block"
+            className={btnClass({ kind: 'primary', block: true })}
             onClick={() => onOpenGame(table.gameId!)}
           >
             {table.status === 'COMPLETED' ? 'View game' : 'Open game'}
@@ -410,7 +461,7 @@ function TableDetail({
         {canStart && (
           <button
             type="button"
-            className="btn primary block"
+            className={btnClass({ kind: 'primary', block: true })}
             disabled={busy}
             onClick={onStart}
           >

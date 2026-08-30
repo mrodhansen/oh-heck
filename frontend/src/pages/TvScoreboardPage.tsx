@@ -8,6 +8,7 @@ import { TvFit } from '../components/TvFit';
 import { getCachedGame } from '../offline/db';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
+import { banner, card, cn, empty, fillCenter } from '../ui';
 
 export function TvScoreboardPage() {
   const { id } = useParams<{ id: string }>();
@@ -112,17 +113,17 @@ export function TvScoreboardPage() {
   }, [game]);
 
   if (loading && !game) {
-    return <div className="empty fill-center">Loading…</div>;
+    return <div className={cn(empty, fillCenter)}>Loading…</div>;
   }
-  if (!game && error) return <div className="banner">{error}</div>;
-  if (!game) return <div className="empty fill-center">Game not found</div>;
+  if (!game && error) return <div className={banner}>{error}</div>;
+  if (!game) return <div className={cn(empty, fillCenter)}>Game not found</div>;
 
   return (
     <div className="tv-screen">
-      {error ? <div className="banner banner-inline">{error}</div> : null}
+      {error ? <div className={cn(banner, 'shrink-0')}>{error}</div> : null}
       <TvFit layoutKey={tvBoardFingerprint(game)}>
         <div className="tv-body">
-          <section className="card tv-standings">
+          <section className={cn(card, 'tv-standings')}>
             <h3 className="section-title">Leaders</h3>
             <div className="tv-standing-list">
               {standings.map((s) => (

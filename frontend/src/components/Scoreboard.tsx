@@ -1,4 +1,19 @@
 import { GameDetail } from '../api';
+import {
+  btnClass,
+  card,
+  cn,
+  hint,
+  muted,
+  place,
+  placeTone,
+  row,
+  score,
+  scoreNeg,
+  scorePos,
+  sectionTitle,
+  stack,
+} from '../ui';
 
 type Props = {
   game: GameDetail;
@@ -22,35 +37,28 @@ export function Scoreboard({
   const showEditCol = Boolean(editRound) && !isTv;
 
   return (
-    <div className={`stack${isTv ? ' tv-scoreboard' : ''}`}>
+    <div className={cn(stack, isTv && 'tv-scoreboard')}>
       {showStandings ? (
-      <section className="card">
-        <h3 className="section-title">Standings</h3>
+      <section className={card}>
+        <h3 className={sectionTitle}>Standings</h3>
         <div>
           {orderedStandings.map((s) => (
-            <div key={s.playerId} className="standing-row">
-              <div className="row" style={{ gap: 12 }}>
-                <span
-                  className={`place ${
-                    s.place === 1
-                      ? 'gold'
-                      : s.place === 2
-                        ? 'silver'
-                        : s.place === 3
-                          ? 'bronze'
-                          : ''
-                  }`}
-                >
+            <div
+              key={s.playerId}
+              className="flex min-w-0 items-center justify-between gap-3 border-b border-line py-2.5 first:pt-0 last:border-b-0 last:pb-0"
+            >
+              <div className={cn(row, 'gap-3')}>
+                <span className={cn(place, placeTone(s.place))}>
                   {s.place}
                 </span>
                 <div>
-                  <div style={{ fontWeight: 600 }}>{s.playerName}</div>
-                  <div className="hint">
+                  <div className="font-semibold">{s.playerName}</div>
+                  <div className={hint}>
                     Made {s.bidsMade}/{s.roundsPlayed}
                   </div>
                 </div>
               </div>
-              <div className={`score ${s.total >= 0 ? 'pos' : 'neg'}`}>
+              <div className={cn(score, s.total >= 0 ? scorePos : scoreNeg)}>
                 {s.total}
               </div>
             </div>
@@ -59,8 +67,8 @@ export function Scoreboard({
       </section>
       ) : null}
 
-      <section className="card">
-        <h3 className="section-title">Scoreboard</h3>
+      <section className={card}>
+        <h3 className={sectionTitle}>Scoreboard</h3>
         <div className="table-scroll">
           <table className="scoreboard">
             <thead>
@@ -77,9 +85,9 @@ export function Scoreboard({
                 <tr key={r.id}>
                   <td>
                     {r.number}
-                    <span className="muted"> ({r.handSize})</span>
+                    <span className={muted}> ({r.handSize})</span>
                     {r.forceBurn ? (
-                      <span className="muted"> FB</span>
+                      <span className={muted}> FB</span>
                     ) : null}
                   </td>
                   {game.players.map((p) => {
@@ -92,9 +100,9 @@ export function Scoreboard({
                       return (
                         <td
                           key={p.id}
-                          className={cellClass(
-                            'muted',
-                            forceBurnCell ? 'score-force-burn' : undefined,
+                          className={cn(
+                            muted,
+                            forceBurnCell && 'score-force-burn',
                           )}
                         >
                           {e?.bid != null ? `b${e.bid}` : '—'}
@@ -105,15 +113,15 @@ export function Scoreboard({
                     return (
                       <td
                         key={p.id}
-                        className={cellClass(
-                          made ? undefined : 'score-miss',
-                          forceBurnCell ? 'score-force-burn' : undefined,
+                        className={cn(
+                          !made && 'score-miss',
+                          forceBurnCell && 'score-force-burn',
                         )}
                       >
-                        <span className={made ? 'score pos' : 'score neg'}>
+                        <span className={cn(score, made ? scorePos : scoreNeg)}>
                           {e.points > 0 ? `+${e.points}` : e.points}
                         </span>
-                        <div className="hint">
+                        <div className={hint}>
                           {e.tricksTaken}/{e.bid}
                         </div>
                       </td>
@@ -124,7 +132,7 @@ export function Scoreboard({
                       {(r.complete || allowIncompleteEdit) && (
                         <button
                           type="button"
-                          className="btn ghost sm"
+                          className={btnClass({ kind: 'ghost', size: 'sm' })}
                           onClick={() => {
                             if (!editRound) {
                               throw new Error('Missing edit handler');
@@ -149,9 +157,10 @@ export function Scoreboard({
                       className={s && s.total < 0 ? 'score-miss' : undefined}
                     >
                       <span
-                        className={
-                          s && s.total >= 0 ? 'score pos' : 'score neg'
-                        }
+                        className={cn(
+                          score,
+                          s && s.total >= 0 ? scorePos : scoreNeg,
+                        )}
                       >
                         {s?.total ?? 0}
                       </span>
@@ -166,11 +175,6 @@ export function Scoreboard({
       </section>
     </div>
   );
-}
-
-function cellClass(...parts: Array<string | undefined>): string | undefined {
-  const joined = parts.filter(Boolean).join(' ');
-  return joined.length > 0 ? joined : undefined;
 }
 
 function shortName(name: string): string {

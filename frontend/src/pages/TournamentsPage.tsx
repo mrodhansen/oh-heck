@@ -5,6 +5,28 @@ import { toUserMessage } from '../api/errors';
 import { newId } from '../offline/rules';
 import { onSyncChange } from '../offline/sync';
 import { useSocketRoom } from '../useSocketRoom';
+import {
+  banner,
+  btnClass,
+  card,
+  cn,
+  empty,
+  field,
+  list,
+  listItem,
+  listItemChevron,
+  listItemMeta,
+  listItemStatus,
+  listItemTitle,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageHeader,
+  pageTitle,
+  sectionTitle,
+  stack,
+  stackSm,
+} from '../ui';
 
 export function TournamentsPage() {
   const navigate = useNavigate();
@@ -71,30 +93,30 @@ export function TournamentsPage() {
   }
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-header">
-        <div className="page-header">
-          <h2 className="page-title">Tournaments</h2>
-          <Link to="/play/score" className="btn ghost sm">
+    <div className={pageFit}>
+      <div className={pageFitHeader}>
+        <div className={pageHeader}>
+          <h2 className={pageTitle}>Tournaments</h2>
+          <Link to="/play/score" className={btnClass({ kind: 'ghost', size: 'sm' })}>
             Back
           </Link>
         </div>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="page-fit-body stack">
+      <div className={cn(pageFitBody, stack)}>
         {!creating ? (
           <button
             type="button"
-            className="btn primary block"
+            className={btnClass({ kind: 'primary', block: true })}
             onClick={() => setCreating(true)}
           >
             New tournament
           </button>
         ) : (
-          <form className="card stack-sm" onSubmit={createTourney}>
-            <label className="field">
+          <form className={cn(card, stackSm)} onSubmit={createTourney}>
+            <label className={field}>
               How many people playing?
               <input
                 type="number"
@@ -105,7 +127,7 @@ export function TournamentsPage() {
                 required
               />
             </label>
-            <label className="field">
+            <label className={field}>
               Name
               <input
                 type="text"
@@ -115,16 +137,20 @@ export function TournamentsPage() {
                 maxLength={80}
               />
             </label>
-            <div className="action-bar form-actions">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                className="btn ghost"
+                className={btnClass({ kind: 'ghost' })}
                 disabled={saving}
                 onClick={() => setCreating(false)}
               >
                 Cancel
               </button>
-              <button type="submit" className="btn primary block" disabled={saving}>
+              <button
+                type="submit"
+                className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
+                disabled={saving}
+              >
                 {saving ? 'Creating…' : 'Create'}
               </button>
             </div>
@@ -167,7 +193,7 @@ function formatStatus(s: TournamentSummary['status']): string {
 
 function TournamentListSection({
   title,
-  empty,
+  empty: emptyLabel,
   loading,
   items,
 }: {
@@ -177,31 +203,31 @@ function TournamentListSection({
   items: TournamentSummary[];
 }) {
   return (
-    <section className="stack-sm">
-      <h3 className="section-title">{title}</h3>
-      {loading && <div className="empty">Loading…</div>}
+    <section className={stackSm}>
+      <h3 className={sectionTitle}>{title}</h3>
+      {loading && <div className={empty}>Loading…</div>}
       {!loading && items.length === 0 && (
-        <div className="card empty">{empty}</div>
+        <div className={cn(card, empty)}>{emptyLabel}</div>
       )}
       {!loading && items.length > 0 && (
-        <div className="list">
+        <div className={list}>
           {items.map((t) => (
             <Link
               key={t.id}
               to={`/play/tournaments/${t.id}`}
-              className="list-item"
+              className={listItem}
             >
               <div className="min-w-0">
-                <p className="list-item-title truncate">
+                <p className={cn(listItemTitle, 'truncate')}>
                   {t.name ?? 'Tournament'}
                 </p>
-                <p className="list-item-meta">
+                <p className={listItemMeta}>
                   {t.playerCount}/{t.targetPlayerCount} players
                   {t.tableCount > 0 ? ` · ${t.tableCount} tables` : ''}
                 </p>
-                <p className="list-item-status">{formatStatus(t.status)}</p>
+                <p className={listItemStatus}>{formatStatus(t.status)}</p>
               </div>
-              <span className="list-item-chevron" aria-hidden>
+              <span className={listItemChevron} aria-hidden>
                 ›
               </span>
             </Link>

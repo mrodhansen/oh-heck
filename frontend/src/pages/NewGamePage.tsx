@@ -6,6 +6,22 @@ import { accountDisplayName } from '../auth';
 import { useAuth } from '../useAuth';
 import { SuperScorerToggle } from '../components/SuperScorerToggle';
 import { DealerSeatList } from '../components/DealerSeatList';
+import {
+  actionBar,
+  banner,
+  btnClass,
+  card,
+  cn,
+  field,
+  hint,
+  lede,
+  pageFit,
+  pageFitBody,
+  pageFitHeader,
+  pageTitle,
+  sectionTitle,
+  stackSm,
+} from '../ui';
 
 const MIN = 2;
 const MAX = 7;
@@ -96,8 +112,6 @@ export function NewGamePage() {
     setError(null);
     setSaving(true);
     try {
-      // Seating order stays clockwise; rotate so chosen dealer is last
-      // (API: last seat = round-1 dealer, first seat = left of dealer).
       const seated = names
         .map((n, i) => ({
           name: n.trim(),
@@ -127,17 +141,17 @@ export function NewGamePage() {
 
   if (step === 'dealer') {
     return (
-      <div className="page-fit">
-        <div className="page-fit-header">
-          <h2 className="page-title">Who deals first?</h2>
-          <p className="lede">
+      <div className={pageFit}>
+        <div className={pageFitHeader}>
+          <h2 className={pageTitle}>Who deals first?</h2>
+          <p className={lede}>
             Tap the round-1 dealer. Drag players so they match sitting order.
           </p>
         </div>
 
-        {error && <div className="banner banner-inline">{error}</div>}
+        {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-        <div className="page-fit-body">
+        <div className={pageFitBody}>
           <DealerSeatList
             names={cleaned}
             dealerIndex={dealerIndex}
@@ -151,10 +165,10 @@ export function NewGamePage() {
           />
         </div>
 
-        <div className="action-bar">
+        <div className={actionBar}>
           <button
             type="button"
-            className="btn ghost"
+            className={btnClass({ kind: 'ghost' })}
             disabled={saving}
             onClick={() => {
               setError(null);
@@ -165,7 +179,7 @@ export function NewGamePage() {
           </button>
           <button
             type="button"
-            className="btn primary block"
+            className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
             disabled={saving}
             onClick={startGame}
           >
@@ -177,16 +191,16 @@ export function NewGamePage() {
   }
 
   return (
-    <form className="page-fit" onSubmit={goToDealer}>
-      <div className="page-fit-header">
-        <h2 className="page-title">New game</h2>
+    <form className={pageFit} onSubmit={goToDealer}>
+      <div className={pageFitHeader}>
+        <h2 className={pageTitle}>New game</h2>
       </div>
 
-      {error && <div className="banner banner-inline">{error}</div>}
+      {error && <div className={cn(banner, 'shrink-0')}>{error}</div>}
 
-      <div className="page-fit-body">
-        <div className="card stack-sm">
-          <label className="field">
+      <div className={pageFitBody}>
+        <div className={cn(card, stackSm)}>
+          <label className={field}>
             Game name
             <input
               type="text"
@@ -197,21 +211,22 @@ export function NewGamePage() {
             />
           </label>
 
-          <h3 className="section-title" style={{ marginTop: 4 }}>
+          <h3 className={cn(sectionTitle, 'mt-1')}>
             Players
           </h3>
           {user ? (
-            <p className="hint" style={{ margin: '0 0 4px' }}>
+            <p className={cn(hint, 'mb-1')}>
               Your seat is pre-filled — you can change the name; your account
               still links to that seat.
             </p>
           ) : null}
 
-          <div className="stack-sm">
+          <div className={stackSm}>
             {names.map((name, i) => (
-              <div key={i} className="player-name-row">
+              <div key={i} className="flex items-center gap-2">
                 <input
                   type="text"
+                  className="min-w-0 flex-1"
                   value={name}
                   onChange={(e) => setName(i, e.target.value)}
                   placeholder="Name"
@@ -220,7 +235,7 @@ export function NewGamePage() {
                 />
                 <button
                   type="button"
-                  className="name-remove"
+                  className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-btn border border-line-strong bg-surface text-xl leading-none text-grey-600 enabled:active:bg-sand-200 disabled:cursor-not-allowed disabled:opacity-35"
                   onClick={() => removePlayer(i)}
                   disabled={names.length <= MIN}
                   aria-label="Remove player"
@@ -233,7 +248,7 @@ export function NewGamePage() {
 
           <button
             type="button"
-            className="btn"
+            className={btnClass()}
             onClick={addPlayer}
             disabled={names.length >= MAX}
           >
@@ -242,15 +257,18 @@ export function NewGamePage() {
         </div>
       </div>
 
-      <div className="action-bar">
+      <div className={actionBar}>
         <button
           type="button"
-          className="btn ghost"
+          className={btnClass({ kind: 'ghost' })}
           onClick={() => navigate('/play/single')}
         >
           Cancel
         </button>
-        <button type="submit" className="btn primary block">
+        <button
+          type="submit"
+          className={cn(btnClass({ kind: 'primary' }), 'h-12 min-w-0 flex-1')}
+        >
           Next
         </button>
       </div>

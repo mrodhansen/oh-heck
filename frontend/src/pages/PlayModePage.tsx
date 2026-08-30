@@ -1,22 +1,24 @@
 import { Link } from 'react-router-dom';
 import { useApiStatus, useOnline } from '../useOnline';
+import { modeCard, modeCardMeta, modeCardTitle, pageFit, pageFitBody, stack } from '../ui';
+import { cn } from '../cn';
 
 export function PlayModePage() {
   const online = useOnline();
   const apiReady = useApiStatus() === 'ready';
 
   return (
-    <div className="page-fit">
-      <div className="page-fit-body stack play-mode-actions">
+    <div className={pageFit}>
+      <div className={cn(pageFitBody, stack, 'pt-4')}>
         {online && apiReady ? (
-          <Link className="btn mode-card" to="/play/live">
-            <span className="mode-card-title">Play Online</span>
-            <span className="mode-card-meta">Play Oh Heck online</span>
+          <Link className={modeCard} to="/play/live">
+            <span className={modeCardTitle}>Play Online</span>
+            <span className={modeCardMeta}>Play Oh Heck online</span>
           </Link>
         ) : null}
-        <Link className="btn mode-card" to="/play/score">
-          <span className="mode-card-title">Score Game</span>
-          <span className="mode-card-meta">
+        <Link className={modeCard} to="/play/score">
+          <span className={modeCardTitle}>Score Game</span>
+          <span className={modeCardMeta}>
             Keep score of an in-person game
           </span>
         </Link>
