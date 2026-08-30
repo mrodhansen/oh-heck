@@ -14,7 +14,7 @@ export function TvScoreboardPage() {
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [idle, setIdle] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const fingerprintRef = useRef<string | null>(null);
 
   const applyGame = useCallback((next: GameDetail) => {
@@ -108,22 +108,10 @@ export function TvScoreboardPage() {
   }, []);
 
   useEffect(() => {
-    let timer = 0;
-    const bump = () => {
-      setIdle(false);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setIdle(true), 4000);
-    };
-    bump();
-    window.addEventListener('pointerdown', bump);
-    window.addEventListener('pointermove', bump);
-    window.addEventListener('keydown', bump);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('pointerdown', bump);
-      window.removeEventListener('pointermove', bump);
-      window.removeEventListener('keydown', bump);
-    };
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
   }, []);
 
   const standings = useMemo(() => {
@@ -162,7 +150,7 @@ export function TvScoreboardPage() {
   if (!game) return <div className="empty fill-center">Game not found</div>;
 
   return (
-    <div className={`tv-screen${idle ? ' chrome-idle' : ''}`}>
+    <div className={`tv-screen${fullscreen ? ' is-fullscreen' : ''}`}>
       <header className="tv-chrome">
         <div className="tv-chrome-text">
           <div className="tv-brand">{game.name ?? 'Oh Heck'}</div>
@@ -188,27 +176,41 @@ export function TvScoreboardPage() {
       </p>
       <div className="tv-body">
         <section className="card tv-standings">
-          {standings.map((s) => (
-            <div key={s.playerId} className="tv-standing-row">
-              <span
-                className={`place ${
+          <h3 className="section-title">Leaders</h3>
+          <div className="tv-standing-list">
+            {standings.map((s) => (
+              <div
+                key={s.playerId}
+                className={`tv-standing-row${
                   s.place === 1
-                    ? 'gold'
+                    ? ' is-first'
                     : s.place === 2
-                      ? 'silver'
+                      ? ' is-second'
                       : s.place === 3
-                        ? 'bronze'
+                        ? ' is-third'
                         : ''
                 }`}
               >
-                {s.place}
-              </span>
-              <span className="tv-standing-name">{s.playerName}</span>
-              <span className={`score ${s.total >= 0 ? 'pos' : 'neg'}`}>
-                {s.total}
-              </span>
-            </div>
-          ))}
+                <span
+                  className={`place ${
+                    s.place === 1
+                      ? 'gold'
+                      : s.place === 2
+                        ? 'silver'
+                        : s.place === 3
+                          ? 'bronze'
+                          : ''
+                  }`}
+                >
+                  {s.place}
+                </span>
+                <span className="tv-standing-name">{s.playerName}</span>
+                <span className={`score ${s.total >= 0 ? 'pos' : 'neg'}`}>
+                  {s.total}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
         <div className="tv-table">
           <Scoreboard game={game} variant="tv" showStandings={false} />

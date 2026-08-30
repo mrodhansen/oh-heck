@@ -878,6 +878,18 @@ a.list-item:active {
 
 .claim-panel {
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.claim-panel.has-claim .btn.block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.claim-panel:not(.has-claim) {
+  justify-content: flex-end;
 }
 
 .claim-game {
@@ -4877,14 +4889,11 @@ button.playing-card:disabled {
   justify-content: space-between;
   gap: 16px;
   min-width: 0;
-  opacity: 1;
-  transition: opacity 0.35s ease;
 }
 
-.tv-screen.chrome-idle .tv-chrome,
-.tv-screen.chrome-idle .tv-hint {
-  opacity: 0;
-  pointer-events: none;
+.tv-screen.is-fullscreen .tv-chrome,
+.tv-screen.is-fullscreen .tv-hint {
+  display: none;
 }
 
 .tv-chrome-text {
@@ -4913,45 +4922,70 @@ button.playing-card:disabled {
 .tv-hint {
   flex: 0 0 auto;
   margin: 0;
-  transition: opacity 0.35s ease;
 }
 
 .tv-body {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   display: grid;
-  grid-template-columns: minmax(240px, 0.38fr) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(12rem, 0.28fr) minmax(0, 1fr);
+  gap: 12px;
   overflow: hidden;
 }
 
 .tv-standings {
-  overflow: auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tv-standings .section-title {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+  margin: 0 0 8px;
+}
+
+.tv-standing-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .tv-standing-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--line);
-  min-width: 0;
+  gap: 0.7rem;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 0 0.7rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--sand-50);
 }
 
-.tv-standing-row:first-child {
-  padding-top: 0;
+.tv-standing-row.is-first {
+  background: #f3ead4;
 }
 
-.tv-standing-row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.tv-standing-row.is-second {
+  background: #ecebe8;
+}
+
+.tv-standing-row.is-third {
+  background: #f1e6da;
 }
 
 .tv-standing-row .place {
-  width: 36px;
-  height: 36px;
-  font-size: 1rem;
+  width: 2.15rem;
+  height: 2.15rem;
+  font-family: var(--font);
+  font-size: 1.05rem;
+  border-radius: 8px;
 }
 
 .tv-standing-name {
@@ -4965,61 +4999,70 @@ button.playing-card:disabled {
   white-space: nowrap;
 }
 
+.tv-standing-row.is-first .tv-standing-name {
+  font-weight: 700;
+}
+
 .tv-standing-row .score {
-  font-size: 2rem;
+  font-family: var(--font);
+  font-size: 1.85rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .tv-table {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .tv-scoreboard {
   height: 100%;
+  min-height: 0;
 }
 
 .tv-scoreboard .card {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+}
+
+.tv-scoreboard .section-title {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
 }
 
 .tv-scoreboard .table-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .tv-scoreboard table.scoreboard {
-  font-size: 1.05rem;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 1rem;
+}
+
+.tv-scoreboard table.scoreboard th:first-child,
+.tv-scoreboard table.scoreboard td:first-child {
+  width: 4.5rem;
 }
 
 .tv-scoreboard table.scoreboard th,
 .tv-scoreboard table.scoreboard td {
-  padding: 10px 12px;
+  padding: 0.35rem 0.4rem;
 }
 
 .tv-scoreboard table.scoreboard th {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
 }
 
 .tv-scoreboard .score {
-  font-size: 1.25rem;
-}
-
-@media (max-width: 800px) {
-  .tv-body {
-    grid-template-columns: 1fr;
-    overflow: auto;
-  }
-
-  .tv-standings,
-  .tv-table {
-    overflow: visible;
-  }
+  font-size: 1.15rem;
 }
 
 @media (min-width: 600px) {

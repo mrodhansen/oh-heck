@@ -250,11 +250,7 @@ export function LiveSessionPage() {
             </button>
           </div>
         )}
-        {board ? (
-          <CastScoreboardButton game={board} />
-        ) : (
-          <div className="icon-btn spacer" aria-hidden />
-        )}
+        <div className="icon-btn spacer" aria-hidden />
       </header>
 
       {error && <div className="banner banner-inline">{error}</div>}
@@ -283,6 +279,7 @@ export function LiveSessionPage() {
               >
                 {isFinished ? 'Exit' : 'Leave'}
               </button>
+              {board ? <CastScoreboardButton game={board} /> : null}
             </div>
           </section>
           {board ? (

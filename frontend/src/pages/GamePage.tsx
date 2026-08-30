@@ -426,7 +426,7 @@ export function GamePage() {
             </button>
           )}
         </div>
-        <CastScoreboardButton game={game} />
+        <div className="icon-btn spacer" aria-hidden />
       </header>
 
       {error && (isFinished || tab !== 'play') && (
@@ -438,8 +438,10 @@ export function GamePage() {
 
       {(isFinished || tab === 'board') && tab !== 'notes' && (
         <div className="panel-scroll">
-          {canClaim && (
-            <div className="card claim-panel">
+          <div
+            className={`card claim-panel${isFinished && canClaim ? ' has-claim' : ''}`}
+          >
+            {isFinished && canClaim ? (
               <button
                 type="button"
                 className="btn primary block"
@@ -455,8 +457,9 @@ export function GamePage() {
               >
                 Claim game
               </button>
-            </div>
-          )}
+            ) : null}
+            <CastScoreboardButton game={game} />
+          </div>
           <Scoreboard
             game={game}
             onEditRound={
