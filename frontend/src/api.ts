@@ -336,7 +336,7 @@ export type TournamentDetail = {
 export type StatsLeader = { name: string; value: number | string } | null;
 
 export type StatsPlayer = {
-  /** Stable identity: user:<id> or player:<id> */
+  /** Stable identity: user:<id> or name:<normalized> */
   key?: string;
   userId?: string | null;
   playerId?: string | null;
@@ -382,7 +382,7 @@ export type StatsGame = {
   roundsCompleted: number;
   forceBurns: number;
   isHighTable: boolean;
-  standings: { name: string; total: number; place: number }[];
+  standings: { name: string; key?: string; total: number; place: number }[];
 };
 
 export type StatsOverview = {
@@ -413,7 +413,7 @@ export type StatsBundle = {
 };
 
 export type StatsResponse = StatsBundle & {
-  /** Present after API deploy — aggregations keyed by Player identity. */
+  /** All table names, combined by name. */
   allPlayers?: StatsBundle;
 };
 

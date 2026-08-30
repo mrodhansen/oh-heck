@@ -1,4 +1,5 @@
 import type { StatsGame, StatsPlayer } from '../api';
+import { statsNameKey } from './statsPlayersCombine';
 
 /** Average-play games mixed in so a hot streak shrinks toward the field. */
 const SHRINK = 10;
@@ -55,6 +56,18 @@ export function rangeSince(range: TopRange, now = new Date()): Date | null {
 
 function gameTime(g: StatsGame): number {
   return new Date(g.finishedAt ?? g.createdAt).getTime();
+}
+
+function standingFor(
+  g: StatsGame,
+  p: StatsPlayer,
+): StatsGame['standings'][number] | undefined {
+  if (p.key) {
+    const byKey = g.standings.find((s) => s.key === p.key);
+    if (byKey) return byKey;
+  }
+  const n = statsNameKey(p.name);
+  return g.standings.find((s) => statsNameKey(s.name) === n);
 }
 
 export function dayStartMs(ymd: string): number {
@@ -115,7 +128,7 @@ export function playersForWindow(
     let wThirds = 0;
     let wTotal = 0;
     for (const g of newestFirst) {
-      const row = g.standings.find((s) => s.name === p.name);
+      const row = standingFor(g, p);
       if (!row) continue;
       const w = gameWeight(g, t0);
       n += 1;

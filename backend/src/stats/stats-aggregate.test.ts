@@ -115,7 +115,7 @@ describe('buildStats users mode', () => {
 });
 
 describe('buildStats players mode', () => {
-  it('includes guests and keys by player id with table names', () => {
+  it('includes guests and keys by table name', () => {
     const stats = buildStats([mixedGame], 'players');
     expect(stats.overview.uniquePlayers).toBe(3);
     expect(stats.players.map((p) => p.name)).toEqual([
@@ -124,9 +124,9 @@ describe('buildStats players mode', () => {
       'Martin',
     ]);
     expect(stats.players.map((p) => p.key)).toEqual([
-      'player:p-guest',
-      'player:p-abe',
-      'player:p-mart',
+      'name:charlie',
+      'name:abe',
+      'name:martin',
     ]);
     expect(stats.games[0]?.winner).toBe('Charlie');
     expect(stats.overview.leaders.bestSingleGame).toEqual({
@@ -139,7 +139,7 @@ describe('buildStats players mode', () => {
     });
   });
 
-  it('does not merge two guest rows that share a name', () => {
+  it('merges guest rows that share a name', () => {
     const g2 = snap({
       id: 'g2',
       seats: [
@@ -149,11 +149,35 @@ describe('buildStats players mode', () => {
     });
     const stats = buildStats([mixedGame, g2], 'players');
     const charlies = stats.players.filter((p) => p.name === 'Charlie');
-    expect(charlies).toHaveLength(2);
-    expect(charlies.map((p) => p.playerId).sort()).toEqual([
-      'p-guest',
-      'p-other-charlie',
+    expect(charlies).toHaveLength(1);
+    expect(charlies[0]?.gamesCompleted).toBe(2);
+    expect(charlies[0]?.key).toBe('name:charlie');
+  });
+
+  it('does not merge Jeremiah with Jere', () => {
+    const g1 = snap({
+      id: 'g1',
+      seats: [
+        { id: 'p-jere', name: 'Jere', points: 40 },
+        { id: 'p-other', name: 'Martin', points: 10 },
+      ],
+    });
+    const g2 = snap({
+      id: 'g2',
+      seats: [
+        { id: 'p-jeremiah', name: 'Jeremiah', points: 30 },
+        { id: 'p-other-2', name: 'Martin', points: 10 },
+      ],
+    });
+    const stats = buildStats([g1, g2], 'players');
+    expect(stats.players.map((p) => p.name).sort()).toEqual([
+      'Jere',
+      'Jeremiah',
+      'Martin',
     ]);
+    expect(stats.players.find((p) => p.name === 'Martin')?.gamesCompleted).toBe(
+      2,
+    );
   });
 });
 

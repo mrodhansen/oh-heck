@@ -1,15 +1,20 @@
 import type { StatsResponse } from '../api';
+import { combinePlayersByName } from './statsPlayersCombine';
 
-/** Users bundle by default; all player identities when the switch is on. */
+/** Claimed users by default; all table names (merged by name) when the switch is on. */
 export function statsView(
   stats: StatsResponse,
   showAllPlayers: boolean,
 ): StatsResponse {
   if (!showAllPlayers || !stats.allPlayers) return stats;
+  const players = combinePlayersByName(stats.allPlayers.players);
   return {
-    overview: stats.allPlayers.overview,
+    overview: {
+      ...stats.allPlayers.overview,
+      uniquePlayers: players.length,
+    },
     games: stats.allPlayers.games,
-    players: stats.allPlayers.players,
+    players,
     allPlayers: stats.allPlayers,
   };
 }

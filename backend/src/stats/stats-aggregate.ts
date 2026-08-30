@@ -164,7 +164,7 @@ export function buildStats(games: readonly StatsGameSnap[], mode: StatsMode) {
     roundsCompleted: number;
     forceBurns: number;
     isHighTable: boolean;
-    standings: { name: string; total: number; place: number }[];
+    standings: { name: string; key: string; total: number; place: number }[];
   }[] = [];
 
   for (const game of games) {
@@ -362,6 +362,7 @@ export function buildStats(games: readonly StatsGameSnap[], mode: StatsMode) {
       isHighTable: gameIsHighTable(game),
       standings: places.map((p) => ({
         name: p.name,
+        key: p.key,
         total: p.total,
         place: p.place,
       })),
@@ -500,7 +501,7 @@ function playerSeat(p: {
     userId: p.userId,
     name: p.name,
     tableName: p.name,
-    key: playerKey(p.id),
+    key: nameKey(p.name),
   };
 }
 
@@ -508,8 +509,12 @@ function userKey(userId: string): string {
   return `user:${userId}`;
 }
 
-function playerKey(playerId: string): string {
-  return `player:${playerId}`;
+function nameKey(name: string): string {
+  const n = name.trim().toLowerCase();
+  if (!n) {
+    throw new Error('Player name cannot be empty');
+  }
+  return `name:${n}`;
 }
 
 function guestKey(name: string): string {

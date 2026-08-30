@@ -22,7 +22,7 @@
  *   Milly / Mildrid → Milly
  *   Marty / Martin → Martin
  *   Abe / Abraham → Abraham
- *   Tana / Montana → Monetana
+ *   Tana / Monetana → Montana
  *   Addie / Hawaii Addison → Addison Christiansen
  *   Family game 50 Addison → Addison Hansen
  *   Family game 48 Addison → Addison Corgry
@@ -62,9 +62,9 @@ const PLAYER_NAME_ALIASES = new Map([
   ['martin', 'Martin'],
   ['abe', 'Abraham'],
   ['abraham', 'Abraham'],
-  ['tana', 'Monetana'],
-  ['montana', 'Monetana'],
-  ['monetana', 'Monetana'],
+  ['tana', 'Montana'],
+  ['montana', 'Montana'],
+  ['monetana', 'Montana'],
   ['addie', 'Addison Christiansen'],
   ['addie christiansen', 'Addison Christiansen'],
   ['addison christiansen', 'Addison Christiansen'],

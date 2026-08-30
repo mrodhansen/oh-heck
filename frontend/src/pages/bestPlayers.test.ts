@@ -273,7 +273,7 @@ describe('time range', () => {
 function game(over: {
   id: string;
   at: string;
-  standings: { name: string; total: number; place: number }[];
+  standings: { name: string; key?: string; total: number; place: number }[];
   isHighTable?: boolean;
 }): StatsGame {
   const winner = over.standings.find((s) => s.place === 1);
@@ -297,6 +297,73 @@ function game(over: {
     standings: over.standings,
   };
 }
+
+describe('playersForWindow name matching', () => {
+  it('matches standings case-insensitively and not Jere to Jeremiah', () => {
+    const jeremiah = player({
+      name: 'Jeremiah',
+      key: 'name:jeremiah',
+      gamesCompleted: 1,
+    });
+    const jere = player({
+      name: 'Jere',
+      key: 'name:jere',
+      gamesCompleted: 1,
+    });
+    const games = [
+      game({
+        id: 'a',
+        at: '2026-01-01T00:00:00.000Z',
+        standings: [
+          { name: 'JEREMIAH', total: 50, place: 1 },
+          { name: 'Martin', total: 10, place: 2 },
+        ],
+      }),
+      game({
+        id: 'b',
+        at: '2026-02-01T00:00:00.000Z',
+        standings: [
+          { name: 'Jere', total: 40, place: 1 },
+          { name: 'Martin', total: 10, place: 2 },
+        ],
+      }),
+    ];
+    const windowed = playersForWindow(
+      [jeremiah, jere],
+      games,
+      null,
+      null,
+    );
+    expect(windowed.find((p) => p.name === 'Jeremiah')?.gamesCompleted).toBe(1);
+    expect(windowed.find((p) => p.name === 'Jere')?.gamesCompleted).toBe(1);
+  });
+
+  it('matches claimed users by standing key', () => {
+    const abe = player({
+      name: 'Abraham Hansen',
+      key: 'user:u-abe',
+      gamesCompleted: 1,
+    });
+    const games = [
+      game({
+        id: 'claimed',
+        at: '2026-01-01T00:00:00.000Z',
+        standings: [
+          { name: 'Abraham Hansen', key: 'user:u-abe', total: 40, place: 1 },
+        ],
+      }),
+      game({
+        id: 'guest-abe',
+        at: '2026-02-01T00:00:00.000Z',
+        standings: [{ name: 'Abe', key: 'name:abe', total: 50, place: 1 }],
+      }),
+    ];
+    const windowed = playersForWindow([abe], games, null, null);
+    expect(windowed).toHaveLength(1);
+    expect(windowed[0]?.gamesCompleted).toBe(1);
+    expect(windowed[0]?.avgScore).toBe(40);
+  });
+});
 
 describe('recency weighting', () => {
   const now = new Date('2026-08-01T00:00:00.000Z');

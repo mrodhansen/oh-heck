@@ -74,8 +74,19 @@ describe('statsView', () => {
 
   it('swaps to all-player aggregations on', () => {
     const view = statsView(stats, true);
-    expect(view.overview.uniquePlayers).toBe(5);
+    expect(view.overview.uniquePlayers).toBe(2);
     expect(view.players.map((p) => p.name)).toEqual(['Abe', 'Charlie']);
+  });
+
+  it('merges duplicate table names in all-players', () => {
+    const duped: StatsResponse = {
+      ...bundle(1, ['Abraham Hansen']),
+      allPlayers: bundle(3, ['Jeremiah', 'Jeremiah', 'Jere']),
+    };
+    const view = statsView(duped, true);
+    expect(view.players.map((p) => p.name)).toEqual(['Jeremiah', 'Jere']);
+    expect(view.overview.uniquePlayers).toBe(2);
+    expect(view.players[0]?.gamesCompleted).toBe(2);
   });
 
   it('stays on users when allPlayers is missing', () => {
