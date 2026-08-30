@@ -15,24 +15,23 @@ function framework(): NonNullable<Window['cast']>['framework'] {
 
 export function loadCastSender(): Promise<void> {
   if (window.cast?.framework) return Promise.resolve();
+  if (window.__ohHeckCastAvailable === false) {
+    return Promise.reject(new Error('Cast API unavailable'));
+  }
   return new Promise((resolve, reject) => {
-    const previous = window.__onGCastApiAvailable;
-    window.__onGCastApiAvailable = (available) => {
+    const previous = window.__ohHeckOnCastReady;
+    window.__ohHeckOnCastReady = (available) => {
       previous?.(available);
-      if (available) resolve();
+      if (available && window.cast?.framework) resolve();
       else reject(new Error('Cast API unavailable'));
     };
-    const existing = document.querySelector(
-      'script[data-oh-heck-cast-sender]',
-    );
-    if (existing) return;
-    const script = document.createElement('script');
-    script.src =
-      'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
-    script.async = true;
-    script.dataset.ohHeckCastSender = '1';
-    script.onerror = () => reject(new Error('Failed to load Cast sender'));
-    document.head.appendChild(script);
+    if (window.cast?.framework) {
+      resolve();
+      return;
+    }
+    if (window.__ohHeckCastAvailable === false) {
+      reject(new Error('Cast API unavailable'));
+    }
   });
 }
 
@@ -47,6 +46,7 @@ export async function initCast(appId: string): Promise<void> {
   const autoJoin = window.chrome?.cast?.AutoJoinPolicy?.ORIGIN_SCOPED;
   framework().CastContext.getInstance().setOptions({
     receiverApplicationId: appId,
+    androidReceiverCompatible: true,
     ...(autoJoin ? { autoJoinPolicy: autoJoin } : {}),
   });
   readyAppId = appId;

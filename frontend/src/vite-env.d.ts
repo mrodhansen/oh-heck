@@ -18,6 +18,7 @@ type CastContextLike = {
   setOptions(opts: {
     receiverApplicationId: string;
     autoJoinPolicy?: string;
+    androidReceiverCompatible?: boolean;
   }): void;
   requestSession(): Promise<void>;
   getCurrentSession(): CastSessionLike | null;
@@ -35,4 +36,6 @@ interface Window {
     cast?: { AutoJoinPolicy?: { ORIGIN_SCOPED: string } };
   };
   __onGCastApiAvailable?: (available: boolean) => void;
+  __ohHeckCastAvailable?: boolean;
+  __ohHeckOnCastReady?: (available: boolean) => void;
 }

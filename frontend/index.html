@@ -30,6 +30,15 @@
       href="%BASE_URL%apple-touch-icon.png"
     />
     <title>Oh Heck</title>
+    <script>
+      window.__onGCastApiAvailable = function (isAvailable) {
+        window.__ohHeckCastAvailable = isAvailable;
+        if (typeof window.__ohHeckOnCastReady === 'function') {
+          window.__ohHeckOnCastReady(isAvailable);
+        }
+      };
+    </script>
+    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
   </head>
   <body>
     <div id="root"></div>
