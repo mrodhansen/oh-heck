@@ -65,7 +65,10 @@ export function Scoreboard({
             </thead>
             <tbody>
               {game.rounds.map((r) => (
-                <tr key={r.id}>
+                <tr
+                  key={r.id}
+                  className={r.forceBurn ? 'score-force-burn' : undefined}
+                >
                   <td>
                     {r.number}
                     <span className="muted"> ({r.handSize})</span>

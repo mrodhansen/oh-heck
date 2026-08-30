@@ -1035,6 +1035,11 @@ table.scoreboard tbody tr:last-child td.score-miss {
   background: #f6e8e6;
 }
 
+table.scoreboard tbody tr.score-force-burn td:not(:last-child) {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+}
+
 .place {
   display: inline-flex;
   width: 26px;
