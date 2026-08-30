@@ -5,17 +5,25 @@ type Props = {
   onEditRound?: (roundNumber: number) => void;
   /** Show Edit even when the round is not complete (import preview). */
   allowIncompleteEdit?: boolean;
+  variant?: 'default' | 'tv';
+  showStandings?: boolean;
 };
 
 export function Scoreboard({
   game,
   onEditRound,
   allowIncompleteEdit = false,
+  variant = 'default',
+  showStandings = true,
 }: Props) {
   const orderedStandings = [...game.standings].sort((a, b) => a.place - b.place);
+  const isTv = variant === 'tv';
+  const editRound = onEditRound;
+  const showEditCol = Boolean(editRound) && !isTv;
 
   return (
-    <div className="stack">
+    <div className={`stack${isTv ? ' tv-scoreboard' : ''}`}>
+      {showStandings ? (
       <section className="card">
         <h3 className="section-title">Standings</h3>
         <div>
@@ -49,6 +57,7 @@ export function Scoreboard({
           ))}
         </div>
       </section>
+      ) : null}
 
       <section className="card">
         <h3 className="section-title">Scoreboard</h3>
@@ -58,17 +67,14 @@ export function Scoreboard({
               <tr>
                 <th>Rnd</th>
                 {game.players.map((p) => (
-                  <th key={p.id}>{shortName(p.name)}</th>
+                  <th key={p.id}>{isTv ? p.name : shortName(p.name)}</th>
                 ))}
-                <th></th>
+                {showEditCol ? <th></th> : null}
               </tr>
             </thead>
             <tbody>
               {game.rounds.map((r) => (
-                <tr
-                  key={r.id}
-                  className={r.forceBurn ? 'score-force-burn' : undefined}
-                >
+                <tr key={r.id}>
                   <td>
                     {r.number}
                     <span className="muted"> ({r.handSize})</span>
@@ -78,16 +84,32 @@ export function Scoreboard({
                   </td>
                   {game.players.map((p) => {
                     const e = r.entries.find((x) => x.playerId === p.id);
+                    const forceBurnCell =
+                      r.forceBurn &&
+                      (p.id === r.dealerPlayerId ||
+                        p.seatIndex === r.dealerSeat);
                     if (!e || e.points === null) {
                       return (
-                        <td key={p.id} className="muted">
+                        <td
+                          key={p.id}
+                          className={cellClass(
+                            'muted',
+                            forceBurnCell ? 'score-force-burn' : undefined,
+                          )}
+                        >
                           {e?.bid != null ? `b${e.bid}` : '—'}
                         </td>
                       );
                     }
                     const made = e.bid === e.tricksTaken;
                     return (
-                      <td key={p.id} className={made ? undefined : 'score-miss'}>
+                      <td
+                        key={p.id}
+                        className={cellClass(
+                          made ? undefined : 'score-miss',
+                          forceBurnCell ? 'score-force-burn' : undefined,
+                        )}
+                      >
                         <span className={made ? 'score pos' : 'score neg'}>
                           {e.points > 0 ? `+${e.points}` : e.points}
                         </span>
@@ -97,17 +119,24 @@ export function Scoreboard({
                       </td>
                     );
                   })}
-                  <td>
-                    {onEditRound && (r.complete || allowIncompleteEdit) && (
-                      <button
-                        type="button"
-                        className="btn ghost sm"
-                        onClick={() => onEditRound(r.number)}
-                      >
-                        Edit
-                      </button>
-                    )}
-                  </td>
+                  {showEditCol ? (
+                    <td>
+                      {(r.complete || allowIncompleteEdit) && (
+                        <button
+                          type="button"
+                          className="btn ghost sm"
+                          onClick={() => {
+                            if (!editRound) {
+                              throw new Error('Missing edit handler');
+                            }
+                            editRound(r.number);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
               <tr>
@@ -129,7 +158,7 @@ export function Scoreboard({
                     </td>
                   );
                 })}
-                <td></td>
+                {showEditCol ? <td></td> : null}
               </tr>
             </tbody>
           </table>
@@ -137,6 +166,11 @@ export function Scoreboard({
       </section>
     </div>
   );
+}
+
+function cellClass(...parts: Array<string | undefined>): string | undefined {
+  const joined = parts.filter(Boolean).join(' ');
+  return joined.length > 0 ? joined : undefined;
 }
 
 function shortName(name: string): string {

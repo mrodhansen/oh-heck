@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oh Heck</title>
+    <style>
+      :root {
+        --sand-50: #f7f3ec;
+        --sand-100: #efe8db;
+        --line: #d9d0c3;
+        --muted: #6b6560;
+        --grey-800: #2a2725;
+        --grey-900: #1c1a18;
+        --surface: #fffdf9;
+        --ok: #2f6b4f;
+        --danger: #a33b3b;
+        --font: "Iowan Old Style", Palatino, Georgia, serif;
+        --font-ui: "Segoe UI", system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #efe8db;
+        color: #1c1a18;
+        font-family: var(--font-ui);
+      }
+      #app {
+        height: 100%;
+        padding: 24px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .idle {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .idle h1 {
+        font-family: var(--font);
+        font-size: 3rem;
+        margin: 0;
+      }
+      .idle p { color: var(--muted); margin: 0; font-size: 1.2rem; }
+      .head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+      .brand { font-family: var(--font); font-size: 1.8rem; font-weight: 650; }
+      .status { color: var(--muted); font-size: 1.2rem; }
+      .body {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(240px, 0.38fr) minmax(0, 1fr);
+        gap: 16px;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px 18px;
+        overflow: auto;
+      }
+      .standing {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .standing:last-child { border-bottom: none; padding-bottom: 0; }
+      .standing:first-child { padding-top: 0; }
+      .place {
+        width: 36px; height: 36px; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        background: #e2d6c4; font-weight: 700;
+      }
+      .place.gold { background: #e8d5a3; }
+      .place.silver { background: #d8d6d2; }
+      .place.bronze { background: #e0c4a8; }
+      .who { flex: 1; font-family: var(--font); font-size: 1.5rem; font-weight: 650; }
+      .score { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 2rem; }
+      .score.pos { color: var(--ok); }
+      .score.neg { color: var(--danger); }
+      table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 1.05rem; }
+      th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; }
+      th:first-child, td:first-child { text-align: left; }
+      tr.total td { background: var(--sand-100); font-weight: 650; }
+      .hint { color: var(--muted); font-size: 0.85rem; }
+      .miss { background: #f6e8e6; }
+    </style>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="idle" id="idle">
+        <h1>Oh Heck</h1>
+        <p>Waiting for scoreboard…</p>
+      </div>
+      <div id="board" hidden></div>
+    </div>
+    <script>
+      const NS = 'urn:x-cast:com.ohheck.board';
+
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function placeClass(place) {
+        if (place === 1) return ' gold';
+        if (place === 2) return ' silver';
+        if (place === 3) return ' bronze';
+        return '';
+      }
+
+      function cell(entry) {
+        if (!entry || entry.points === null) {
+          const bid = entry && entry.bid != null ? 'b' + entry.bid : '—';
+          return '<td class="hint">' + esc(bid) + '</td>';
+        }
+        const made = entry.bid === entry.tricksTaken;
+        const pts = entry.points > 0 ? '+' + entry.points : String(entry.points);
+        const cls = made ? '' : ' miss';
+        const scoreCls = made ? 'score pos' : 'score neg';
+        return (
+          '<td class="' + cls + '"><span class="' + scoreCls + '">' +
+          esc(pts) + '</span><div class="hint">' +
+          esc(String(entry.tricksTaken) + '/' + String(entry.bid)) +
+          '</div></td>'
+        );
+      }
+
+      function render(msg) {
+        const idle = document.getElementById('idle');
+        const root = document.getElementById('board');
+        idle.hidden = true;
+        root.hidden = false;
+        const standings = msg.standings
+          .map(function (s) {
+            const sc = s.total >= 0 ? 'score pos' : 'score neg';
+            return (
+              '<div class="standing"><span class="place' +
+              placeClass(s.place) +
+              '">' +
+              esc(String(s.place)) +
+              '</span><span class="who">' +
+              esc(s.playerName) +
+              '</span><span class="' +
+              sc +
+              '">' +
+              esc(String(s.total)) +
+              '</span></div>'
+            );
+          })
+          .join('');
+        const heads = msg.players
+          .map(function (p) {
+            return '<th>' + esc(p.name) + '</th>';
+          })
+          .join('');
+        const rows = msg.rounds
+          .map(function (r) {
+            const fb = r.forceBurn ? ' <span class="hint">FB</span>' : '';
+            const cells = msg.players
+              .map(function (p) {
+                const e = r.entries.find(function (x) {
+                  return x.playerId === p.id;
+                });
+                return cell(e);
+              })
+              .join('');
+            return (
+              '<tr><td>' +
+              esc(String(r.number)) +
+              ' <span class="hint">(' +
+              esc(String(r.handSize)) +
+              ')</span>' +
+              fb +
+              '</td>' +
+              cells +
+              '</tr>'
+            );
+          })
+          .join('');
+        const totals = msg.players
+          .map(function (p) {
+            const s = msg.standings.find(function (x) {
+              return x.playerId === p.id;
+            });
+            const total = s ? s.total : 0;
+            const cls = total >= 0 ? 'score pos' : 'score neg';
+            const miss = total < 0 ? ' miss' : '';
+            return (
+              '<td class="' +
+              miss +
+              '"><span class="' +
+              cls +
+              '">' +
+              esc(String(total)) +
+              '</span></td>'
+            );
+          })
+          .join('');
+        root.innerHTML =
+          '<div class="head"><div class="brand">' +
+          esc(msg.name) +
+          '</div><div class="status">' +
+          esc(msg.statusLine) +
+          '</div></div><div class="body"><section class="card">' +
+          standings +
+          '</section><section class="card"><table><thead><tr><th>Rnd</th>' +
+          heads +
+          '</tr></thead><tbody>' +
+          rows +
+          '<tr class="total"><td>Total</td>' +
+          totals +
+          '</tr></tbody></table></section></div>';
+      }
+
+      const ctx = cast.framework.CastReceiverContext.getInstance();
+      ctx.addCustomMessageListener(NS, function (event) {
+        const data = event.data;
+        if (!data || data.type !== 'board') return;
+        render(data);
+      });
+      const opts = new cast.framework.CastReceiverOptions();
+      opts.disableIdleTimeout = true;
+      opts.skipPlayersLoad = true;
+      opts.customNamespaces = {};
+      opts.customNamespaces[NS] = cast.framework.system.MessageType.JSON;
+      ctx.start(opts);
+    </script>
+  </body>
+</html>

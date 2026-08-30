@@ -12,6 +12,7 @@ import { toUserMessage } from '../api/errors';
 import { NumberStepper } from '../components/NumberStepper';
 import { PlayingCard } from '../components/PlayingCard';
 import { Scoreboard } from '../components/Scoreboard';
+import { CastScoreboardButton } from '../components/CastScoreboardButton';
 import { liveApi } from '../live/api';
 import { trumpLabel } from '../live/cards';
 import { clearLiveAuth, loadLiveAuth } from '../live/session';
@@ -249,7 +250,11 @@ export function LiveSessionPage() {
             </button>
           </div>
         )}
-        <div className="icon-btn spacer" aria-hidden />
+        {board ? (
+          <CastScoreboardButton game={board} />
+        ) : (
+          <div className="icon-btn spacer" aria-hidden />
+        )}
       </header>
 
       {error && <div className="banner banner-inline">{error}</div>}

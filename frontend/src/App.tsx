@@ -13,6 +13,7 @@ import { UploadGamePage } from './pages/UploadGamePage';
 import { TournamentPage } from './pages/TournamentPage';
 import { LiveHubPage } from './pages/LiveHubPage';
 import { LiveSessionPage } from './pages/LiveSessionPage';
+import { TvScoreboardPage } from './pages/TvScoreboardPage';
 import { SyncStatus } from './components/SyncStatus';
 import { useAuth } from './useAuth';
 
@@ -21,6 +22,7 @@ export function App() {
   const { user } = useAuth();
   const inGame = pathname.startsWith('/games/');
   const inLive = pathname.startsWith('/live/');
+  const inTv = /\/games\/[^/]+\/tv$/.test(pathname);
   const inTournamentDeep =
     pathname.startsWith('/play/tournaments/') &&
     pathname !== '/play/tournaments';
@@ -31,7 +33,7 @@ export function App() {
 
   return (
     <div
-      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${wideDesktop ? ' app-shell-stats' : ''}`}
+      className={`app-shell${hideChrome ? ' app-shell-game' : ''}${wideDesktop ? ' app-shell-stats' : ''}${inTv ? ' app-shell-tv' : ''}`}
     >
       {!hideChrome && (
         <header className="topbar">
@@ -50,7 +52,7 @@ export function App() {
           </nav>
         </header>
       )}
-      <SyncStatus />
+      {!inTv && <SyncStatus />}
       <main className="app-main">
         <Routes>
           <Route path="/" element={<PlayModePage />} />
@@ -62,6 +64,7 @@ export function App() {
           <Route path="/play/upload" element={<UploadGamePage />} />
           <Route path="/play/tournaments" element={<TournamentsPage />} />
           <Route path="/play/tournaments/:id" element={<TournamentPage />} />
+          <Route path="/games/:id/tv" element={<TvScoreboardPage />} />
           <Route path="/games/:id" element={<GamePage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/account" element={<AccountPage />} />

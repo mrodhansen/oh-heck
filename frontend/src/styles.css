@@ -1035,7 +1035,7 @@ table.scoreboard tbody tr:last-child td.score-miss {
   background: #f6e8e6;
 }
 
-table.scoreboard tbody tr.score-force-burn td:not(:last-child) {
+table.scoreboard td.score-force-burn {
   outline: 2px solid var(--danger);
   outline-offset: -2px;
 }
@@ -1615,6 +1615,10 @@ button.table-link {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.icon-btn svg {
+  display: block;
 }
 
 .icon-btn.spacer {
@@ -4845,4 +4849,207 @@ button.playing-card:disabled {
     flex: unset;
     font-size: 0.95rem;
   }
+}
+
+/* —— TV / Cast scoreboard —— */
+.app-shell.app-shell-game.app-shell-tv {
+  max-width: none;
+  width: 100%;
+  padding-top: max(8px, var(--safe-t));
+  padding-bottom: max(8px, var(--safe-b));
+  padding-left: max(16px, var(--safe-l));
+  padding-right: max(16px, var(--safe-r));
+}
+
+.tv-screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.tv-chrome {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.tv-screen.chrome-idle .tv-chrome,
+.tv-screen.chrome-idle .tv-hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tv-chrome-text {
+  min-width: 0;
+}
+
+.tv-brand {
+  font-family: var(--font);
+  font-weight: 650;
+  font-size: 1.45rem;
+  color: var(--grey-900);
+  line-height: 1.2;
+}
+
+.tv-status {
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.tv-chrome-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tv-hint {
+  flex: 0 0 auto;
+  margin: 0;
+  transition: opacity 0.35s ease;
+}
+
+.tv-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.38fr) minmax(0, 1fr);
+  gap: 16px;
+  overflow: hidden;
+}
+
+.tv-standings {
+  overflow: auto;
+  min-height: 0;
+}
+
+.tv-standing-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.tv-standing-row:first-child {
+  padding-top: 0;
+}
+
+.tv-standing-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.tv-standing-row .place {
+  width: 36px;
+  height: 36px;
+  font-size: 1rem;
+}
+
+.tv-standing-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font);
+  font-weight: 650;
+  font-size: 1.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tv-standing-row .score {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.tv-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tv-scoreboard {
+  height: 100%;
+}
+
+.tv-scoreboard .card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tv-scoreboard .table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tv-scoreboard table.scoreboard {
+  font-size: 1.05rem;
+}
+
+.tv-scoreboard table.scoreboard th,
+.tv-scoreboard table.scoreboard td {
+  padding: 10px 12px;
+}
+
+.tv-scoreboard table.scoreboard th {
+  font-size: 0.85rem;
+}
+
+.tv-scoreboard .score {
+  font-size: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .tv-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .tv-standings,
+  .tv-table {
+    overflow: visible;
+  }
+}
+
+@media (min-width: 600px) {
+  .app-shell.app-shell-game.app-shell-tv {
+    max-width: none;
+  }
+}
+
+@media (min-width: 960px) {
+  .app-shell.app-shell-game.app-shell-tv {
+    max-width: none;
+    padding-left: max(24px, var(--safe-l));
+    padding-right: max(24px, var(--safe-r));
+  }
+}
+
+.modal a {
+  text-decoration: underline;
+}
+
+.cast-url {
+  display: inline;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.cast-appid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
 }

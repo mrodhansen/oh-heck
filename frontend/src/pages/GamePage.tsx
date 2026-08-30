@@ -5,6 +5,7 @@ import { toUserMessage } from '../api/errors';
 import { hasGameNotes } from '../offline/notes';
 import { NumberStepper } from '../components/NumberStepper';
 import { Scoreboard } from '../components/Scoreboard';
+import { CastScoreboardButton } from '../components/CastScoreboardButton';
 import { EditRoundModal } from '../components/EditRoundModal';
 import { GameNotes } from '../components/GameNotes';
 import { SuperScorerPlay } from '../components/SuperScorerPlay';
@@ -425,7 +426,7 @@ export function GamePage() {
             </button>
           )}
         </div>
-        <div className="icon-btn spacer" aria-hidden />
+        <CastScoreboardButton game={game} />
       </header>
 
       {error && (isFinished || tab !== 'play') && (
